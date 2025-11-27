@@ -4,12 +4,21 @@
   "description": "Restaurante Cost Manager Backend",
   "main": "src/core/server.ts",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/core/server.ts",
+    "dev": "tsx watch src/core/server.ts",
     "build": "tsc",
     "start": "node dist/core/server.js",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
-    "seed": "npx prisma db seed"
+    "seed": "prisma db seed",
+    "seed:produtos": "tsx scripts/seed-produtos.ts",
+    "seed:complementares": "tsx scripts/seed-produtos-complementares.ts",
+    "seed:receitas": "tsx scripts/seed-receitas.ts",
+    "seed:subfamilias-bebidas": "tsx scripts/seed-subfamilias-bebidas.ts",
+    "seed:formatos-venda": "tsx scripts/seed-formatos-venda.ts",
+    "seed:all": "tsx scripts/seed.ts; tsx scripts/seed-produtos.ts; tsx scripts/seed-produtos-complementares.ts; tsx scripts/seed-receitas.ts; tsx scripts/seed-subfamilias-bebidas.ts; tsx scripts/seed-formatos-venda.ts",
+    "migrate:codes": "tsx scripts/migrate-product-codes.ts",
+    "migrate": "prisma migrate dev",
+    "studio": "prisma studio"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
@@ -30,6 +39,7 @@
     "@types/bcryptjs": "^2.4.6",
     "prisma": "^5.10.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.3",
     "eslint": "^8.57.0"
   },

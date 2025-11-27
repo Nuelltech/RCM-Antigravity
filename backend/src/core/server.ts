@@ -19,6 +19,10 @@ import { inventoryRoutes } from '../modules/inventario/inventario.module';
 import { salesRoutes } from '../modules/vendas/vendas.module';
 import { integrationRoutes } from '../modules/integracoes/integracoes.module';
 import { aiRoutes } from '../modules/ai/ai.module';
+import { comboRoutes } from '../modules/combos/combos.module';
+import { formatosVendaRoutes } from '../modules/formatos-venda/formatos-venda.module';
+import { dashboardRoutes } from '../modules/dashboard/dashboard.module';
+import { variacoesProdutoRoutes } from '../modules/variacoes-produto/variacoes-produto.module';
 
 const server = Fastify({
     logger: true,
@@ -29,7 +33,13 @@ server.setSerializerCompiler(serializerCompiler);
 
 async function main() {
     await server.register(cors, {
-        origin: '*', // Adjust for production
+        origin: true, // Allow all origins (for development)
+        credentials: true, // Allow credentials
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
+        exposedHeaders: ['Content-Type', 'Authorization'],
+        preflightContinue: false,
+        optionsSuccessStatus: 204,
     });
 
     await server.register(jwt, {
@@ -68,16 +78,22 @@ async function main() {
     });
 
     // Register Modules
-    server.register(authRoutes, { prefix: '/api/v1/auth' });
-    server.register(tenantRoutes, { prefix: '/api/v1/tenants' });
-    server.register(productRoutes, { prefix: '/api/v1/products' });
-    server.register(recipeRoutes, { prefix: '/api/v1/recipes' });
-    server.register(purchaseRoutes, { prefix: '/api/v1/purchases' });
-    server.register(menuRoutes, { prefix: '/api/v1/menu' });
-    server.register(inventoryRoutes, { prefix: '/api/v1/inventory' });
-    server.register(salesRoutes, { prefix: '/api/v1/sales' });
-    server.register(integrationRoutes, { prefix: '/api/v1/integrations' });
-    server.register(aiRoutes, { prefix: '/api/v1/ai' });
+    server.register(authRoutes, { prefix: '/api/auth' });
+    server.register(tenantRoutes, { prefix: '/api/tenants' });
+    server.register(productRoutes, { prefix: '/api/products' });
+    server.register(recipeRoutes, { prefix: '/api/recipes' });
+    server.register(purchaseRoutes, { prefix: '/api/purchases' });
+    server.register(menuRoutes, { prefix: '/api/menu' });
+    server.register(inventoryRoutes, { prefix: '/api/inventory' });
+    server.register(salesRoutes, { prefix: '/api/sales' });
+    server.register(integrationRoutes, { prefix: '/api/integrations' });
+    server.register(aiRoutes, { prefix: '/api/ai' });
+    server.register(comboRoutes, { prefix: '/api/combos' });
+    server.register(formatosVendaRoutes, { prefix: '/api/formatos-venda' });
+    server.register(dashboardRoutes, { prefix: '/api/dashboard' });
+    server.register(variacoesProdutoRoutes, { prefix: '/api/variacoes-produto' });
+
+
 
     try {
         await server.listen({ port: parseInt(env.PORT), host: '0.0.0.0' });

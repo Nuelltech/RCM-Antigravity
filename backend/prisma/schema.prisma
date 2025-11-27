@@ -16,7 +16,7 @@ model Tenant {
   uuid                String    @unique @default(uuid())
   nome_restaurante    String
   slug                String    @unique
-  nif                 String?
+  nif                 String?   @unique
   morada              String?
   telefone            String?
   email_contacto      String?
@@ -52,6 +52,11 @@ model Tenant {
   conversasAi         ConversaAi[]
   integracoes         Integracao[]
   mapeamentosPos      MapeamentoPos[]
+  combos              Combo[]
+  comboItens          ComboItem[]
+  comboCategorias     ComboCategoria[]
+  comboOpcoes         ComboCategoriaOpcao[]
+  formatosVenda       FormatoVenda[]
 
   @@map("tenants")
 }
@@ -67,6 +72,8 @@ model User {
   two_factor_secret   String?
   two_factor_enabled  Boolean   @default(false)
   email_verificado    Boolean   @default(false)
+  verification_code   String?
+  verification_code_expires_at DateTime?
   ultimo_login        DateTime?
   ativo               Boolean   @default(true)
   createdAt           DateTime  @default(now())
@@ -85,6 +92,7 @@ model User {
   inventariosValidados Inventario[] @relation("InventarioValidador")
   conversasAi         ConversaAi[]
   integracoesCriadas  Integracao[]
+  historicoPrecos     HistoricoPreco[]
 
   @@unique([tenant_id, email])
   @@map("users")
@@ -168,6 +176,7 @@ model Familia {
   tenant_id   Int
   uuid        String   @default(uuid())
   nome        String
+  codigo      String?  // ex: CAR, PEI
   descricao   String?
   icone       String?
   ordem       Int      @default(0)
@@ -187,6 +196,7 @@ model Subfamilia {
   tenant_id   Int
   familia_id  Int
   nome        String
+  codigo      String?  // ex: POR, VIT
   ordem       Int      @default(0)
   ativo       Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -211,6 +221,7 @@ model Produto {
   descricao       String?  @db.Text
   imagem_url      String?
   codigo_interno  String?
+  vendavel        Boolean  @default(false) // NEW: Can be sold directly (not just ingredient)
   ativo           Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -220,6 +231,8 @@ model Produto {
   variacoes       VariacaoProduto[]
   ingredientesReceita IngredienteReceita[]
   stockTeorico    StockTeorico[]
+  comboItens      ComboItem[]
+  formatosVenda   FormatoVenda[] // NEW: Sell formats for this product
 
   @@unique([tenant_id, subfamilia_id, nome])
   @@map("produtos")
@@ -246,21 +259,79 @@ model VariacaoProduto {
   compras             Compra[]
   comprasTemporarias  CompraTemporaria[]
   stockTeorico        StockTeorico[]
+  formatosVendaOrigem FormatoVenda[] @relation("VariacaoOrigem") // NEW: Sell formats using this variation as origin
 
   @@map("variacoes_produto")
 }
 
-model HistoricoPreco {
-  id                  BigInt   @id @default(autoincrement())
-  tenant_id           Int
-  variacao_produto_id Int
-  preco_anterior      Decimal  @db.Decimal(10, 2)
-  preco_novo          Decimal  @db.Decimal(10, 2)
-  percentual_mudanca  Decimal  @db.Decimal(5, 2)
-  data_mudanca        DateTime @default(now())
+// NEW MODEL: Sell Formats for Products
+model FormatoVenda {
+  id                      Int              @id @default(autoincrement())
+  tenant_id               Int
+  produto_id              Int
+  
+  // Identification
+  nome                    String           // "Coca-Cola Copo 25cl", "Coca-Cola Lata 33cl"
+  descricao               String?          @db.Text
+  codigo_interno          String?
+  
+  // Quantity sold per unit
+  quantidade_vendida      Decimal          @db.Decimal(10, 3)
+  unidade_medida          String           // "L", "ML", "KG", "G", "UN"
+  
+  // Pricing (current active price)
+  preco_venda             Decimal          @db.Decimal(10, 2)  // PVP (selling price)
+  custo_unitario          Decimal          @db.Decimal(10, 2)  // Unit cost (calculated)
+  margem_percentual       Decimal          @db.Decimal(5, 2)   // Auto-calculated %
+  
+  // Source tracking
+  variacao_origem_id      Int?             // Origin variation (if direct sale)
+  conversao_necessaria    Boolean          @default(false)     // Needs conversion?
+  
+  // Price validity (for price history)
+  data_inicio_vigencia    DateTime         @default(now())
+  data_fim_vigencia       DateTime?        // null = currently active
+  
+  // Control flags
+  ativo                   Boolean          @default(true)
+  disponivel_menu         Boolean          @default(true)
+  ordem_exibicao          Int?
+  
+  // Timestamps
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  
+  // Relations
+  tenant                  Tenant           @relation(fields: [tenant_id], references: [id])
+  produto                 Produto          @relation(fields: [produto_id], references: [id])
+  variacao_origem         VariacaoProduto? @relation("VariacaoOrigem", fields: [variacao_origem_id], references: [id])
+  menu_itens              MenuItem[]
+  comboCategoriaOpcoes    ComboCategoriaOpcao[]
+  
+  @@index([tenant_id, produto_id])
+  @@index([tenant_id, ativo, disponivel_menu])
+  @@index([data_fim_vigencia])
+  @@map("formatos_venda")
+}
 
-  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
-  variacao            VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
+model HistoricoPreco {
+  id                      BigInt   @id @default(autoincrement())
+  tenant_id               Int
+  variacao_produto_id     Int
+  preco_anterior          Decimal  @db.Decimal(10, 2)
+  preco_novo              Decimal  @db.Decimal(10, 2)
+  preco_unitario_anterior Decimal? @db.Decimal(10, 4)
+  preco_unitario_novo     Decimal? @db.Decimal(10, 4)
+  percentual_mudanca      Decimal  @db.Decimal(5, 2)
+  origem                  String   @default("MANUAL") // MANUAL, COMPRA, SISTEMA
+  alterado_por            Int?
+  receitas_afetadas       Int      @default(0)
+  menus_afetados          Int      @default(0)
+  data_mudanca            DateTime @default(now())
+
+  tenant                  Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao                VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
+  usuario                 User?    @relation(fields: [alterado_por], references: [id])
 
   @@map("historico_precos")
 }
@@ -336,6 +407,7 @@ model Receita {
   custo_total         Decimal  @default(0) @db.Decimal(10, 4)
   custo_por_porcao    Decimal  @default(0) @db.Decimal(10, 4)
   imagem_url          String?
+  video_url           String?
   descricao           String?  @db.Text
   dificuldade         String?  // Fácil, Média, Difícil
   categoria           String?
@@ -350,10 +422,13 @@ model Receita {
   ingredienteEm       IngredienteReceita[] @relation("ReceitaFilho")
   etapas              EtapaReceita[]
   menuItems           MenuItem[]
+  comboItens          ComboItem[]
+  comboCategoriaOpcoes ComboCategoriaOpcao[]
 
   @@unique([tenant_id, nome])
   @@map("receitas")
 }
+
 
 model IngredienteReceita {
   id                  Int      @id @default(autoincrement())
@@ -361,7 +436,9 @@ model IngredienteReceita {
   receita_id          Int
   produto_id          Int?
   receita_preparo_id  Int?
-  quantidade          Decimal  @db.Decimal(10, 4)
+  quantidade_bruta    Decimal  @db.Decimal(10, 4) // Quantidade retirada do armazenamento
+  quantidade_liquida  Decimal? @db.Decimal(10, 4) // Quantidade útil após preparação
+  rentabilidade       Decimal? @db.Decimal(5, 2)  // (Qtd Líquida / Qtd Bruta) * 100 - calculado
   unidade             String
   custo_ingrediente   Decimal  @default(0) @db.Decimal(10, 4)
   ordem               Int      @default(0)
@@ -374,6 +451,7 @@ model IngredienteReceita {
 
   @@map("ingredientes_receita")
 }
+
 
 model EtapaReceita {
   id                  Int      @id @default(autoincrement())
@@ -393,28 +471,33 @@ model EtapaReceita {
 }
 
 model MenuItem {
-  id                  Int      @id @default(autoincrement())
+  id                  Int              @id @default(autoincrement())
   tenant_id           Int
-  uuid                String   @default(uuid())
-  receita_id          Int
+  uuid                String           @default(uuid())
+  receita_id          Int?             // Optional - one of receita_id, combo_id, or formato_venda_id
+  combo_id            Int?             // Optional - one of receita_id, combo_id, or formato_venda_id
+  formato_venda_id    Int?             // NEW: Sell format (direct product sale)
   nome_comercial      String
-  pvp                 Decimal  @db.Decimal(10, 2)
-  margem_bruta        Decimal? @db.Decimal(10, 2)
-  margem_percentual   Decimal? @db.Decimal(5, 2)
-  categoria_menu      String?  // Entradas, Principais...
-  descricao_menu      String?  @db.Text
+  pvp                 Decimal          @db.Decimal(10, 2)
+  margem_bruta        Decimal?         @db.Decimal(10, 2)
+  margem_percentual   Decimal?         @db.Decimal(5, 2)
+  cmv_percentual      Decimal?         @db.Decimal(5, 2)
+  categoria_menu      String?          // Entradas, Principais...
+  descricao_menu      String?          @db.Text
   alergenos           String?
   calorias            Int?
-  tempo_servico       Int?     // minutes
-  posicao_menu        Int      @default(0)
-  destacado           Boolean  @default(false)
-  ativo               Boolean  @default(true)
+  tempo_servico       Int?             // minutes
+  posicao_menu        Int              @default(0)
+  destacado           Boolean          @default(false)
+  ativo               Boolean          @default(true)
   imagem_url          String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
-  receita             Receita  @relation(fields: [receita_id], references: [id])
+  tenant              Tenant           @relation(fields: [tenant_id], references: [id])
+  receita             Receita?         @relation(fields: [receita_id], references: [id])
+  combo               Combo?           @relation(fields: [combo_id], references: [id])
+  formatoVenda        FormatoVenda?    @relation(fields: [formato_venda_id], references: [id])
   vendas              Venda[]
   mapeamentosPos      MapeamentoPos[]
 
@@ -431,8 +514,9 @@ model Venda {
   uuid                String   @default(uuid())
   data_venda          DateTime
   hora_venda          DateTime? // Can be part of data_venda but kept for explicit separation if needed
-  menu_item_id        Int
-  quantidade          Int
+  tipo                String   @default("ITEM") // ITEM, TOTAL
+  menu_item_id        Int?
+  quantidade          Int      @default(1)
   pvp_praticado       Decimal  @db.Decimal(10, 2)
   desconto_percentual Decimal? @db.Decimal(5, 2)
   desconto_valor      Decimal? @db.Decimal(10, 2)
@@ -448,7 +532,7 @@ model Venda {
   createdAt           DateTime @default(now())
 
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
-  menuItem            MenuItem @relation(fields: [menu_item_id], references: [id])
+  menuItem            MenuItem? @relation(fields: [menu_item_id], references: [id])
   user                User?    @relation(fields: [user_id], references: [id])
 
   @@map("vendas")
@@ -608,4 +692,89 @@ model MapeamentoPos {
 
   @@unique([tenant_id, integracao_id, pos_item_id])
   @@map("mapeamento_pos")
+}
+
+// -----------------------------------------------------------------------------
+// COMBOS - Combinações de Receitas e Produtos
+// -----------------------------------------------------------------------------
+
+model Combo {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  nome                String
+  tipo                String   @default("Simples") // "Simples" | "Complexo"
+  descricao           String?  @db.Text
+  imagem_url          String?
+  custo_total         Decimal  @default(0) @db.Decimal(10, 4)
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  itens               ComboItem[]      // For "Complexo" type
+  categorias          ComboCategoria[] // For "Simples" type
+  menuItems           MenuItem[]
+
+  @@unique([tenant_id, nome])
+  @@map("combos")
+}
+
+model ComboItem {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  combo_id            Int
+  receita_id          Int?     // Pode ser uma receita final
+  produto_id          Int?     // Ou um produto (ex: bebida individual)
+  quantidade          Decimal  @db.Decimal(10, 4)
+  custo_unitario      Decimal  @db.Decimal(10, 4)
+  custo_total         Decimal  @db.Decimal(10, 4) // quantidade * custo_unitario
+  ordem               Int      @default(0)
+  observacoes         String?
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  combo               Combo    @relation(fields: [combo_id], references: [id], onDelete: Cascade)
+  receita             Receita? @relation(fields: [receita_id], references: [id])
+  produto             Produto? @relation(fields: [produto_id], references: [id])
+
+  @@map("combo_itens")
+}
+
+model ComboCategoria {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  combo_id            Int
+  categoria           String   // "Sopa", "Prato Principal", "Sobremesa", "Bebida", "Café"
+  ordem               Int      @default(0)
+  obrigatoria         Boolean  @default(true)
+  custo_max_calculado Decimal  @default(0) @db.Decimal(10, 4)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  combo               Combo    @relation(fields: [combo_id], references: [id], onDelete: Cascade)
+  opcoes              ComboCategoriaOpcao[]
+  
+  @@unique([combo_id, categoria])
+  @@map("combo_categorias")
+}
+
+model ComboCategoriaOpcao {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  categoria_id        Int
+  receita_id          Int?     // Opção de receita
+  formato_venda_id    Int?     // Opção de formato de venda (bebida)
+  custo_unitario      Decimal  @db.Decimal(10, 4)
+  ordem               Int      @default(0)
+  
+  createdAt           DateTime @default(now())
+  
+  tenant              Tenant           @relation(fields: [tenant_id], references: [id])
+  categoria           ComboCategoria   @relation(fields: [categoria_id], references: [id], onDelete: Cascade)
+  receita             Receita?         @relation(fields: [receita_id], references: [id])
+  formatoVenda        FormatoVenda?    @relation(fields: [formato_venda_id], references: [id])
+  
+  @@map("combo_categoria_opcoes")
 }

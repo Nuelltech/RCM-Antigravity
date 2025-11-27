@@ -9,6 +9,11 @@ declare module 'fastify' {
 }
 
 export async function tenantMiddleware(req: FastifyRequest, reply: FastifyReply) {
+    // Skip tenant check for OPTIONS requests (CORS preflight)
+    if (req.method === 'OPTIONS') {
+        return;
+    }
+
     const tenantIdHeader = req.headers['x-tenant-id'];
 
     if (!tenantIdHeader) {

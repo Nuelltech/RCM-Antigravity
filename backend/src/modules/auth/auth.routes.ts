@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { AuthService } from './auth.service';
-import { loginSchema, registerSchema } from './auth.schema';
+import { loginSchema, registerSchema, verifyEmailSchema } from './auth.schema';
 
 export async function authRoutes(app: FastifyInstance) {
     const service = new AuthService(app);
@@ -16,6 +16,21 @@ export async function authRoutes(app: FastifyInstance) {
         try {
             const result = await service.register(req.body);
             return reply.status(201).send(result);
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message });
+        }
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().post('/verify', {
+        schema: {
+            body: verifyEmailSchema,
+            tags: ['Auth'],
+            summary: 'Verify email with code',
+        },
+    }, async (req, reply) => {
+        try {
+            const result = await service.verifyEmail(req.body);
+            return reply.send(result);
         } catch (err: any) {
             return reply.status(400).send({ error: err.message });
         }

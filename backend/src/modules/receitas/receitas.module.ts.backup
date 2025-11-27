@@ -3,7 +3,7 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { TenantDB } from '../../core/database-tenant';
 import { prisma } from '../../core/database';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Decimal, Prisma } from '@prisma/client/runtime/library';
 
 // Schemas
 const ingredientSchema = z.object({
@@ -275,157 +275,84 @@ class RecipeService {
                 where: { receita_id: recipeId }
             });
 
-            await tx.etapaReceita.deleteMany({
-                where: { receita_id: recipeId }
-            });
-
-            // 3. Calculate CMV
-            let custoTotal = new Decimal(0);
-
-            for (const ing of data.ingredientes) {
-                const produto = await tx.produto.findUnique({
-                    where: { id: ing.produto_id },
-                    include: {
-                        variacoes: {
-                            where: { ativo: true },
-                            orderBy: { createdAt: 'desc' },
-                            take: 1
-                        }
-                    }
-                });
-
-                if (produto && produto.variacoes[0]) {
-                    const precoUnitario = produto.variacoes[0].preco_unitario;
-                    const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
-                    custoTotal = custoTotal.add(custoIngrediente);
-                }
-            }
-
-            const custoPorPorcao = data.numero_porcoes > 0
-                ? custoTotal.div(new Decimal(data.numero_porcoes))
-                : new Decimal(0);
-
-            // 4. Update recipe
-            const recipe = await tx.receita.update({
-                where: { id: recipeId },
-                data: {
-                    nome: data.nome,
-                    tipo: data.tipo,
-                    numero_porcoes: new Decimal(data.numero_porcoes),
-                    tempo_preparacao: data.tempo_preparacao,
-                    quantidade_total_produzida: data.quantidade_total_produzida
-                        ? new Decimal(data.quantidade_total_produzida)
-                        : null,
-                    unidade_medida: data.unidade_medida,
-                    descricao: data.descricao,
-                    imagem_url: data.imagem_url || null,
-                    video_url: data.video_url || null,
+            imagem_url: data.imagem_url || null,
+                video_url: data.video_url || null,
                     categoria: data.categoria,
-                    dificuldade: data.dificuldade,
-                    custo_total: custoTotal,
-                    custo_por_porcao: custoPorPorcao,
+                        dificuldade: data.dificuldade,
+                            custo_total: custoTotal,
+                                custo_por_porcao: custoPorPorcao,
                 }
             });
 
-            // 5. Create new ingredients
-            for (const ing of data.ingredientes) {
-                const produto = await tx.produto.findUnique({
-                    where: { id: ing.produto_id },
-                    include: {
-                        variacoes: {
-                            where: { ativo: true },
-                            orderBy: { createdAt: 'desc' },
-                            take: 1
-                        }
-                    }
-                });
-
-                const precoUnitario = produto?.variacoes[0]?.preco_unitario || new Decimal(0);
-                const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
-
-                // Calculate rentabilidade
-                const qtdLiquida = ing.quantidade_liquida || ing.quantidade_bruta;
-                const rentabilidade = ing.quantidade_bruta > 0
-                    ? (qtdLiquida / ing.quantidade_bruta) * 100
-                    : 100;
-
-                await tx.ingredienteReceita.create({
-                    data: {
-                        tenant_id: this.tenantId,
-                        receita_id: recipe.id,
-                        produto_id: ing.produto_id,
-                        quantidade_bruta: new Decimal(ing.quantidade_bruta),
-                        quantidade_liquida: qtdLiquida ? new Decimal(qtdLiquida) : null,
-                        rentabilidade: new Decimal(rentabilidade),
-                        unidade: produto?.unidade_medida || 'KG',
-                        custo_ingrediente: custoIngrediente,
-                        notas: ing.notas,
-                        ordem: 0,
-                    }
-                });
-            }
-
-            // 6. Create new steps
-            if (data.etapas && data.etapas.length > 0) {
-                for (const step of data.etapas) {
-                    await tx.etapaReceita.create({
-                        data: {
-                            tenant_id: this.tenantId,
-                            receita_id: recipe.id,
-                            numero_etapa: step.ordem,
-                            descricao: step.descricao,
-                        }
-                    });
+    // 5. Create new ingredients
+    for(const ing of data.ingredientes) {
+        const produto = await tx.produto.findUnique({
+            where: { id: ing.produto_id },
+            include: {
+                variacoes: {
+                    where: { ativa: true },
+                    orderBy: { createdAt: 'desc' },
+                    take: 1
                 }
             }
+        });
+        data: {
+            tenant_id: this.tenantId,
+                receita_id: recipe.id,
+                    numero_etapa: step.ordem,
+                        descricao: step.descricao,
+                        }
+    });
+}
+}
 
-            return {
-                ...recipe,
-                numero_porcoes: Number(recipe.numero_porcoes),
-                quantidade_total_produzida: recipe.quantidade_total_produzida
-                    ? Number(recipe.quantidade_total_produzida)
-                    : null,
-                custo_total: Number(custoTotal),
-                custo_por_porcao: Number(custoPorPorcao),
-            };
+return {
+    ...recipe,
+    numero_porcoes: Number(recipe.numero_porcoes),
+    quantidade_total_produzida: recipe.quantidade_total_produzida
+        ? Number(recipe.quantidade_total_produzida)
+        : null,
+    custo_total: Number(custoTotal),
+    custo_por_porcao: Number(custoPorPorcao),
+};
         });
     }
 
-    async delete(recipeId: number) {
-        // 1. Check if recipe exists and belongs to tenant
-        const recipe = await prisma.receita.findFirst({
-            where: { id: recipeId, tenant_id: this.tenantId }
-        });
+    async delete (recipeId: number) {
+    // 1. Check if recipe exists and belongs to tenant
+    const recipe = await prisma.receita.findFirst({
+        where: { id: recipeId, tenant_id: this.tenantId }
+    });
 
-        if (!recipe) {
-            throw new Error('Receita não encontrada');
-        }
-
-        // 2. Check if recipe is used as ingredient in other recipes
-        const usedInRecipes = await prisma.ingredienteReceita.count({
-            where: { receita_preparo_id: recipeId }
-        });
-
-        if (usedInRecipes > 0) {
-            throw new Error(`Esta receita é usada como ingrediente em ${usedInRecipes} outra(s) receita(s). Não pode ser eliminada.`);
-        }
-
-        // 3. Check if recipe is used in menus
-        const usedInMenus = await prisma.menuItem.count({
-            where: { receita_id: recipeId }
-        });
-
-        if (usedInMenus > 0) {
-            throw new Error(`Esta receita é usada em ${usedInMenus} menu(s). Não pode ser eliminada.`);
-        }
-
-        // 4. Delete recipe (cascade will handle ingredients and steps)
-        await prisma.receita.delete({
-            where: { id: recipeId }
-        });
-
-        return { success: true, message: 'Receita eliminada com sucesso' };
+    if (!recipe) {
+        throw new Error('Receita não encontrada');
     }
+
+    // 2. Check if recipe is used as ingredient in other recipes
+    const usedInRecipes = await prisma.ingredienteReceita.count({
+        where: { receita_preparo_id: recipeId }
+    });
+
+    if (usedInRecipes > 0) {
+        throw new Error(`Esta receita é usada como ingrediente em ${usedInRecipes} outra(s) receita(s). Não pode ser eliminada.`);
+    }
+
+    // 3. Check if recipe is used in menus
+    const usedInMenus = await prisma.menuItem.count({
+        where: { receita_id: recipeId }
+    });
+
+    if (usedInMenus > 0) {
+        throw new Error(`Esta receita é usada em ${usedInMenus} menu(s). Não pode ser eliminada.`);
+    }
+
+    // 4. Delete recipe (cascade will handle ingredients and steps)
+    await prisma.receita.delete({
+        where: { id: recipeId }
+    });
+
+    return { success: true, message: 'Receita eliminada com sucesso' };
+}
 }
 
 // Routes
