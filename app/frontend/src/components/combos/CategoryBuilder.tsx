@@ -169,8 +169,8 @@ export function CategoryBuilder({ categorias, onChange }: CategoryBuilderProps) 
                             <label className="flex items-center gap-2 text-sm">
                                 <Checkbox
                                     checked={categoria.obrigatoria}
-                                    onCheckedChange={(checked) =>
-                                        updateCategory(categoria.id, { obrigatoria: checked === true })
+                                    onChange={(e) =>
+                                        updateCategory(categoria.id, { obrigatoria: e.target.checked })
                                     }
                                 />
                                 Obrigatória
@@ -193,8 +193,8 @@ export function CategoryBuilder({ categorias, onChange }: CategoryBuilderProps) 
                                         <div className="flex items-center gap-3">
                                             <span
                                                 className={`px-2 py-1 rounded text-xs font-medium ${opcao.tipo === "receita"
-                                                        ? "bg-green-100 text-green-700"
-                                                        : "bg-blue-100 text-blue-700"
+                                                    ? "bg-green-100 text-green-700"
+                                                    : "bg-blue-100 text-blue-700"
                                                     }`}
                                             >
                                                 {opcao.tipo === "receita" ? "Receita" : "Bebida"}
