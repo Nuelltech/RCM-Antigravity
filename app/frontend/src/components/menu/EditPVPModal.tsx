@@ -21,7 +21,7 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
     const [error, setError] = useState<string | null>(null);
 
     const pvpNumber = parseFloat(pvp) || 0;
-    const custo = item.receita.custo_por_porcao;
+    const custo = item.receita?.custo_por_porcao ?? item.combo?.custo_total ?? item.formatoVenda?.custo_unitario ?? 0;
     const newMargem = pvpNumber - custo;
     const newMargemPercentual = pvpNumber > 0 ? ((pvpNumber - custo) / pvpNumber) * 100 : 0;
     const newCMV = pvpNumber > 0 ? (custo / pvpNumber) * 100 : 0;
@@ -70,7 +70,7 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
                 <div className="flex items-center justify-between p-6 border-b">
                     <div>
                         <h2 className="text-xl font-semibold">Editar Item do Menu</h2>
-                        <p className="text-sm text-gray-500 mt-1">{item.receita.nome}</p>
+                        <p className="text-sm text-gray-500 mt-1">{item.receita?.nome ?? item.combo?.nome ?? item.formatoVenda?.nome ?? "Item"}</p>
                     </div>
                     <button
                         onClick={onClose}
