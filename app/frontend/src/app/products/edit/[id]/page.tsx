@@ -400,7 +400,7 @@ export default function EditProductPage() {
                             <div className="flex items-center space-x-2">
                                 <Checkbox
                                     id="vendavel"
-                                    {...register("vendavel", { valueAsBoolean: true })}
+                                    {...register("vendavel")}
                                     checked={watch("vendavel")}
                                 />
                                 <Label htmlFor="vendavel">Vendável</Label>
