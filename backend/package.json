@@ -15,7 +15,7 @@
     "seed:receitas": "tsx scripts/seed-receitas.ts",
     "seed:subfamilias-bebidas": "tsx scripts/seed-subfamilias-bebidas.ts",
     "seed:formatos-venda": "tsx scripts/seed-formatos-venda.ts",
-    "seed:all": "tsx scripts/seed.ts; tsx scripts/seed-produtos.ts; tsx scripts/seed-produtos-complementares.ts; tsx scripts/seed-receitas.ts; tsx scripts/seed-subfamilias-bebidas.ts; tsx scripts/seed-formatos-venda.ts",
+    "seed:all": "tsx scripts/seed.ts && tsx scripts/seed-produtos.ts && tsx scripts/seed-produtos-complementares.ts && tsx scripts/seed-receitas.ts && tsx scripts/seed-subfamilias-bebidas.ts && tsx scripts/seed-formatos-venda.ts",
     "migrate:codes": "tsx scripts/migrate-product-codes.ts",
     "migrate": "prisma migrate dev",
     "studio": "prisma studio"
@@ -25,28 +25,25 @@
     "@fastify/jwt": "^8.0.0",
     "@fastify/swagger": "^8.14.0",
     "@fastify/swagger-ui": "^3.0.0",
-    "@prisma/client": "^5.22.0",
+    "@prisma/client": "^5.10.2",
     "bcryptjs": "^2.4.3",
-    "date-fns": "^3.3.1",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.1",
+    "zod": "^3.22.4",
     "fastify-type-provider-zod": "^1.1.9",
     "ioredis": "^5.3.2",
-    "zod": "^3.22.4"
+    "date-fns": "^3.3.1"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.11.24",
-    "eslint": "^8.57.0",
-    "prisma": "^5.22.0",
+    "@types/bcryptjs": "^2.4.6",
+    "prisma": "^5.10.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "eslint": "^8.57.0"
   },
   "prisma": {
     "seed": "ts-node scripts/seed.ts"
-  },
-  "engines": {
-    "node": "20.x"
   }
 }

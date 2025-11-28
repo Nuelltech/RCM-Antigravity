@@ -33,6 +33,10 @@ export interface UpdateFormatoVendaDto {
     margem_percentual?: number; // optional manual margin override
 }
 
+export interface UpdatePrecoDto {
+    preco_venda: number;
+}
+
 // Service
 class FormatoVendaService {
     /**

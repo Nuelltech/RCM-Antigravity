@@ -33,8 +33,14 @@ server.setSerializerCompiler(serializerCompiler);
 
 async function main() {
     await server.register(cors, {
-        origin: true, // Allow all origins (for development)
-        credentials: true, // Allow credentials
+        origin: env.NODE_ENV === 'production'
+            ? [
+                /\.vercel\.app$/,  // Vercel deployments
+                /\.onrender\.com$/, // Render deployments
+                'https://rcm-frontend.vercel.app', // Production frontend
+            ]
+            : true, // Allow all origins in development
+        credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
         exposedHeaders: ['Content-Type', 'Authorization'],

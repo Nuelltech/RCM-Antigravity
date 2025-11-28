@@ -11,7 +11,7 @@ export class AuthService {
         const { nome_restaurante, nif, morada, nome_usuario, email, password, slug } = input;
 
         // Check if NIF exists
-        const existingTenantNif = await prisma.tenant.findUnique({ where: { nif } });
+        const existingTenantNif = await prisma.tenant.findFirst({ where: { nif } });
         if (existingTenantNif) {
             throw new Error('NIF already registered');
         }
