@@ -27,7 +27,7 @@
     "@fastify/swagger": "^8.14.0",
     "@fastify/swagger-ui": "^3.0.0",
     "@prisma/client": "5.10.2",
-    "prisma": "5.10.2",  // ← Movido para cá
+    "prisma": "5.10.2",  
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "fastify": "^4.26.1",
