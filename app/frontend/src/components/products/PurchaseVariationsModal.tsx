@@ -280,8 +280,8 @@ export function PurchaseVariationsModal({
                             <Checkbox
                                 id="ativo"
                                 checked={formData.ativo}
-                                onCheckedChange={(checked) =>
-                                    setFormData({ ...formData, ativo: checked as boolean })
+                                onChange={(e) =>
+                                    setFormData({ ...formData, ativo: e.target.checked })
                                 }
                             />
                             <Label htmlFor="ativo">Variação Ativa</Label>
