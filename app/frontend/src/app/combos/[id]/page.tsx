@@ -187,7 +187,7 @@ export default function ViewComboPage() {
                 )}
 
                 {/* Fixed Combo - Items */}
-                {combo.tipo === "Fixo" && combo.itens && combo.itens.length > 0 && (
+                {combo.tipo === "Complexo" && combo.itens && combo.itens.length > 0 && (
                     <Card>
                         <CardHeader>
                             <CardTitle>Itens do Combo</CardTitle>
