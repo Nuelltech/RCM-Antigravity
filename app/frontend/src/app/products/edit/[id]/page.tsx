@@ -36,6 +36,7 @@ const formatoVendaSchema = z.object({
     variacao_origem_id: z.number().optional(),
     disponivel_menu: z.boolean().optional(),
     ordem_exibicao: z.number().optional(),
+    custo_unitario: z.number().optional(),
 });
 
 type ProductForm = z.infer<typeof productSchema>;

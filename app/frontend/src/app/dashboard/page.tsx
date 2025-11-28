@@ -1,35 +1,95 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+"use client";
 
-export default function Dashboard() {
+import { useEffect, useState } from 'react';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { KPICard } from '@/components/dashboard/KPICard';
+import { SalesChart } from '@/components/dashboard/SalesChart';
+import { TopRecipesGrid } from '@/components/dashboard/TopRecipesGrid';
+import { SystemAlerts } from '@/components/dashboard/SystemAlerts';
+import { fetchClient } from '@/lib/api';
+import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle } from 'lucide-react';
+
+interface DashboardStats {
+    vendasMes: number;
+    custoMercadoria: number;
+    cmvTeorico: number;
+    allItems: any[];
+    categories: string[];
+}
+
+export default function DashboardPage() {
+    const [stats, setStats] = useState<DashboardStats>({
+        vendasMes: 0,
+        custoMercadoria: 0,
+        cmvTeorico: 0,
+        allItems: [],
+        categories: []
+    });
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        loadStats();
+    }, []);
+
+    async function loadStats() {
+        try {
+            const response = await fetchClient('/dashboard/stats');
+            setStats(response);
+        } catch (error) {
+            console.error('Erro ao carregar estatísticas:', error);
+        } finally {
+            setLoading(false);
+        }
+    }
+
     return (
-        <div className="p-8">
-            <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Total Sales (Today)</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-3xl font-bold">€1,245.00</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Food Cost</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-3xl font-bold">28.5%</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Active Alerts</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-3xl font-bold text-red-500">3</p>
-                    </CardContent>
-                </Card>
+        <AppLayout>
+            <div className="space-y-6 p-8">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+                    <p className="text-muted-foreground">
+                        Visão geral do desempenho do seu restaurante este mês.
+                    </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <KPICard
+                        title="Vendas do Mês"
+                        value={`€ ${stats.vendasMes.toFixed(2)}`}
+                        icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+                        description="vs. mês anterior"
+                    />
+                    <KPICard
+                        title="CMV Atual"
+                        value={`€ ${stats.custoMercadoria.toFixed(2)}`}
+                        icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />}
+                        description="Custo total de mercadorias"
+                    />
+                    <KPICard
+                        title="CMV %"
+                        value={`${stats.cmvTeorico.toFixed(1)}%`}
+                        icon={<TrendingDown className="h-4 w-4 text-muted-foreground" />}
+                        description="da receita total"
+                    />
+                    <KPICard
+                        title="Alertas Ativos"
+                        value="3"
+                        icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />}
+                        description="Requerem atenção"
+                    />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+                    <div className="col-span-4">
+                        <SalesChart />
+                    </div>
+                    <div className="col-span-3">
+                        <SystemAlerts />
+                    </div>
+                </div>
+
+                <TopRecipesGrid items={stats.allItems} categories={stats.categories} />
             </div>
-        </div>
+        </AppLayout>
     );
 }
