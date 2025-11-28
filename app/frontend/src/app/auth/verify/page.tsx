@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,7 +20,7 @@ const verifySchema = z.object({
 
 type VerifyInput = z.infer<typeof verifySchema>;
 
-export default function VerifyPage() {
+function VerifyPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
@@ -110,5 +110,13 @@ export default function VerifyPage() {
                 </CardFooter>
             </Card>
         </div>
+    );
+}
+
+export default function VerifyPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen">A carregar...</div>}>
+            <VerifyPageContent />
+        </Suspense>
     );
 }
