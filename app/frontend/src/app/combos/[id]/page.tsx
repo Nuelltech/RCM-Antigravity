@@ -251,17 +251,7 @@ export default function ViewComboPage() {
                     </Card>
                 )}
 
-                {/* Observações */}
-                {combo.observacoes && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Observações</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-gray-700">{combo.observacoes}</p>
-                        </CardContent>
-                    </Card>
-                )}
+
             </div>
         </AppLayout>
     );
