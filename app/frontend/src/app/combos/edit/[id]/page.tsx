@@ -95,8 +95,8 @@ export default function EditComboPage({ params }: { params: { id: string } }) {
                 fetchClient(`/combos/${params.id}`),
             ]);
 
-            setRecipes((recipesData.data || []).filter((r: Recipe) => r.tipo === "Final").sort((a, b) => a.nome.localeCompare(b.nome)));
-            setProducts((productsData.data || []).sort((a, b) => a.nome.localeCompare(b.nome)));
+            setRecipes((recipesData.data || []).filter((r: Recipe) => r.tipo === "Final").sort((a: Recipe, b: Recipe) => a.nome.localeCompare(b.nome)));
+            setProducts((productsData.data || []).sort((a: Product, b: Product) => a.nome.localeCompare(b.nome)));
 
             setNome(comboData.nome);
             setDescricao(comboData.descricao || "");
