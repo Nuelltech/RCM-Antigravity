@@ -122,6 +122,10 @@ export default function EditProductPage() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingFormat, setEditingFormat] = useState<FormatoVenda | null>(null);
 
+    // Template states
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+
     const {
         register,
         handleSubmit,
@@ -246,17 +250,44 @@ export default function EditProductPage() {
         }
     };
 
+    const loadTemplates = async () => {
+        try {
+            const data = await fetchClient('/template-formatos-venda?ativo=true');
+            setTemplates(data.sort((a: any, b: any) => a.nome.localeCompare(b.nome)));
+        } catch (error) {
+            console.error('Failed to load templates:', error);
+        }
+    };
+
+    const handleTemplateSelect = (templateId: string) => {
+        if (!templateId || !product) {
+            setSelectedTemplateId(null);
+            return;
+        }
+
+        const template = templates.find(t => t.id === Number(templateId));
+        if (template) {
+            setSelectedTemplateId(template.id);
+            // Auto-populate fields
+            setFormatValue('nome', `${product.nome} ${template.nome}`);
+            setFormatValue('quantidade_vendida', template.quantidade);
+            setFormatValue('unidade_medida', template.unidade_medida);
+        }
+    };
+
     const handleCreateFormat = async (data: FormatoVendaForm) => {
         try {
             await fetchClient('/formatos-venda', {
                 method: 'POST',
                 body: JSON.stringify({
                     produto_id: Number(productId),
+                    template_id: selectedTemplateId,
                     ...data,
                 }),
             });
             alert('✅ Variação criada com sucesso!');
             setIsCreateModalOpen(false);
+            setSelectedTemplateId(null);
             resetFormat();
             loadSaleFormats();
         } catch (error: any) {
@@ -566,6 +597,27 @@ export default function EditProductPage() {
                             <DialogTitle>Adicionar Variação de Venda</DialogTitle>
                         </DialogHeader>
                         <form onSubmit={handleSubmitFormat(handleCreateFormat)} className="space-y-4">
+                            {/* Template Selector */}
+                            <div className="space-y-2">
+                                <Label htmlFor="template-select">Template (Opcional)</Label>
+                                <select
+                                    id="template-select"
+                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={selectedTemplateId || ''}
+                                    onChange={(e) => handleTemplateSelect(e.target.value)}
+                                >
+                                    <option value="">Sem template</option>
+                                    {templates.map((template) => (
+                                        <option key={template.id} value={template.id}>
+                                            {template.nome} ({template.quantidade} {template.unidade_medida})
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-gray-500">
+                                    Selecione um template para preencher automaticamente os campos
+                                </p>
+                            </div>
+
                             <div className="space-y-2">
                                 <Label htmlFor="create-nome">Nome</Label>
                                 <Input
@@ -790,3 +842,4 @@ export default function EditProductPage() {
         </AppLayout>
     );
 }
+

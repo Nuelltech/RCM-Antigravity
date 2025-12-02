@@ -1,10 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, User } from "lucide-react";
+import { Menu, Bell, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function TopBar() {
+interface TopBarProps {
+    onMenuClick: () => void;
+}
+
+export function TopBar({ onMenuClick }: TopBarProps) {
     const router = useRouter();
 
     const handleLogout = () => {
@@ -18,10 +22,13 @@ export function TopBar() {
     const restaurantName = typeof window !== 'undefined' ? localStorage.getItem('restaurantName') || 'Meu Restaurante' : 'Meu Restaurante';
 
     return (
-        <header className="fixed left-64 right-0 top-0 z-30 h-16 border-b bg-white">
-            <div className="flex h-full items-center justify-between px-6">
-                {/* Restaurant Name */}
-                <div>
+        <header className="fixed left-0 right-0 top-0 z-30 h-16 border-b bg-white lg:left-64">
+            <div className="flex h-full items-center justify-between px-4 lg:px-6">
+                {/* Left Section */}
+                <div className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick}>
+                        <Menu className="h-6 w-6" />
+                    </Button>
                     <h1 className="text-lg font-semibold text-gray-900">{restaurantName}</h1>
                 </div>
 
@@ -40,7 +47,7 @@ export function TopBar() {
                         </div>
                         <div className="hidden md:block">
                             <p className="text-sm font-medium text-gray-900">{userName}</p>
-                            <p className="text-xs text-gray-500">Administrador</p>
+                            <p className="text-xs text-gray-500">{typeof window !== 'undefined' ? localStorage.getItem('userEmail') || 'utilizador@rcm.com' : 'utilizador@rcm.com'}</p>
                         </div>
                     </div>
 

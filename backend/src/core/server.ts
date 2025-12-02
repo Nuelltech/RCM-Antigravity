@@ -6,7 +6,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { env } from './env';
-import { tenantMiddleware } from './middleware/tenant';
+import { tenantMiddleware } from './middleware';
 
 // Import routes
 import { authRoutes } from '../modules/auth/auth.routes';
@@ -21,8 +21,11 @@ import { integrationRoutes } from '../modules/integracoes/integracoes.module';
 import { aiRoutes } from '../modules/ai/ai.module';
 import { comboRoutes } from '../modules/combos/combos.module';
 import { formatosVendaRoutes } from '../modules/formatos-venda/formatos-venda.module';
+import { templateFormatoVendaRoutes } from '../modules/template-formatos-venda/template-formatos-venda.module';
 import { dashboardRoutes } from '../modules/dashboard/dashboard.module';
 import { variacoesProdutoRoutes } from '../modules/variacoes-produto/variacoes-produto.module';
+import { dadosRestauranteRoutes } from '../modules/dados-restaurante/dados-restaurante.module';
+import { alertsRoutes } from '../modules/alerts/alerts.module';
 
 const server = Fastify({
     logger: true,
@@ -96,8 +99,11 @@ async function main() {
     server.register(aiRoutes, { prefix: '/api/ai' });
     server.register(comboRoutes, { prefix: '/api/combos' });
     server.register(formatosVendaRoutes, { prefix: '/api/formatos-venda' });
+    server.register(templateFormatoVendaRoutes, { prefix: '/api' });
     server.register(dashboardRoutes, { prefix: '/api/dashboard' });
     server.register(variacoesProdutoRoutes, { prefix: '/api/variacoes-produto' });
+    server.register(dadosRestauranteRoutes, { prefix: '/api/dados-restaurante' });
+    server.register(alertsRoutes, { prefix: '/api/alerts' });
 
 
 

@@ -48,15 +48,69 @@ class ProductService {
     constructor(private tenantId: number) { }
     private db = new TenantDB(this.tenantId);
 
-    async list() {
-        return this.db.findMany('produto', {
+    async list(params: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        familyId?: number;
+        subfamilyId?: number;
+        vendavel?: string;
+    }) {
+        const page = params.page || 1;
+        const limit = params.limit || 50;
+        const skip = (page - 1) * limit;
+
+        const where: any = {};
+
+        if (params.search) {
+            where.OR = [
+                { nome: { contains: params.search } },
+                { codigo_interno: { contains: params.search } }
+            ];
+        }
+
+        if (params.familyId) {
+            where.subfamilia = { familia_id: params.familyId };
+        }
+
+        if (params.subfamilyId) {
+            where.subfamilia_id = params.subfamilyId;
+        }
+
+        if (params.vendavel && params.vendavel !== 'all') {
+            where.vendavel = params.vendavel === 'vendavel';
+        }
+
+        // Get total count for pagination
+        const total = await prisma.produto.count({
+            where: {
+                ...where,
+                tenant_id: this.tenantId
+            }
+        });
+
+        const data = await this.db.findMany('produto', {
+            where,
             include: {
                 subfamilia: {
                     include: { familia: true }
                 },
                 variacoes: true
             },
+            skip,
+            take: limit,
+            orderBy: { nome: 'asc' }
         });
+
+        return {
+            data,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     async create(data: z.infer<typeof createProductSchema>) {
@@ -196,13 +250,34 @@ export async function productRoutes(app: FastifyInstance) {
     // Products
     app.withTypeProvider<ZodTypeProvider>().get('/', {
         schema: {
+            querystring: z.object({
+                page: z.string().optional(),
+                limit: z.string().optional(),
+                search: z.string().optional(),
+                familyId: z.string().optional(),
+                subfamilyId: z.string().optional(),
+                vendavel: z.string().optional(),
+            }),
             tags: ['Products'],
             security: [{ bearerAuth: [] }],
         },
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new ProductService(req.tenantId);
-        return service.list();
+
+        const page = req.query.page ? parseInt(req.query.page) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+        const familyId = req.query.familyId ? parseInt(req.query.familyId) : undefined;
+        const subfamilyId = req.query.subfamilyId ? parseInt(req.query.subfamilyId) : undefined;
+
+        return service.list({
+            page,
+            limit,
+            search: req.query.search,
+            familyId,
+            subfamilyId,
+            vendavel: req.query.vendavel
+        });
     });
 
     app.withTypeProvider<ZodTypeProvider>().get('/:id', {

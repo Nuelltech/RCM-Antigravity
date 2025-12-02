@@ -44,7 +44,38 @@ class RecipeService {
         this.db = new TenantDB(tenantId);
     }
 
-    async list(sortBy: string = 'nome', order: 'asc' | 'desc' = 'asc') {
+    async list(params: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        sortBy?: string;
+        order?: 'asc' | 'desc';
+        type?: 'Final' | 'Pre-preparo';
+        category?: string;
+    }) {
+        const page = params.page || 1;
+        const limit = params.limit || 50;
+        const skip = (page - 1) * limit;
+        const sortBy = params.sortBy || 'nome';
+        const order = params.order || 'asc';
+
+        const where: any = {
+            tenant_id: this.tenantId,
+            ativa: true
+        };
+
+        if (params.search) {
+            where.nome = { contains: params.search };
+        }
+
+        if (params.type) {
+            where.tipo = params.type;
+        }
+
+        if (params.category) {
+            where.categoria = params.category;
+        }
+
         const orderByMap: Record<string, any> = {
             nome: { nome: order },
             custo: { custo_por_porcao: order },
@@ -53,19 +84,24 @@ class RecipeService {
 
         const orderBy = orderByMap[sortBy] || { nome: order };
 
-        const recipes = await prisma.receita.findMany({
-            where: { tenant_id: this.tenantId, ativa: true },
-            orderBy,
-            include: {
-                _count: {
-                    select: {
-                        ingredientes: true
+        const [total, recipes] = await Promise.all([
+            prisma.receita.count({ where }),
+            prisma.receita.findMany({
+                where,
+                orderBy,
+                include: {
+                    _count: {
+                        select: {
+                            ingredientes: true
+                        }
                     }
-                }
-            }
-        });
+                },
+                skip,
+                take: limit
+            })
+        ]);
 
-        return recipes.map(recipe => ({
+        const data = recipes.map(recipe => ({
             ...recipe,
             // Convert Decimal to number for JSON serialization
             numero_porcoes: Number(recipe.numero_porcoes),
@@ -76,6 +112,16 @@ class RecipeService {
                 ? Number(recipe.quantidade_total_produzida) / Number(recipe.numero_porcoes)
                 : null,
         }));
+
+        return {
+            data,
+            meta: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        };
     }
 
     async getById(recipeId: number) {
@@ -279,8 +325,9 @@ class RecipeService {
                 where: { receita_id: recipeId }
             });
 
-            // 3. Calculate CMV
+            // 3. Fetch all products once and calculate costs
             let custoTotal = new Decimal(0);
+            const produtosMap = new Map();
 
             for (const ing of data.ingredientes) {
                 const produto = await tx.produto.findUnique({
@@ -294,11 +341,15 @@ class RecipeService {
                     }
                 });
 
-                if (produto && produto.variacoes[0]) {
-                    const precoUnitario = produto.variacoes[0].preco_unitario;
-                    const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
-                    custoTotal = custoTotal.add(custoIngrediente);
+                if (!produto) {
+                    throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
                 }
+
+                produtosMap.set(ing.produto_id, produto);
+
+                const precoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
+                const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
+                custoTotal = custoTotal.add(custoIngrediente);
             }
 
             const custoPorPorcao = data.numero_porcoes > 0
@@ -327,19 +378,9 @@ class RecipeService {
                 }
             });
 
-            // 5. Create new ingredients
+            // 5. Create new ingredients using cached product data
             for (const ing of data.ingredientes) {
-                const produto = await tx.produto.findUnique({
-                    where: { id: ing.produto_id },
-                    include: {
-                        variacoes: {
-                            where: { ativo: true },
-                            orderBy: { createdAt: 'desc' },
-                            take: 1
-                        }
-                    }
-                });
-
+                const produto = produtosMap.get(ing.produto_id);
                 const precoUnitario = produto?.variacoes[0]?.preco_unitario || new Decimal(0);
                 const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
 
@@ -433,8 +474,13 @@ export async function recipeRoutes(app: FastifyInstance) {
     app.withTypeProvider<ZodTypeProvider>().get('/', {
         schema: {
             querystring: z.object({
-                sortBy: z.enum(['nome', 'custo', 'tipo']).optional(),
+                page: z.string().optional(),
+                limit: z.string().optional(),
+                search: z.string().optional(),
+                sortBy: z.string().optional(),
                 order: z.enum(['asc', 'desc']).optional(),
+                type: z.enum(['Final', 'Pre-preparo']).optional(),
+                category: z.string().optional(),
             }),
             tags: ['Recipes'],
             security: [{ bearerAuth: [] }],
@@ -442,8 +488,19 @@ export async function recipeRoutes(app: FastifyInstance) {
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new RecipeService(req.tenantId);
-        const { sortBy, order } = req.query;
-        return service.list(sortBy, order);
+
+        const page = req.query.page ? parseInt(req.query.page) : 1;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 50;
+
+        return service.list({
+            page,
+            limit,
+            search: req.query.search,
+            sortBy: req.query.sortBy,
+            order: req.query.order,
+            type: req.query.type,
+            category: req.query.category
+        });
     });
 
     app.withTypeProvider<ZodTypeProvider>().get('/:id', {

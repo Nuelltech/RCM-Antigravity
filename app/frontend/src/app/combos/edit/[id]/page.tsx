@@ -54,9 +54,10 @@ interface CategoryRow {
     }[];
 }
 
-export default function NewComboPage() {
+export default function EditComboPage({ params }: { params: { id: string } }) {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [recipes, setRecipes] = useState<Recipe[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
 
@@ -88,14 +89,53 @@ export default function NewComboPage() {
 
     const loadData = async () => {
         try {
-            const [recipesData, productsData] = await Promise.all([
+            const [recipesData, productsData, comboData] = await Promise.all([
                 fetchClient("/recipes?limit=1000"),
                 fetchClient("/products?limit=1000"),
+                fetchClient(`/combos/${params.id}`),
             ]);
+
             setRecipes((recipesData.data || []).filter((r: Recipe) => r.tipo === "Final").sort((a, b) => a.nome.localeCompare(b.nome)));
             setProducts((productsData.data || []).sort((a, b) => a.nome.localeCompare(b.nome)));
+
+            setNome(comboData.nome);
+            setDescricao(comboData.descricao || "");
+            setTipo(comboData.tipo);
+
+            if (comboData.tipo === "Complexo" && comboData.itens) {
+                setItems(comboData.itens.map((item: any) => ({
+                    id: Date.now().toString() + Math.random(),
+                    type: item.receita_id ? "recipe" : "product",
+                    receita_id: item.receita_id,
+                    produto_id: item.produto_id,
+                    nome: item.receita?.nome || item.produto?.nome || "Item desconhecido",
+                    quantidade: Number(item.quantidade),
+                    custo_unitario: Number(item.custo_unitario),
+                    custo_total: Number(item.custo_total),
+                    observacoes: item.observacoes || "",
+                })));
+            } else if (comboData.tipo === "Simples" && comboData.categorias) {
+                setCategorias(comboData.categorias.map((cat: any) => ({
+                    id: Date.now().toString() + Math.random(),
+                    categoria: cat.categoria,
+                    ordem: cat.ordem,
+                    obrigatoria: cat.obrigatoria,
+                    opcoes: cat.opcoes.map((opt: any) => ({
+                        id: Date.now().toString() + Math.random(),
+                        tipo: opt.receita_id ? "receita" : "formato_venda",
+                        receita_id: opt.receita_id,
+                        formato_venda_id: opt.formato_venda_id,
+                        nome: opt.receita?.nome || opt.formatoVenda?.nome || "Opção desconhecida",
+                        custo_unitario: Number(opt.custo_unitario),
+                    })).sort((a: any, b: any) => a.nome.localeCompare(b.nome)),
+                })));
+            }
         } catch (error) {
             console.error("Failed to load data:", error);
+            alert("Erro ao carregar dados do combo.");
+            router.push("/combos");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -174,7 +214,7 @@ export default function NewComboPage() {
             return;
         }
 
-        setLoading(true);
+        setSaving(true);
 
         try {
             const payload = tipo === "Complexo" ? {
@@ -204,19 +244,29 @@ export default function NewComboPage() {
                 })),
             };
 
-            await fetchClient("/combos", {
-                method: "POST",
+            await fetchClient(`/combos/${params.id}`, {
+                method: "PUT",
                 body: JSON.stringify(payload),
             });
 
-            alert("✅ Combo criado com sucesso!");
+            alert("✅ Combo atualizado com sucesso!");
             router.push("/combos");
         } catch (error: any) {
-            alert(`❌ Erro ao criar combo: ${error.message || "Erro desconhecido"}`);
+            alert(`❌ Erro ao atualizar combo: ${error.message || "Erro desconhecido"}`);
         } finally {
-            setLoading(false);
+            setSaving(false);
         }
     };
+
+    if (loading) {
+        return (
+            <AppLayout>
+                <div className="flex items-center justify-center h-screen">
+                    <p>A carregar...</p>
+                </div>
+            </AppLayout>
+        );
+    }
 
     return (
         <AppLayout>
@@ -229,7 +279,7 @@ export default function NewComboPage() {
                     Voltar para Combos
                 </Link>
 
-                <h1 className="mb-8 text-3xl font-bold tracking-tight">Novo Combo</h1>
+                <h1 className="mb-8 text-3xl font-bold tracking-tight">Editar Combo</h1>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Basic Info */}
@@ -238,37 +288,36 @@ export default function NewComboPage() {
                             <CardTitle>Informações Básicas</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* Tipo Selector */}
+                            {/* Tipo Selector - Disabled for Edit */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Tipo de Combo *</label>
-                                <div className="flex gap-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setTipo("Simples")}
+                                <label className="text-sm font-medium">Tipo de Combo</label>
+                                <div className="flex gap-4 opacity-75">
+                                    <div
                                         className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${tipo === "Simples"
                                             ? "border-purple-600 bg-purple-50 text-purple-900"
-                                            : "border-gray-200 hover:border-gray-300"
+                                            : "border-gray-200 bg-gray-50 text-gray-400"
                                             }`}
                                     >
                                         <div className="font-semibold">📋 Combo Simples</div>
-                                        <div className="text-xs text-gray-500 mt-1">
+                                        <div className="text-xs mt-1">
                                             Menu com categorias e opções
                                         </div>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTipo("Complexo")}
+                                    </div>
+                                    <div
                                         className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all ${tipo === "Complexo"
                                             ? "border-purple-600 bg-purple-50 text-purple-900"
-                                            : "border-gray-200 hover:border-gray-300"
+                                            : "border-gray-200 bg-gray-50 text-gray-400"
                                             }`}
                                     >
                                         <div className="font-semibold">📦 Combo Fixo</div>
-                                        <div className="text-xs text-gray-500 mt-1">
+                                        <div className="text-xs mt-1">
                                             Itens fixos incluídos
                                         </div>
-                                    </button>
+                                    </div>
                                 </div>
+                                <p className="text-xs text-muted-foreground">
+                                    O tipo de combo não pode ser alterado após a criação.
+                                </p>
                             </div>
 
                             <div className="space-y-2">
@@ -435,8 +484,8 @@ export default function NewComboPage() {
                                 Cancelar
                             </Button>
                         </Link>
-                        <Button type="submit" disabled={loading}>
-                            {loading ? "A criar..." : "Criar Combo"}
+                        <Button type="submit" disabled={saving}>
+                            {saving ? "A guardar..." : "Guardar Alterações"}
                         </Button>
                     </div>
                 </form>

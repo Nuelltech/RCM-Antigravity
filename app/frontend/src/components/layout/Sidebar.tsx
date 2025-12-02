@@ -11,34 +11,45 @@ import {
     MenuSquare,
     ShoppingCart,
     Warehouse,
-    BarChart3
+    BarChart3,
+    Building2,
+    Bell
 } from "lucide-react";
 
 const menuItems = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Alertas", href: "/alerts", icon: Bell },
     { name: "Vendas", href: "/sales", icon: BarChart3 },
     { name: "Produtos", href: "/products", icon: Package },
     { name: "Receitas", href: "/recipes", icon: ChefHat },
     { name: "Combos", href: "/combos", icon: Package2 },
-    { name: "Formatos de Venda", href: "/formatos-venda", icon: PackageOpen },
+    { name: "Formatos de Venda", href: "/template-formatos-venda", icon: PackageOpen },
     { name: "Menu", href: "/menu", icon: MenuSquare },
     { name: "Compras", href: "/purchases", icon: ShoppingCart },
     { name: "Inventário", href: "/inventory", icon: Warehouse },
+    { name: "Dados do Restaurante", href: "/dados-restaurante", icon: Building2 },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
 
     return (
-        <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-white">
+        <aside className={`fixed inset-y-0 left-0 z-40 w-64 transform border-r bg-white transition-transform duration-300 ease-in-out lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}>
             <div className="flex h-full flex-col">
                 {/* Logo and Title */}
                 <div className="flex h-16 items-center border-b px-6">
-                    <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
-                            <span className="text-sm font-bold text-white">R</span>
-                        </div>
-                        <span className="text-lg font-semibold">RCM</span>
+                    <div className="flex items-center">
+                        <img
+                            src="/images/logo.png"
+                            alt="RCM Logo"
+                            className="h-10 w-auto"
+                        />
                     </div>
                 </div>
 
@@ -67,9 +78,11 @@ export function Sidebar() {
                 {/* Footer Logo */}
                 <div className="border-t p-4">
                     <div className="flex items-center justify-center">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-red-600">
-                            <span className="text-lg font-bold text-white">R</span>
-                        </div>
+                        <img
+                            src="/images/logo.png"
+                            alt="RCM Logo"
+                            className="h-12 w-auto"
+                        />
                     </div>
                     <p className="mt-2 text-center text-xs text-gray-500">
                         Restaurant Cost Manager
@@ -79,3 +92,4 @@ export function Sidebar() {
         </aside>
     );
 }
+

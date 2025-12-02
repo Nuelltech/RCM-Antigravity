@@ -49,7 +49,7 @@ export function CategoryBuilder({ categorias, onChange }: CategoryBuilderProps) 
                     fetchClient("/recipes"),
                     fetchClient("/formatos-venda?includeExpired=true").catch(() => []),
                 ]);
-                setRecipes(recipesData.filter((r: any) => r.tipo === "Final"));
+                setRecipes(recipesData.data.filter((r: any) => r.tipo === "Final"));
                 setFormatosVenda(formatosData);
             } catch (error) {
                 console.error("Failed to load data:", error);

@@ -78,8 +78,8 @@ export default function EditRecipePage() {
 
     const loadProducts = async () => {
         try {
-            const data = await fetchClient("/products");
-            setProducts(data || []);
+            const data = await fetchClient("/products?limit=1000");
+            setProducts((data.data || []).sort((a, b) => a.nome.localeCompare(b.nome)));
         } catch (error) {
             console.error("Failed to load products:", error);
         }

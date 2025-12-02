@@ -47,26 +47,26 @@ export default function SalesPage() {
     return (
         <AppLayout>
             <div className="space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <h1 className="text-3xl font-bold">Vendas</h1>
-                    <div className="flex gap-2">
-                        <div className="flex items-center gap-2 bg-white p-1 rounded border">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex items-center gap-2 bg-white p-1 rounded border w-full sm:w-auto">
                             <input
                                 type="date"
                                 value={dateRange.start}
                                 onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                                className="px-2 py-1 text-sm outline-none"
+                                className="px-2 py-1 text-sm outline-none w-full sm:w-auto"
                             />
                             <span className="text-gray-400">-</span>
                             <input
                                 type="date"
                                 value={dateRange.end}
                                 onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                                className="px-2 py-1 text-sm outline-none"
+                                className="px-2 py-1 text-sm outline-none w-full sm:w-auto"
                             />
                         </div>
-                        <Link href="/sales/new">
-                            <Button>
+                        <Link href="/sales/new" className="w-full sm:w-auto">
+                            <Button className="w-full sm:w-auto">
                                 <Plus className="w-4 h-4 mr-2" />
                                 Nova Venda
                             </Button>

@@ -55,9 +55,11 @@ function LoginPageContent() {
             if (response.token) {
                 localStorage.setItem("token", response.token);
 
-                // Save tenantId from user data
+                // Save user data
                 if (response.user && response.user.tenant_id) {
                     localStorage.setItem("tenantId", response.user.tenant_id.toString());
+                    localStorage.setItem("userName", response.user.nome || "Utilizador");
+                    localStorage.setItem("userEmail", response.user.email || "");
                 }
 
                 router.push("/dashboard");
@@ -75,11 +77,11 @@ function LoginPageContent() {
         <div className="flex min-h-screen bg-gray-50">
             {/* Left Side - Image */}
             <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-gray-100 to-gray-200 items-center justify-center p-12">
-                <div className="max-w-md">
+                <div className="w-full h-full flex items-center justify-center">
                     <img
                         src="/images/prato-login.png"
                         alt="RCM - Restaurant Cost Manager"
-                        className="w-full h-auto drop-shadow-2xl"
+                        className="w-full h-full object-contain drop-shadow-2xl"
                     />
                 </div>
             </div>
@@ -87,11 +89,9 @@ function LoginPageContent() {
             {/* Right Side - Login Form */}
             <div className="flex w-full lg:w-1/2 items-center justify-center p-8">
                 <div className="w-full max-w-md space-y-8">
-                    {/* Logo and Title */}
                     <div className="text-center lg:text-left">
-                        <div className="flex items-center justify-center lg:justify-start gap-2 mb-6">
-                            <img src="/images/logo.png" alt="RCM" className="h-12 w-auto" />
-                            <span className="text-2xl font-bold text-gray-900">RCM</span>
+                        <div className="flex items-center justify-center lg:justify-start mb-6">
+                            <img src="/images/logo.png" alt="RCM" className="h-16 w-auto" />
                         </div>
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">
                             Acesse sua conta

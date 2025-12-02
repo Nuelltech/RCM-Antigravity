@@ -1,6 +1,16 @@
-import { AlertTriangle, AlertCircle, Info, TrendingUp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { mockAlerts, type Alert } from '@/lib/mock-data';
+import { fetchClient } from '@/lib/api';
+
+interface Alert {
+    id: string;
+    type: 'cmv' | 'cost_increase' | 'inactivity';
+    severity: 'info' | 'warning' | 'high';
+    item: string;
+    message: string;
+    date: string;
+}
 
 const severityConfig = {
     high: {
@@ -53,21 +63,44 @@ function AlertItem({ alert }: { alert: Alert }) {
 }
 
 export function SystemAlerts() {
+    const [alerts, setAlerts] = useState<Alert[]>([]);
+
+    useEffect(() => {
+        loadAlerts();
+    }, []);
+
+    async function loadAlerts() {
+        try {
+            const data = await fetchClient('/alerts');
+            setAlerts(data);
+        } catch (error) {
+            console.error('Erro ao carregar alertas:', error);
+        }
+    }
+
     return (
         <Card>
             <CardHeader>
                 <div className="flex items-center justify-between">
                     <CardTitle>Alertas</CardTitle>
-                    <span className="text-sm bg-red-100 text-red-700 px-2 py-1 rounded-full font-semibold">
-                        {mockAlerts.length}
-                    </span>
+                    {alerts.length > 0 && (
+                        <span className="text-sm bg-red-100 text-red-700 px-2 py-1 rounded-full font-semibold">
+                            {alerts.length}
+                        </span>
+                    )}
                 </div>
             </CardHeader>
             <CardContent>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                    {mockAlerts.map((alert) => (
-                        <AlertItem key={alert.id} alert={alert} />
-                    ))}
+                    {alerts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">
+                            Sem alertas ativos.
+                        </p>
+                    ) : (
+                        alerts.map((alert) => (
+                            <AlertItem key={alert.id} alert={alert} />
+                        ))
+                    )}
                 </div>
             </CardContent>
         </Card>

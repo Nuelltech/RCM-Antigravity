@@ -22,6 +22,10 @@ export async function dashboardRoutes(app: FastifyInstance) {
                         image: z.string(),
                     })),
                     categories: z.array(z.string()),
+                    custoEstrutura: z.object({
+                        valor: z.number(),
+                        periodo: z.string(),
+                    }),
                 }),
             },
         },
@@ -116,12 +120,28 @@ export async function dashboardRoutes(app: FastifyInstance) {
         // Process Top Items
         const allItems = Array.from(itemStats.values());
 
+        // Calculate structural costs
+        const custos = await prisma.custoEstrutura.findMany({
+            where: {
+                tenant_id: req.tenantId,
+                ativo: true
+            }
+        });
+
+        const totalMensal = custos.reduce((sum, custo) => {
+            return sum + Number(custo.valor_mensal);
+        }, 0);
+
         return {
             vendasMes: Number(vendasMes.toFixed(2)),
             custoMercadoria: Number(custoMercadoria.toFixed(2)),
             cmvTeorico: Number(cmvTeorico.toFixed(2)),
             allItems,
-            categories: Array.from(new Set(allItems.map(i => i.category))).sort()
+            categories: Array.from(new Set(allItems.map(i => i.category))).sort(),
+            custoEstrutura: {
+                valor: Number(totalMensal.toFixed(2)),
+                periodo: 'Mês',
+            }
         };
     });
 }

@@ -57,6 +57,9 @@ model Tenant {
   comboCategorias     ComboCategoria[]
   comboOpcoes         ComboCategoriaOpcao[]
   formatosVenda       FormatoVenda[]
+  templateFormatosVenda TemplateFormatoVenda[]
+  dadosRestaurante    DadosRestaurante?
+  custosEstrutura     CustoEstrutura[]
 
   @@map("tenants")
 }
@@ -287,6 +290,7 @@ model FormatoVenda {
   // Source tracking
   variacao_origem_id      Int?             // Origin variation (if direct sale)
   conversao_necessaria    Boolean          @default(false)     // Needs conversion?
+  template_id             Int?             // Template used to create this format
   
   // Price validity (for price history)
   data_inicio_vigencia    DateTime         @default(now())
@@ -307,11 +311,43 @@ model FormatoVenda {
   variacao_origem         VariacaoProduto? @relation("VariacaoOrigem", fields: [variacao_origem_id], references: [id])
   menu_itens              MenuItem[]
   comboCategoriaOpcoes    ComboCategoriaOpcao[]
+  template                TemplateFormatoVenda? @relation("TemplateUsage", fields: [template_id], references: [id])
   
   @@index([tenant_id, produto_id])
   @@index([tenant_id, ativo, disponivel_menu])
   @@index([data_fim_vigencia])
+  @@index([template_id])
   @@map("formatos_venda")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUCTS: Sale Format Templates
+// -----------------------------------------------------------------------------
+
+model TemplateFormatoVenda {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  
+  // Template definition
+  nome                String   // "Copo 25cl", "Lata 33cl", "Garrafa 1L"
+  descricao           String?  @db.Text
+  quantidade          Decimal  @db.Decimal(10, 3)
+  unidade_medida      String   // "L", "ML", "KG", "G", "UN"
+  
+  // Control
+  ativo               Boolean  @default(true)
+  ordem_exibicao      Int?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  formatosVenda       FormatoVenda[] @relation("TemplateUsage")
+  
+  @@index([tenant_id, ativo])
+  @@map("template_formato_venda")
 }
 
 model HistoricoPreco {
@@ -778,3 +814,54 @@ model ComboCategoriaOpcao {
   
   @@map("combo_categoria_opcoes")
 }
+
+// -----------------------------------------------------------------------------
+// DADOS DO RESTAURANTE - Operational Settings & Structural Costs
+// -----------------------------------------------------------------------------
+
+model DadosRestaurante {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int      @unique
+  
+  // Operational Settings
+  numero_lugares      Int      @default(0)
+  horas_trabalho_dia  Decimal  @default(8) @db.Decimal(4, 2)
+  dias_trabalho_semana Decimal @default(5) @db.Decimal(3, 1)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+
+  // Alert Thresholds
+  cmv_alerta_amarelo          Decimal  @default(30) @db.Decimal(5, 2)
+  cmv_alerta_vermelho         Decimal  @default(35) @db.Decimal(5, 2)
+  alerta_aumento_custo_leve   Decimal  @default(5) @db.Decimal(5, 2)
+  alerta_aumento_custo_medio  Decimal  @default(10) @db.Decimal(5, 2)
+  alerta_aumento_custo_grave  Decimal  @default(15) @db.Decimal(5, 2)
+  alerta_inatividade_leve     Int      @default(3)
+  alerta_inatividade_medio    Int      @default(6)
+  alerta_inatividade_grave    Int      @default(10)
+  
+  @@map("dados_restaurante")
+}
+
+model CustoEstrutura {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  
+  descricao           String
+  classificacao       String   // Salário, Eletricidade, Água, Marketing, Contabilidade, Sistemas, Internet, Veículos, Renda, Gestão, Outros
+  valor_mensal        Decimal  @db.Decimal(10, 2)
+  
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  
+  @@index([tenant_id, ativo])
+  @@map("custos_estrutura")
+}
+

@@ -16,6 +16,7 @@ export interface CreateFormatoVendaDto {
     conversao_necessaria?: boolean;
     disponivel_menu?: boolean;
     ordem_exibicao?: number;
+    template_id?: number; // NEW: Template reference
 }
 
 export interface UpdateFormatoVendaDto {
@@ -133,6 +134,7 @@ class FormatoVendaService {
                 conversao_necessaria: dto.conversao_necessaria ?? false,
                 disponivel_menu: dto.disponivel_menu ?? true,
                 ordem_exibicao: dto.ordem_exibicao,
+                template_id: dto.template_id, // NEW: Store template reference
             },
             include: {
                 produto: true,

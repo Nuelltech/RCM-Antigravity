@@ -48,9 +48,9 @@ export function AddToMenuModal({ onClose, onSuccess }: AddToMenuModalProps) {
                 fetchClient("/menu/available-combos"),
                 fetchClient("/menu/available-products"),
             ]);
-            setRecipes(recipesData);
-            setCombos(combosData);
-            setProducts(productsData);
+            setRecipes(recipesData.sort((a: AvailableRecipe, b: AvailableRecipe) => a.nome.localeCompare(b.nome)));
+            setCombos(combosData.sort((a: AvailableCombo, b: AvailableCombo) => a.nome.localeCompare(b.nome)));
+            setProducts(productsData.sort((a: AvailableProduct, b: AvailableProduct) => a.nome.localeCompare(b.nome)));
         } catch (error) {
             console.error("Failed to load available items:", error);
         } finally {

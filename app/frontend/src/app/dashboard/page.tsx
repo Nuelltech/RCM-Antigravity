@@ -7,7 +7,7 @@ import { SalesChart } from '@/components/dashboard/SalesChart';
 import { TopRecipesGrid } from '@/components/dashboard/TopRecipesGrid';
 import { SystemAlerts } from '@/components/dashboard/SystemAlerts';
 import { fetchClient } from '@/lib/api';
-import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle } from 'lucide-react';
+import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle, Building2 } from 'lucide-react';
 
 interface DashboardStats {
     vendasMes: number;
@@ -15,6 +15,10 @@ interface DashboardStats {
     cmvTeorico: number;
     allItems: any[];
     categories: string[];
+    custoEstrutura: {
+        valor: number;
+        periodo: string;
+    };
 }
 
 export default function DashboardPage() {
@@ -23,12 +27,16 @@ export default function DashboardPage() {
         custoMercadoria: 0,
         cmvTeorico: 0,
         allItems: [],
-        categories: []
+        categories: [],
+        custoEstrutura: { valor: 0, periodo: 'Mês' }
     });
     const [loading, setLoading] = useState(true);
 
+    const [activeAlerts, setActiveAlerts] = useState(0);
+
     useEffect(() => {
         loadStats();
+        loadAlerts();
     }, []);
 
     async function loadStats() {
@@ -42,6 +50,15 @@ export default function DashboardPage() {
         }
     }
 
+    async function loadAlerts() {
+        try {
+            const alerts = await fetchClient('/alerts');
+            setActiveAlerts(alerts.length);
+        } catch (error) {
+            console.error('Erro ao carregar alertas:', error);
+        }
+    }
+
     return (
         <AppLayout>
             <div className="space-y-6 p-8">
@@ -52,7 +69,7 @@ export default function DashboardPage() {
                     </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                     <KPICard
                         title="Vendas do Mês"
                         value={`€ ${stats.vendasMes.toFixed(2)}`}
@@ -72,8 +89,14 @@ export default function DashboardPage() {
                         description="da receita total"
                     />
                     <KPICard
+                        title="Custo de Estrutura"
+                        value={`€ ${stats.custoEstrutura.valor.toFixed(2)}`}
+                        icon={<Building2 className="h-4 w-4 text-muted-foreground" />}
+                        description={`por ${stats.custoEstrutura.periodo}`}
+                    />
+                    <KPICard
                         title="Alertas Ativos"
-                        value="3"
+                        value={activeAlerts.toString()}
                         icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />}
                         description="Requerem atenção"
                     />
