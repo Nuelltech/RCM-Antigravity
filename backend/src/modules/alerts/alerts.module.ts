@@ -273,8 +273,7 @@ class AlertsService {
                         severidade: data.severidade,
                         mensagem: data.mensagem,
                         dados_contexto: data.dados_contexto,
-                        lido: false, // Re-open if things changed
-                        updatedAt: new Date()
+                        lido: false // Re-open if things changed
                     }
                 });
             }
