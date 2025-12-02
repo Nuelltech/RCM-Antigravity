@@ -39,7 +39,7 @@ export function TopRecipesGrid({ items = [], categories = [] }: TopRecipesGridPr
             filtered = filtered.filter(item => item.category === categoryFilter);
         }
 
-        return [...filtered].sort((a, b) => {
+        return [...filtered].sort((a: TopItem, b: TopItem) => {
             if (filter === 'sales') {
                 return b.quantity - a.quantity;
             }

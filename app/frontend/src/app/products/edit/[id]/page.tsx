@@ -97,7 +97,15 @@ interface VariacaoProduto {
     updatedAt: string;
 }
 
+interface Template {
+    id: number;
+    nome: string;
+    quantidade: number;
+    unidade_medida: string;
+}
+
 export default function EditProductPage() {
+
     const router = useRouter();
     const params = useParams();
     const productId = params?.id as string;
@@ -123,7 +131,7 @@ export default function EditProductPage() {
     const [editingFormat, setEditingFormat] = useState<FormatoVenda | null>(null);
 
     // Template states
-    const [templates, setTemplates] = useState<any[]>([]);
+    const [templates, setTemplates] = useState<Template[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
     const {
@@ -253,7 +261,7 @@ export default function EditProductPage() {
     const loadTemplates = async () => {
         try {
             const data = await fetchClient('/template-formatos-venda?ativo=true');
-            setTemplates(data.sort((a: any, b: any) => a.nome.localeCompare(b.nome)));
+            setTemplates(data.sort((a: Template, b: Template) => a.nome.localeCompare(b.nome)));
         } catch (error) {
             console.error('Failed to load templates:', error);
         }

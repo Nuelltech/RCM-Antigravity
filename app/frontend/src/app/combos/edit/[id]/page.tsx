@@ -39,19 +39,21 @@ interface ComboItemRow {
     observacoes: string;
 }
 
+interface ComboOption {
+    id: string;
+    tipo: "receita" | "formato_venda";
+    receita_id?: number;
+    formato_venda_id?: number;
+    nome: string;
+    custo_unitario: number;
+}
+
 interface CategoryRow {
     id: string;
     categoria: string;
     ordem: number;
     obrigatoria: boolean;
-    opcoes: {
-        id: string;
-        tipo: "receita" | "formato_venda";
-        receita_id?: number;
-        formato_venda_id?: number;
-        nome: string;
-        custo_unitario: number;
-    }[];
+    opcoes: ComboOption[];
 }
 
 export default function EditComboPage({ params }: { params: { id: string } }) {
@@ -127,7 +129,7 @@ export default function EditComboPage({ params }: { params: { id: string } }) {
                         formato_venda_id: opt.formato_venda_id,
                         nome: opt.receita?.nome || opt.formatoVenda?.nome || "Opção desconhecida",
                         custo_unitario: Number(opt.custo_unitario),
-                    })).sort((a: any, b: any) => a.nome.localeCompare(b.nome)),
+                    })).sort((a: ComboOption, b: ComboOption) => a.nome.localeCompare(b.nome)),
                 })));
             }
         } catch (error) {
