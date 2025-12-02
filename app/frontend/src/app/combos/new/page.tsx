@@ -92,8 +92,8 @@ export default function NewComboPage() {
                 fetchClient("/recipes?limit=1000"),
                 fetchClient("/products?limit=1000"),
             ]);
-            setRecipes((recipesData.data || []).filter((r: Recipe) => r.tipo === "Final").sort((a, b) => a.nome.localeCompare(b.nome)));
-            setProducts((productsData.data || []).sort((a, b) => a.nome.localeCompare(b.nome)));
+            setRecipes((recipesData.data || []).filter((r: Recipe) => r.tipo === "Final").sort((a: Recipe, b: Recipe) => a.nome.localeCompare(b.nome)));
+            setProducts((productsData.data || []).sort((a: Product, b: Product) => a.nome.localeCompare(b.nome)));
         } catch (error) {
             console.error("Failed to load data:", error);
         }
