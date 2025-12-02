@@ -108,7 +108,7 @@ export default function MenuPage() {
                         });
 
                         return Array.from(stats.entries())
-                            .sort((a, b) => a[0].localeCompare(b[0]))
+                            .sort((a: [string, any], b: [string, any]) => a[0].localeCompare(b[0]))
                             .map(([name, data]) => {
                                 const cmv = data.totalPvp > 0 ? (data.totalCost / data.totalPvp) * 100 : 0;
                                 return (

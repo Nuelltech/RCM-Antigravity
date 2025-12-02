@@ -78,7 +78,7 @@ export default function NewRecipePage() {
             console.log('🔍 Loading products...');
             const data = await fetchClient("/products?limit=1000");
             console.log('✅ Products loaded:', data?.data?.length || 0, 'products');
-            setProducts((data.data || []).sort((a, b) => a.nome.localeCompare(b.nome)));
+            setProducts((data.data || []).sort((a: Product, b: Product) => a.nome.localeCompare(b.nome)));
         } catch (error) {
             console.error("❌ Failed to load products:", error);
             alert("Erro ao carregar produtos. Verifica se o backend está a correr.");
