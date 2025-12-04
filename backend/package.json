@@ -1,14 +1,14 @@
 {
   "name": "rcm-backend",
   "version": "1.0.0",
-  "description": "Restaurante Cost Manager Backend",
+  "description": "RCM Backend",
   "engines": {
     "node": ">=18.0.0"
   },
   "main": "src/core/server.ts",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --exit-child src/core/server.ts",
-    "build": "tsc",
+    "build": "npx prisma generate && tsc",
     "start": "node dist/core/server.js",
     "prisma:generate": "npx prisma@5.10.2 generate",
     "lint": "eslint src/**/*.ts",

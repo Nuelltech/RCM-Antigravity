@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-    title: "Restaurante Cost Manager",
+    title: "RCM",
     description: "SaaS Multi-Tenant for Restaurant Management",
     icons: {
         icon: '/images/logo-sidebar.png',

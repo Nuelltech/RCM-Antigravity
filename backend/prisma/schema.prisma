@@ -45,8 +45,6 @@ model Tenant {
   etapasReceita       EtapaReceita[]
   menuItems           MenuItem[]
   vendas              Venda[]
-  listasInventario    ListaInventario[]
-  inventarios         Inventario[]
   stockTeorico        StockTeorico[]
   alertasAi           AlertaAi[]
   conversasAi         ConversaAi[]
@@ -61,6 +59,10 @@ model Tenant {
   templateVariacoesCompra TemplateVariacaoCompra[]
   dadosRestaurante    DadosRestaurante?
   custosEstrutura     CustoEstrutura[]
+  localizacoes        Localizacao[]
+  listasCalculadora   ListaCalculadora[]
+  sessoesInventario   SessaoInventario[]
+  itensInventario     ItemInventario[]
 
   @@map("tenants")
 }
@@ -91,12 +93,13 @@ model User {
   comprasTempCriadas  CompraTemporaria[]
   receitasCriadas     Receita[]
   vendasRegistadas    Venda[]
-  listasInventario    ListaInventario[]
-  inventariosCriados  Inventario[]
-  inventariosValidados Inventario[] @relation("InventarioValidador")
   conversasAi         ConversaAi[]
   integracoesCriadas  Integracao[]
   historicoPrecos     HistoricoPreco[]
+  listasCalculadora   ListaCalculadora[]
+  sessoesCriadas      SessaoInventario[] @relation("SessaoCriador")
+  sessoesFechadas     SessaoInventario[] @relation("SessaoFechador")
+  itensContados       ItemInventario[]
 
   @@unique([tenant_id, email])
   @@map("users")
@@ -237,6 +240,7 @@ model Produto {
   stockTeorico    StockTeorico[]
   comboItens      ComboItem[]
   formatosVenda   FormatoVenda[] // NEW: Sell formats for this product
+  itensInventario ItemInventario[]
 
   @@unique([tenant_id, subfamilia_id, nome])
   @@map("produtos")
@@ -266,6 +270,7 @@ model VariacaoProduto {
   comprasTemporarias  CompraTemporaria[]
   stockTeorico        StockTeorico[]
   formatosVendaOrigem FormatoVenda[] @relation("VariacaoOrigem") // NEW: Sell formats using this variation as origin
+  itensInventario     ItemInventario[]
 
   @@map("variacoes_produto")
 }
@@ -616,56 +621,89 @@ model Venda {
 // INVENTÁRIO
 // -----------------------------------------------------------------------------
 
-model ListaInventario {
+model Localizacao {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
-  uuid                String   @default(uuid())
   nome                String
   descricao           String?
-  tipo                String   // Completo, Parcial, Spot
-  periodicidade       String?  // Diário, Semanal...
-  produtos_json       Json?    // List of IDs
-  ativa               Boolean  @default(true)
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  itensInventario     ItemInventario[]
+
+  @@unique([tenant_id, nome])
+  @@map("localizacoes")
+}
+
+model ListaCalculadora {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  nome                String
+  descricao           String?
+  itens               Json     // Array of { tipo, id, quantidade }
   criado_por          Int?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
   criador             User?    @relation(fields: [criado_por], references: [id])
-  inventarios         Inventario[]
 
-  @@map("lista_inventario")
+  @@map("listas_calculadora")
 }
 
-model Inventario {
+model SessaoInventario {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   uuid                String   @default(uuid())
-  lista_inventario_id Int?
-  data_contagem       DateTime
-  hora_inicio         DateTime?
-  hora_fim            DateTime?
-  produto_id          Int?     // Can be direct product or variation
-  variacao_id         Int?
-  quantidade_contada  Decimal  @db.Decimal(10, 4)
-  quantidade_teorica  Decimal? @db.Decimal(10, 4)
-  diferenca           Decimal? @db.Decimal(10, 4)
-  preco_unitario      Decimal? @db.Decimal(10, 4)
-  valor_diferenca     Decimal? @db.Decimal(10, 2)
-  status              String   @default("Em curso") // Em curso, Concluído, Validado, Ajustado
-  metodo              String   // Manual, Ficheiro, Interface
-  observacoes         String?
-  user_id             Int?
-  validado_por        Int?
+  numero              Int      // Sequential number per tenant
+  nome                String?  // Optional name/description
+  tipo                String   // "Total", "Calculadora", "Personalizado"
+  status              String   // "Aberto", "Fechado", "Cancelado"
+  data_inicio         DateTime @default(now())
+  data_fim            DateTime?
+  filtros_usados      Json?    // Store filters used to generate this session
+  criado_por          Int?
+  fechado_por         Int?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
-  listaInventario     ListaInventario? @relation(fields: [lista_inventario_id], references: [id])
-  user                User?    @relation(fields: [user_id], references: [id])
-  validador           User?    @relation("InventarioValidador", fields: [validado_por], references: [id])
+  criador             User?    @relation("SessaoCriador", fields: [criado_por], references: [id])
+  fechador            User?    @relation("SessaoFechador", fields: [fechado_por], references: [id])
+  itens               ItemInventario[]
 
-  @@map("inventario")
+  @@map("sessoes_inventario")
+}
+
+model ItemInventario {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  sessao_id           Int
+  produto_id          Int
+  variacao_id         Int?     // Optional purchase variation
+  localizacao_id      Int?
+  quantidade_contada  Decimal  @db.Decimal(10, 4)
+  unidade_medida      String
+  
+  // Snapshot data at time of inventory
+  custo_unitario      Decimal? @db.Decimal(10, 4)
+  valor_total         Decimal? @db.Decimal(10, 2)
+  
+  observacoes         String?
+  contado_por         Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  sessao              SessaoInventario @relation(fields: [sessao_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  localizacao         Localizacao? @relation(fields: [localizacao_id], references: [id])
+  contador            User?    @relation(fields: [contado_por], references: [id])
+
+  @@map("itens_inventario")
 }
 
 model StockTeorico {

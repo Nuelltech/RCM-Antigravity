@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../core/database';
-import { LoginInput, RegisterInput, VerifyEmailInput } from './auth.schema';
+import { LoginInput, RegisterInput, VerifyEmailInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema';
 import { FastifyInstance } from 'fastify';
 import { DEFAULT_FAMILIES, DEFAULT_SUBFAMILIES } from '../../core/constants/seedData';
 
@@ -177,5 +177,65 @@ export class AuthService {
         });
 
         return { token, user: validUser, tenant: validUser.tenant };
+    }
+    async forgotPassword(input: ForgotPasswordInput) {
+        const user = await prisma.user.findFirst({
+            where: { email: input.email },
+        });
+
+        if (!user) {
+            // For security, don't reveal if user exists
+            return { message: 'If the email exists, a verification code has been sent.' };
+        }
+
+        // Generate 6-digit verification code
+        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                verification_code: verificationCode,
+                verification_code_expires_at: verificationExpiresAt,
+            },
+        });
+
+        // Mock Email Sending
+        console.log(`[EMAIL MOCK] Password recovery code for ${input.email}: ${verificationCode}`);
+
+        return { message: 'Verification code sent.' };
+    }
+
+    async resetPassword(input: ResetPasswordInput) {
+        const user = await prisma.user.findFirst({
+            where: { email: input.email },
+        });
+
+        if (!user) {
+            throw new Error('Invalid request');
+        }
+
+        if (user.verification_code !== input.code) {
+            throw new Error('Invalid verification code');
+        }
+
+        if (user.verification_code_expires_at && user.verification_code_expires_at < new Date()) {
+            throw new Error('Verification code expired');
+        }
+
+        const hashedPassword = await bcrypt.hash(input.newPassword, 10);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                password_hash: hashedPassword,
+                verification_code: null,
+                verification_code_expires_at: null,
+                // Also verify email if not already verified, since they proved ownership
+                email_verificado: true,
+            },
+        });
+
+        return { message: 'Password updated successfully' };
     }
 }

@@ -43,6 +43,8 @@ async function main() {
                 /\.vercel\.app$/,  // Vercel deployments
                 /\.onrender\.com$/, // Render deployments
                 'https://rcm-frontend.vercel.app', // Production frontend
+                'https://rcm.net', // Custom domain
+                'https://www.rcm.net', // Custom domain www
             ]
             : true, // Allow all origins in development
         credentials: true,
@@ -61,7 +63,7 @@ async function main() {
         openapi: {
             info: {
                 title: 'RCM API',
-                description: 'Restaurante Cost Manager API',
+                description: 'RCM API',
                 version: '1.0.0',
             },
             components: {

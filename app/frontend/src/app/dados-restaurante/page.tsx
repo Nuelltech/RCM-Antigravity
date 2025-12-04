@@ -30,7 +30,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { Building2, Plus, Pencil, Trash2, TrendingUp } from 'lucide-react';
+import { Building2, Plus, Pencil, Trash2, TrendingUp, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface DadosRestaurante {
@@ -65,6 +65,13 @@ interface CustoTotal {
     breakdown: Custo[];
 }
 
+interface Localizacao {
+    id: number;
+    nome: string;
+    descricao?: string;
+    ativo: boolean;
+}
+
 const CLASSIFICACOES = [
     'Salário',
     'Eletricidade',
@@ -95,6 +102,9 @@ export default function DadosRestaurantePage() {
     const [periodo, setPeriodo] = useState<string>('mes');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingCusto, setEditingCusto] = useState<Custo | null>(null);
+    const [localizacoes, setLocalizacoes] = useState<Localizacao[]>([]);
+    const [locModalOpen, setLocModalOpen] = useState(false);
+    const [editingLoc, setEditingLoc] = useState<Localizacao | null>(null);
 
     // Form states
     const [formDados, setFormDados] = useState({
@@ -117,6 +127,11 @@ export default function DadosRestaurantePage() {
         valor_mensal: 0,
     });
 
+    const [formLoc, setFormLoc] = useState({
+        nome: '',
+        descricao: '',
+    });
+
     useEffect(() => {
         loadData();
     }, []);
@@ -129,9 +144,10 @@ export default function DadosRestaurantePage() {
 
     async function loadData() {
         try {
-            const [dadosRes, custosRes] = await Promise.all([
+            const [dadosRes, custosRes, locsRes] = await Promise.all([
                 fetchClient('/dados-restaurante'),
                 fetchClient('/dados-restaurante/custos'),
+                fetchClient('/inventory/locations'),
             ]);
 
             setDados(dadosRes);
@@ -149,6 +165,7 @@ export default function DadosRestaurantePage() {
                 alerta_inatividade_grave: dadosRes.alerta_inatividade_grave,
             });
             setCustos(custosRes);
+            setLocalizacoes(locsRes);
         } catch (error) {
             console.error('Erro ao carregar dados:', error);
             toast({
@@ -264,6 +281,78 @@ export default function DadosRestaurantePage() {
         setModalOpen(true);
     }
 
+    async function handleSaveLocalizacao() {
+        try {
+            if (editingLoc) {
+                await fetchClient(`/inventory/locations/${editingLoc.id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(formLoc),
+                });
+                toast({
+                    title: 'Sucesso',
+                    description: 'Localização atualizada com sucesso.',
+                });
+            } else {
+                await fetchClient('/inventory/locations', {
+                    method: 'POST',
+                    body: JSON.stringify(formLoc),
+                });
+                toast({
+                    title: 'Sucesso',
+                    description: 'Localização criada com sucesso.',
+                });
+            }
+            setLocModalOpen(false);
+            setEditingLoc(null);
+            setFormLoc({ nome: '', descricao: '' });
+            loadData();
+        } catch (error) {
+            console.error('Erro ao salvar localização:', error);
+            toast({
+                title: 'Erro',
+                description: 'Não foi possível salvar a localização.',
+                variant: 'destructive',
+            });
+        }
+    }
+
+    async function handleDeleteLocalizacao(id: number) {
+        if (!confirm('Tem certeza que deseja eliminar esta localização?')) return;
+
+        try {
+            await fetchClient(`/inventory/locations/${id}`, {
+                method: 'DELETE',
+            });
+            toast({
+                title: 'Sucesso',
+                description: 'Localização eliminada com sucesso.',
+            });
+            loadData();
+        } catch (error) {
+            console.error('Erro ao eliminar localização:', error);
+            toast({
+                title: 'Erro',
+                description: 'Não foi possível eliminar a localização.',
+                variant: 'destructive',
+            });
+        }
+    }
+
+    function openEditLocModal(loc: Localizacao) {
+        setEditingLoc(loc);
+        setFormLoc({
+            nome: loc.nome,
+            descricao: loc.descricao || '',
+        });
+        setLocModalOpen(true);
+    }
+
+    function openCreateLocModal() {
+        setEditingLoc(null);
+        setFormLoc({ nome: '', descricao: '' });
+        setLocModalOpen(true);
+    }
+
     if (loading) {
         return (
             <AppLayout>
@@ -330,6 +419,72 @@ export default function DadosRestaurantePage() {
                         <div className="mt-4">
                             <Button onClick={handleSaveDados}>Guardar Configurações</Button>
                         </div>
+                    </CardContent>
+                </Card>
+
+                {/* Storage Locations Management */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <MapPin className="h-5 w-5" />
+                                    Locais de Armazenamento
+                                </CardTitle>
+                                <CardDescription>
+                                    Gerencie os locais de armazenamento do seu restaurante
+                                </CardDescription>
+                            </div>
+                            <Button onClick={openCreateLocModal}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Adicionar Local
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Nome</TableHead>
+                                    <TableHead>Descrição</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {localizacoes.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                            Nenhum local registado. Clique em "Adicionar Local" para começar.
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    localizacoes.map((loc) => (
+                                        <TableRow key={loc.id}>
+                                            <TableCell className="font-medium">{loc.nome}</TableCell>
+                                            <TableCell>{loc.descricao || '-'}</TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => openEditLocModal(loc)}
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleDeleteLocalizacao(loc.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
                     </CardContent>
                 </Card>
 
@@ -620,6 +775,48 @@ export default function DadosRestaurantePage() {
                         </Button>
                         <Button onClick={handleSaveCusto}>
                             {editingCusto ? 'Atualizar' : 'Criar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Location Modal */}
+            <Dialog open={locModalOpen} onOpenChange={setLocModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {editingLoc ? 'Editar Local' : 'Adicionar Local'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Preencha os detalhes do local de armazenamento
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="loc_nome">Nome</Label>
+                            <Input
+                                id="loc_nome"
+                                value={formLoc.nome}
+                                onChange={(e) => setFormLoc({ ...formLoc, nome: e.target.value })}
+                                placeholder="Ex: Câmara Frigorífica, Despensa, Armazém"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="loc_descricao">Descrição (Opcional)</Label>
+                            <Input
+                                id="loc_descricao"
+                                value={formLoc.descricao}
+                                onChange={(e) => setFormLoc({ ...formLoc, descricao: e.target.value })}
+                                placeholder="Ex: Câmara de congelados no piso -1"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setLocModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleSaveLocalizacao}>
+                            {editingLoc ? 'Atualizar' : 'Criar'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

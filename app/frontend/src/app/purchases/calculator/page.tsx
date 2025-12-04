@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
-import { Plus, Trash2, Calculator, ShoppingCart, Search } from "lucide-react";
+import { Plus, Trash2, Calculator, ShoppingCart, Search, Save } from "lucide-react";
 
 interface SimulationItem {
     tipo: 'receita' | 'combo';
@@ -114,7 +114,7 @@ export default function PurchaseCalculatorPage() {
         setLoading(true);
         try {
             const payload = {
-                itens: items.map(i => ({
+                itens: items.map((i: SimulationItem) => ({
                     tipo: i.tipo,
                     id: i.id,
                     quantidade: i.quantidade
@@ -129,6 +129,39 @@ export default function PurchaseCalculatorPage() {
             setSimulationResult(result);
         } catch (error) {
             console.error("Simulation failed:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+    const [listName, setListName] = useState("");
+
+    const handleSaveList = async () => {
+        if (!simulationResult || !listName) return;
+
+        setLoading(true);
+        try {
+            const payload = {
+                nome: listName,
+                itens: simulationResult.consumos.map((c: any) => ({
+                    tipo: 'produto',
+                    id: c.produto_id,
+                    quantidade: c.quantidade_consumida
+                }))
+            };
+
+            await fetchClient('/inventory/calculator-lists', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            setSaveDialogOpen(false);
+            setListName("");
+            alert("Lista guardada com sucesso!");
+        } catch (error) {
+            console.error("Failed to save list:", error);
+            alert("Erro ao guardar lista.");
         } finally {
             setLoading(false);
         }
@@ -224,8 +257,14 @@ export default function PurchaseCalculatorPage() {
 
                     {/* Right Column: Results */}
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>Resultados da Simulação</CardTitle>
+                            {simulationResult && (
+                                <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(true)}>
+                                    <Save className="w-4 h-4 mr-2" />
+                                    Guardar Lista
+                                </Button>
+                            )}
                         </CardHeader>
                         <CardContent>
                             {!simulationResult ? (
@@ -281,6 +320,31 @@ export default function PurchaseCalculatorPage() {
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Save List Dialog */}
+                {saveDialogOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                        <div className="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
+                            <h2 className="text-lg font-bold">Guardar Lista para Inventário</h2>
+                            <p className="text-sm text-gray-500">
+                                Dê um nome a esta lista para a identificar facilmente no inventário.
+                            </p>
+                            <input
+                                className="w-full border rounded p-2"
+                                placeholder="Ex: Encomenda Semanal"
+                                value={listName}
+                                onChange={e => setListName(e.target.value)}
+                                autoFocus
+                            />
+                            <div className="flex justify-end gap-2">
+                                <Button variant="ghost" onClick={() => setSaveDialogOpen(false)}>Cancelar</Button>
+                                <Button onClick={handleSaveList} disabled={!listName || loading}>
+                                    {loading ? "A guardar..." : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </AppLayout>
     );

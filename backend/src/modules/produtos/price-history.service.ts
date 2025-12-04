@@ -17,12 +17,19 @@ export class PriceHistoryService {
         receitasAfetadas?: number;
         menusAfetados?: number;
     }) {
-        const percentualMudanca = params.precoAnterior.greaterThan(0)
-            ? params.precoNovo
+        let percentualMudanca = new Decimal(0);
+
+        if (params.precoUnitarioAnterior && params.precoUnitarioNovo && params.precoUnitarioAnterior.greaterThan(0)) {
+            percentualMudanca = params.precoUnitarioNovo
+                .minus(params.precoUnitarioAnterior)
+                .dividedBy(params.precoUnitarioAnterior)
+                .times(100);
+        } else if (params.precoAnterior.greaterThan(0)) {
+            percentualMudanca = params.precoNovo
                 .minus(params.precoAnterior)
                 .dividedBy(params.precoAnterior)
-                .times(100)
-            : new Decimal(0);
+                .times(100);
+        }
 
         return await prisma.historicoPreco.create({
             data: {

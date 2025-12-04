@@ -102,6 +102,7 @@ export default function EditComboPage({ params }: { params: { id: string } }) {
 
             setNome(comboData.nome);
             setDescricao(comboData.descricao || "");
+            setImagemUrl(comboData.imagem_url || "");
             setTipo(comboData.tipo);
 
             if (comboData.tipo === "Complexo" && comboData.itens) {
@@ -239,10 +240,16 @@ export default function EditComboPage({ params }: { params: { id: string } }) {
                     categoria: cat.categoria,
                     ordem: cat.ordem,
                     obrigatoria: cat.obrigatoria,
-                    opcoes: cat.opcoes.map((opc) => ({
-                        receita_id: opc.receita_id,
-                        formato_venda_id: opc.formato_venda_id,
-                    })),
+                    opcoes: cat.opcoes.map((opc) => {
+                        const opcao: any = {};
+                        if (opc.receita_id) {
+                            opcao.receita_id = opc.receita_id;
+                        }
+                        if (opc.formato_venda_id) {
+                            opcao.formato_venda_id = opc.formato_venda_id;
+                        }
+                        return opcao;
+                    }),
                 })),
             };
 

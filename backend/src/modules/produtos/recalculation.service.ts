@@ -259,7 +259,7 @@ export class RecalculationService {
     /**
      * Get current unit price for a product
      */
-    private async getPrecoUnitarioAtual(produtoId: number): Promise<Decimal> {
+    async getPrecoUnitarioAtual(produtoId: number): Promise<Decimal> {
         // Get the active variation with the most recent price
         const variacao = await prisma.variacaoProduto.findFirst({
             where: {

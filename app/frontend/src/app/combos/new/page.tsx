@@ -197,10 +197,16 @@ export default function NewComboPage() {
                     categoria: cat.categoria,
                     ordem: cat.ordem,
                     obrigatoria: cat.obrigatoria,
-                    opcoes: cat.opcoes.map((opc) => ({
-                        receita_id: opc.receita_id,
-                        formato_venda_id: opc.formato_venda_id,
-                    })),
+                    opcoes: cat.opcoes.map((opc) => {
+                        const opcao: any = {};
+                        if (opc.receita_id) {
+                            opcao.receita_id = opc.receita_id;
+                        }
+                        if (opc.formato_venda_id) {
+                            opcao.formato_venda_id = opc.formato_venda_id;
+                        }
+                        return opcao;
+                    }),
                 })),
             };
 

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Menu, Bell, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
 
 interface TopBarProps {
     onMenuClick: () => void;
@@ -10,16 +11,22 @@ interface TopBarProps {
 
 export function TopBar({ onMenuClick }: TopBarProps) {
     const router = useRouter();
+    const [userName, setUserName] = useState('Utilizador');
+    const [userEmail, setUserEmail] = useState('utilizador@rcm.com');
+    const [restaurantName, setRestaurantName] = useState('Meu Restaurante');
+
+    useEffect(() => {
+        // Load user data only on client side
+        setUserName(localStorage.getItem('userName') || 'Utilizador');
+        setUserEmail(localStorage.getItem('userEmail') || 'utilizador@rcm.com');
+        setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
+    }, []);
 
     const handleLogout = () => {
         localStorage.removeItem("token");
         localStorage.removeItem("tenantId");
         router.push("/auth/login");
     };
-
-    // Get user info from localStorage or context
-    const userName = typeof window !== 'undefined' ? localStorage.getItem('userName') || 'Utilizador' : 'Utilizador';
-    const restaurantName = typeof window !== 'undefined' ? localStorage.getItem('restaurantName') || 'Meu Restaurante' : 'Meu Restaurante';
 
     return (
         <header className="fixed left-0 right-0 top-0 z-30 h-16 border-b bg-white lg:left-64">
@@ -47,7 +54,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
                         </div>
                         <div className="hidden md:block">
                             <p className="text-sm font-medium text-gray-900">{userName}</p>
-                            <p className="text-xs text-gray-500">{typeof window !== 'undefined' ? localStorage.getItem('userEmail') || 'utilizador@rcm.com' : 'utilizador@rcm.com'}</p>
+                            <p className="text-xs text-gray-500">{userEmail}</p>
                         </div>
                     </div>
 

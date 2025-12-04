@@ -40,7 +40,10 @@ class VariacaoProdutoService {
     /**
      * Create new purchase variation
      */
-    async create(tenant_id: number, dto: CreateVariacaoDto) {
+    async create(tenant_id: number, dto: CreateVariacaoDto, userId?: number) {
+        // Get current effective unit price
+        const precoUnitarioAnterior = await recalculationService.getPrecoUnitarioAtual(dto.produto_id);
+
         const preco_unitario = this.calculatePrecoUnitario(dto.preco_compra, dto.unidades_por_compra);
 
         const variacao = await prisma.variacaoProduto.create({
@@ -59,7 +62,26 @@ class VariacaoProdutoService {
         });
 
         // Trigger cascade recalculation for recipes, combos, and menus
-        await recalculationService.recalculateAfterPriceChange(dto.produto_id);
+        const impact = await recalculationService.recalculateAfterPriceChange(dto.produto_id);
+
+        // Get new effective unit price
+        const precoUnitarioNovo = await recalculationService.getPrecoUnitarioAtual(dto.produto_id);
+
+        // Record history if effective price changed
+        if (!precoUnitarioAnterior.equals(precoUnitarioNovo)) {
+            await priceHistoryService.createPriceHistory({
+                tenantId: tenant_id,
+                variacaoId: variacao.id,
+                precoAnterior: new Decimal(0),
+                precoNovo: new Decimal(dto.preco_compra),
+                precoUnitarioAnterior: precoUnitarioAnterior,
+                precoUnitarioNovo: precoUnitarioNovo,
+                origem: 'MANUAL',
+                alteradoPor: userId,
+                receitasAfetadas: impact.receitasAfetadas,
+                menusAfetados: impact.menusAfetados,
+            });
+        }
 
         return this.transform(variacao);
     }
@@ -257,9 +279,10 @@ export async function variacoesProdutoRoutes(app: any) {
         try {
             if (!(request as any).tenantId) return reply.status(401).send();
             const tenant_id = (request as any).tenantId;
+            const userId = (request as any).user?.id;
             const dto = request.body as CreateVariacaoDto;
 
-            const variacao = await variacaoService.create(tenant_id, dto);
+            const variacao = await variacaoService.create(tenant_id, dto, userId);
             return reply.code(201).send(variacao);
         } catch (error: any) {
             return reply.status(400).send({ error: error.message });

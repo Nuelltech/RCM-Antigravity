@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { AuthService } from './auth.service';
-import { loginSchema, registerSchema, verifyEmailSchema } from './auth.schema';
+import { loginSchema, registerSchema, verifyEmailSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.schema';
 
 export async function authRoutes(app: FastifyInstance) {
     const service = new AuthService(app);
@@ -48,6 +48,36 @@ export async function authRoutes(app: FastifyInstance) {
             return reply.send(result);
         } catch (err: any) {
             return reply.status(401).send({ error: err.message });
+        }
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().post('/forgot-password', {
+        schema: {
+            body: forgotPasswordSchema,
+            tags: ['Auth'],
+            summary: 'Request password reset code',
+        },
+    }, async (req, reply) => {
+        try {
+            const result = await service.forgotPassword(req.body);
+            return reply.send(result);
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message });
+        }
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().post('/reset-password', {
+        schema: {
+            body: resetPasswordSchema,
+            tags: ['Auth'],
+            summary: 'Reset password with code',
+        },
+    }, async (req, reply) => {
+        try {
+            const result = await service.resetPassword(req.body);
+            return reply.send(result);
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message });
         }
     });
 }

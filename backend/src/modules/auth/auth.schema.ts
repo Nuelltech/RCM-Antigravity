@@ -23,3 +23,17 @@ export const verifyEmailSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+
+export const forgotPasswordSchema = z.object({
+    email: z.string().email(),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+    email: z.string().email(),
+    code: z.string().length(6),
+    newPassword: z.string().min(6),
+});
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

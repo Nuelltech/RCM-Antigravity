@@ -89,7 +89,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                         />
                     </div>
                     <p className="mt-2 text-center text-xs text-gray-400">
-                        Restaurant Cost Manager
+                        RCM
                     </p>
                 </div>
             </div>

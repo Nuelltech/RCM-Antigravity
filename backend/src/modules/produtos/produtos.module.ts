@@ -166,12 +166,39 @@ class ProductService {
         }
     }
 
-    async createVariation(data: z.infer<typeof createVariationSchema>) {
+    async createVariation(data: z.infer<typeof createVariationSchema>, userId?: number) {
+        // Get current effective unit price
+        const precoUnitarioAnterior = await recalculationService.getPrecoUnitarioAtual(data.produto_id);
+
         const preco_unitario = data.preco_compra / data.unidades_por_compra;
-        return this.db.create('variacaoProduto', {
+        const variation = await this.db.create('variacaoProduto', {
             ...data,
             preco_unitario,
-        });
+        }) as any;
+
+        // Recalculate impact
+        const impact = await recalculationService.recalculateAfterPriceChange(data.produto_id);
+
+        // Get new effective unit price
+        const precoUnitarioNovo = await recalculationService.getPrecoUnitarioAtual(data.produto_id);
+
+        // Record history if effective price changed
+        if (!precoUnitarioAnterior.equals(precoUnitarioNovo)) {
+            await priceHistoryService.createPriceHistory({
+                tenantId: this.tenantId,
+                variacaoId: variation.id,
+                precoAnterior: new Decimal(0),
+                precoNovo: new Decimal(data.preco_compra),
+                precoUnitarioAnterior: precoUnitarioAnterior,
+                precoUnitarioNovo: precoUnitarioNovo,
+                origem: 'MANUAL',
+                alteradoPor: userId,
+                receitasAfetadas: impact.receitasAfetadas,
+                menusAfetados: impact.menusAfetados,
+            });
+        }
+
+        return variation;
     }
 
     async listFamilies() {
@@ -398,7 +425,39 @@ export async function productRoutes(app: FastifyInstance) {
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new ProductService(req.tenantId);
-        return service.createVariation(req.body);
+        return service.createVariation(req.body, (req as any).user?.id);
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().get('/:id/variations', {
+        schema: {
+            params: z.object({ id: z.string() }),
+            tags: ['Products'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const productId = parseInt(req.params.id);
+
+        const variations = await prisma.variacaoProduto.findMany({
+            where: {
+                produto_id: productId,
+                tenant_id: req.tenantId,
+                ativo: true,
+            },
+            include: {
+                produto: {
+                    select: {
+                        unidade_medida: true,
+                    }
+                }
+            },
+            orderBy: [
+                { data_ultima_compra: 'desc' },
+                { id: 'desc' }
+            ]
+        });
+
+        return variations;
     });
 
     // Families & Subfamilies

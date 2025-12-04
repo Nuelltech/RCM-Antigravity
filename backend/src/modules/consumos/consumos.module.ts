@@ -169,17 +169,69 @@ class ConsumptionService {
 
         if (!receita) return;
 
+        // Calculate ratio based on portions
+        // If portions is 0 or null, default to 1 to avoid division by zero
+        const porcoes = Number(receita.numero_porcoes) || 1;
+        const ratio = new Decimal(multiplicador).div(porcoes);
+
         for (const ingrediente of receita.ingredientes) {
             if (ingrediente.produto_id) {
                 // Direct product ingredient
                 this.addConsumption(
                     ingrediente.produto_id,
                     ingrediente.produto!,
-                    new Decimal(ingrediente.quantidade_bruta).times(multiplicador)
+                    new Decimal(ingrediente.quantidade_bruta).times(ratio)
                 );
             } else if (ingrediente.receita_preparo_id) {
                 // Pre-prep recipe - process recursively
-                await this.processRecipe(ingrediente.receita_preparo_id, multiplicador);
+                // For sub-recipes, we pass the calculated ratio as the new multiplier
+                // because the sub-recipe's own portions will be handled in its own processRecipe call
+                // WAIT: If we pass 'ratio' (which is e.g. 2.5 portions needed), the recursive call
+                // will divide by the sub-recipe's portions again. This is correct.
+                // Example:
+                // Main Recipe (4 portions) needs 100g of Sub-Recipe (which yields 1kg).
+                // We sell 8 portions of Main.
+                // Ratio Main = 8 / 4 = 2.
+                // We need 2 * 100g = 200g of Sub-Recipe.
+                // Inside Sub-Recipe process:
+                // Multiplier is 200 (if unit is g) or 0.2 (if unit is kg).
+                // Let's assume the ingredient quantity is in the unit of the sub-recipe.
+                // If Sub-Recipe is defined as yielding 1kg (1000g), and we need 200g.
+                // The ingredient definition says "100g".
+                // So we need 100g * 2 = 200g.
+                // The recursive call receives 200 (if quantity is absolute).
+                // BUT `processRecipe` expects `multiplicador` to be "number of full recipes" or "number of portions"?
+                // The current logic assumes `multiplicador` is "number of times this recipe is made".
+                // If Main Recipe takes 1 Unit of Sub-Recipe.
+                // And Sub-Recipe yields 10 Units.
+                // Then 1 execution of Main consumes 1/10th of Sub-Recipe execution.
+
+                // Let's re-evaluate the recursive logic.
+                // `processRecipe` arg `multiplicador` = "How many full batches of this recipe we are making" (or selling equivalent of).
+                // NO, initially `multiplicador` is "Quantity Sold" (e.g. 10 portions).
+                // So `ratio` = 10 / 4 = 2.5 batches.
+
+                // Ingredient: Sub-Recipe X. Quantity: 0.5 (Units/KG/etc).
+                // We need 0.5 * 2.5 = 1.25 Units of Sub-Recipe X.
+                // We call processRecipe(SubX, 1.25).
+                // Inside SubX (yields 5 portions/units):
+                // ratioX = 1.25 / 5 = 0.25 batches.
+                // Ingredients of SubX are multiplied by 0.25. Correct.
+
+                // However, if Sub-Recipe is a "Pre-preparo" (e.g. Molho), usually `numero_porcoes` might be defined as 1 (yield 1kg) or X (yield X kg).
+                // If it yields 1kg, and we use 0.1kg.
+                // We need 0.1 * 2.5 = 0.25kg.
+                // processRecipe(Molho, 0.25).
+                // Molho portions = 1.
+                // ratio = 0.25 / 1 = 0.25. Correct.
+
+                // So passing `new Decimal(ingrediente.quantidade_bruta).times(ratio)` seems correct
+                // assuming `ingrediente.quantidade_bruta` is the amount of the sub-recipe used in ONE batch of the parent recipe.
+
+                await this.processRecipe(
+                    ingrediente.receita_preparo_id,
+                    Number(new Decimal(ingrediente.quantidade_bruta).times(ratio))
+                );
             }
         }
     }
