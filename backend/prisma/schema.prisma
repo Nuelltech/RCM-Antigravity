@@ -58,6 +58,7 @@ model Tenant {
   comboOpcoes         ComboCategoriaOpcao[]
   formatosVenda       FormatoVenda[]
   templateFormatosVenda TemplateFormatoVenda[]
+  templateVariacoesCompra TemplateVariacaoCompra[]
   dadosRestaurante    DadosRestaurante?
   custosEstrutura     CustoEstrutura[]
 
@@ -252,12 +253,14 @@ model VariacaoProduto {
   fornecedor          String?
   codigo_fornecedor   String?
   data_ultima_compra  DateTime?
+  template_id         Int?     // Reference to template used
   ativo               Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
   produto             Produto  @relation(fields: [produto_id], references: [id])
+  template            TemplateVariacaoCompra? @relation("TemplateUsage", fields: [template_id], references: [id])
   historicoPrecos     HistoricoPreco[]
   compras             Compra[]
   comprasTemporarias  CompraTemporaria[]
@@ -266,6 +269,41 @@ model VariacaoProduto {
 
   @@map("variacoes_produto")
 }
+
+// -----------------------------------------------------------------------------
+// PRODUTOS: Purchase Variation Templates
+// -----------------------------------------------------------------------------
+
+model TemplateVariacaoCompra {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  
+  // Template definition
+  nome                String   // "Pack 6un", "Barril 50L", "Saco 25kg"
+  descricao           String?  @db.Text
+  unidades_por_compra Decimal  @db.Decimal(10, 4)
+  unidade_medida      String   // "L", "KG", "Unidade"
+  
+  // Control
+  ativo               Boolean  @default(true)
+  ordem_exibicao      Int?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacoes           VariacaoProduto[] @relation("TemplateUsage")
+  
+  @@index([tenant_id, ativo])
+  @@index([tenant_id, unidade_medida])
+  @@map("template_variacao_compra")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUTOS: Sell Formats for Products
+// -----------------------------------------------------------------------------
 
 // NEW MODEL: Sell Formats for Products
 model FormatoVenda {

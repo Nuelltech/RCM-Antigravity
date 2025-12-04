@@ -13,6 +13,7 @@ export interface CreateVariacaoDto {
     preco_compra: number;
     fornecedor?: string;
     codigo_fornecedor?: string;
+    template_id?: number; // Reference to template used
 }
 
 export interface UpdateVariacaoDto {
@@ -52,8 +53,13 @@ class VariacaoProdutoService {
                 preco_unitario,
                 fornecedor: dto.fornecedor,
                 codigo_fornecedor: dto.codigo_fornecedor,
+                template_id: dto.template_id,
+                data_ultima_compra: new Date(), // Set as most recent to make it the main variation
             },
         });
+
+        // Trigger cascade recalculation for recipes, combos, and menus
+        await recalculationService.recalculateAfterPriceChange(dto.produto_id);
 
         return this.transform(variacao);
     }
@@ -148,27 +154,23 @@ class VariacaoProdutoService {
      * Get main (current) variation - most recent purchase OR edit
      */
     async getMainVariacao(tenant_id: number, produto_id: number) {
-        const variacoes = await prisma.variacaoProduto.findMany({
+        const variacao = await prisma.variacaoProduto.findFirst({
             where: {
                 tenant_id,
                 produto_id,
                 ativo: true,
             },
+            orderBy: [
+                { data_ultima_compra: 'desc' },
+                { id: 'desc' }
+            ],
         });
 
-        if (variacoes.length === 0) {
+        if (!variacao) {
             return null;
         }
 
-        // Find the most recent: either last purchase or last update
-        const mainVariacao = variacoes.reduce((main, current) => {
-            const mainDate = main.data_ultima_compra || main.updatedAt;
-            const currentDate = current.data_ultima_compra || current.updatedAt;
-
-            return currentDate > mainDate ? current : main;
-        });
-
-        return this.transform(mainVariacao);
+        return this.transform(variacao);
     }
 
     /**
@@ -183,10 +185,13 @@ class VariacaoProdutoService {
             throw new Error('Variação não encontrada');
         }
 
-        return prisma.variacaoProduto.update({
+        await prisma.variacaoProduto.update({
             where: { id },
             data: { ativo: false },
         });
+
+        // Trigger cascade recalculation as the main variation might have changed
+        await recalculationService.recalculateAfterPriceChange(existing.produto_id);
     }
 
     /**

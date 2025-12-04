@@ -91,7 +91,7 @@ function LoginPageContent() {
                 <div className="w-full max-w-md space-y-8">
                     <div className="text-center lg:text-left">
                         <div className="flex items-center justify-center lg:justify-start mb-6">
-                            <img src="/images/logo.png" alt="RCM" className="h-16 w-auto" />
+                            <img src="/images/logo-login.png" alt="RCM" className="h-16 w-auto" />
                         </div>
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">
                             Acesse sua conta

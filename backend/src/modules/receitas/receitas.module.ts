@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { TenantDB } from '../../core/database-tenant';
 import { prisma } from '../../core/database';
 import { Decimal } from '@prisma/client/runtime/library';
+import { recalculationService } from '../produtos/recalculation.service';
 
 // Schemas
 const ingredientSchema = z.object({
@@ -142,9 +143,10 @@ class RecipeService {
                                     select: {
                                         preco_unitario: true
                                     },
-                                    orderBy: {
-                                        id: 'asc'
-                                    },
+                                    orderBy: [
+                                        { data_ultima_compra: 'desc' },
+                                        { id: 'desc' }
+                                    ],
                                     take: 1
                                 }
                             }
@@ -306,7 +308,7 @@ class RecipeService {
     }
 
     async update(recipeId: number, data: z.infer<typeof createRecipeSchema>) {
-        return await prisma.$transaction(async (tx) => {
+        const recipe = await prisma.$transaction(async (tx) => {
             // 1. Verify recipe exists and belongs to tenant
             const existing = await tx.receita.findFirst({
                 where: { id: recipeId, tenant_id: this.tenantId }
@@ -430,6 +432,12 @@ class RecipeService {
                 custo_por_porcao: Number(custoPorPorcao),
             };
         });
+
+        // 7. Trigger cascade recalculation AFTER transaction commits
+        // This ensures the recalculation reads the UPDATED recipe costs
+        await recalculationService.recalculateAfterRecipeChange(recipeId);
+
+        return recipe;
     }
 
     async delete(recipeId: number) {

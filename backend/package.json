@@ -2,6 +2,9 @@
   "name": "rcm-backend",
   "version": "1.0.0",
   "description": "Restaurante Cost Manager Backend",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "main": "src/core/server.ts",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --exit-child src/core/server.ts",

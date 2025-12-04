@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Edit, Trash2, Star } from "lucide-react";
+import { Edit, Trash2, Star, Plus, Package } from "lucide-react";
 import { fetchClient } from "@/lib/api";
 
 interface VariacaoProduto {
@@ -22,10 +22,20 @@ interface VariacaoProduto {
     updatedAt: string;
 }
 
+interface TemplateVariacao {
+    id: number;
+    nome: string;
+    descricao?: string;
+    unidades_por_compra: number;
+    unidade_medida: string;
+    ordem_exibicao?: number;
+}
+
 interface PurchaseVariationsModalProps {
     isOpen: boolean;
     onClose: () => void;
     produtoId: string;
+    produtoUnidade: string; // NEW: Product's unit of measure
     variations: VariacaoProduto[];
     mainVariation: VariacaoProduto | null;
     onRefresh: () => void;
@@ -35,12 +45,16 @@ export function PurchaseVariationsModal({
     isOpen,
     onClose,
     produtoId,
+    produtoUnidade,
     variations,
     mainVariation,
     onRefresh
 }: PurchaseVariationsModalProps) {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [editingVariation, setEditingVariation] = useState<VariacaoProduto | null>(null);
+    const [templates, setTemplates] = useState<TemplateVariacao[]>([]);
+    const [selectedTemplate, setSelectedTemplate] = useState<TemplateVariacao | null>(null);
     const [formData, setFormData] = useState({
         tipo_unidade_compra: "",
         unidades_por_compra: 0,
@@ -49,6 +63,24 @@ export function PurchaseVariationsModal({
         codigo_fornecedor: "",
         ativo: true,
     });
+
+    // Fetch templates when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            fetchTemplates();
+        }
+    }, [isOpen, produtoUnidade]);
+
+    const fetchTemplates = async () => {
+        try {
+            const data = await fetchClient(
+                `/template-variacoes-compra?ativo=true&unidade_medida=${produtoUnidade}`
+            );
+            setTemplates(data);
+        } catch (error) {
+            console.error("Error fetching templates:", error);
+        }
+    };
 
     const handleEdit = (variation: VariacaoProduto) => {
         setEditingVariation(variation);
@@ -96,6 +128,55 @@ export function PurchaseVariationsModal({
         }
     };
 
+    const handleSelectTemplate = (template: TemplateVariacao) => {
+        setSelectedTemplate(template);
+        setFormData({
+            tipo_unidade_compra: template.nome,
+            unidades_por_compra: template.unidades_por_compra,
+            preco_compra: 0,
+            fornecedor: "",
+            codigo_fornecedor: "",
+            ativo: true,
+        });
+    };
+
+    const handleCreateVariation = async () => {
+        if (!formData.tipo_unidade_compra || formData.unidades_por_compra <= 0 || formData.preco_compra <= 0) {
+            alert("❌ Por favor preencha todos os campos obrigatórios");
+            return;
+        }
+
+        try {
+            await fetchClient("/variacoes-produto", {
+                method: "POST",
+                body: JSON.stringify({
+                    produto_id: parseInt(produtoId),
+                    tipo_unidade_compra: formData.tipo_unidade_compra,
+                    unidades_por_compra: formData.unidades_por_compra,
+                    preco_compra: formData.preco_compra,
+                    fornecedor: formData.fornecedor || undefined,
+                    codigo_fornecedor: formData.codigo_fornecedor || undefined,
+                    template_id: selectedTemplate?.id,
+                }),
+            });
+
+            alert("✅ Variação criada com sucesso!");
+            setIsCreateModalOpen(false);
+            setSelectedTemplate(null);
+            setFormData({
+                tipo_unidade_compra: "",
+                unidades_por_compra: 0,
+                preco_compra: 0,
+                fornecedor: "",
+                codigo_fornecedor: "",
+                ativo: true,
+            });
+            onRefresh();
+        } catch (error: any) {
+            alert(`❌ Erro: ${error.message}`);
+        }
+    };
+
     const isMainVariation = (variation: VariacaoProduto) => {
         return mainVariation?.id === variation.id;
     };
@@ -105,7 +186,28 @@ export function PurchaseVariationsModal({
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Gerir Variações de Compra</DialogTitle>
+                        <div className="flex items-center justify-between">
+                            <DialogTitle>Gerir Variações de Compra</DialogTitle>
+                            <Button
+                                type="button"
+                                onClick={() => {
+                                    setFormData({
+                                        tipo_unidade_compra: "",
+                                        unidades_por_compra: 0,
+                                        preco_compra: 0,
+                                        fornecedor: "",
+                                        codigo_fornecedor: "",
+                                        ativo: true,
+                                    });
+                                    setSelectedTemplate(null);
+                                    setIsCreateModalOpen(true);
+                                }}
+                                className="gap-2"
+                            >
+                                <Plus className="h-4 w-4" />
+                                Nova Variação
+                            </Button>
+                        </div>
                     </DialogHeader>
 
                     <div className="space-y-4">
@@ -304,6 +406,129 @@ export function PurchaseVariationsModal({
                         </Button>
                         <Button type="button" onClick={handleSaveEdit}>
                             Guardar Alterações
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Create Variation Modal */}
+            <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Nova Variação de Compra</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        {/* Template Selection */}
+                        {templates.length > 0 && (
+                            <div className="space-y-2">
+                                <Label>Selecionar Template (Opcional)</Label>
+                                <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                                    {templates.map((template) => (
+                                        <Button
+                                            key={template.id}
+                                            type="button"
+                                            variant={selectedTemplate?.id === template.id ? "default" : "outline"}
+                                            size="sm"
+                                            onClick={() => handleSelectTemplate(template)}
+                                            className="justify-start gap-2 h-auto py-2"
+                                        >
+                                            <Package className="h-4 w-4 flex-shrink-0" />
+                                            <span className="text-left text-xs">{template.nome}</span>
+                                        </Button>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-gray-500">
+                                    Clique num template para preencher automaticamente
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Form Fields */}
+                        <div className="space-y-2">
+                            <Label>Tipo de Unidade de Compra *</Label>
+                            <Input
+                                placeholder="Ex: Pack 6un, Barril 50L"
+                                value={formData.tipo_unidade_compra}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, tipo_unidade_compra: e.target.value })
+                                }
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Unidades por Compra *</Label>
+                                <Input
+                                    type="number"
+                                    step="0.001"
+                                    value={formData.unidades_por_compra || ""}
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            unidades_por_compra: parseFloat(e.target.value) || 0,
+                                        })
+                                    }
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Preço de Compra (€) *</Label>
+                                <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={formData.preco_compra || ""}
+                                    onChange={(e) =>
+                                        setFormData({
+                                            ...formData,
+                                            preco_compra: parseFloat(e.target.value) || 0,
+                                        })
+                                    }
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Fornecedor (Opcional)</Label>
+                            <Input
+                                placeholder="Nome do fornecedor"
+                                value={formData.fornecedor}
+                                onChange={(e) => setFormData({ ...formData, fornecedor: e.target.value })}
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Código Fornecedor (Opcional)</Label>
+                            <Input
+                                placeholder="Código do produto no fornecedor"
+                                value={formData.codigo_fornecedor}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, codigo_fornecedor: e.target.value })
+                                }
+                            />
+                        </div>
+
+                        <div className="bg-blue-50 p-3 rounded text-sm">
+                            <p className="text-gray-700">
+                                <strong>Preço Unitário Calculado:</strong>{" "}
+                                €
+                                {formData.unidades_por_compra > 0
+                                    ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
+                                    : "0.0000"}
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleCreateVariation}
+                            disabled={!formData.tipo_unidade_compra || formData.unidades_por_compra <= 0 || formData.preco_compra <= 0}
+                        >
+                            Criar Variação
                         </Button>
                     </DialogFooter>
                 </DialogContent>

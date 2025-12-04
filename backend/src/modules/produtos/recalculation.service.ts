@@ -44,6 +44,56 @@ export class RecalculationService {
     }
 
     /**
+     * Recalculate entities after a recipe change (update ingredients, etc.)
+     */
+    async recalculateAfterRecipeChange(receitaId: number) {
+        const affectedRecipes = new Set<number>([receitaId]);
+        const affectedMenuItems = new Set<number>();
+        const affectedCombos = new Set<number>();
+
+        // 1. Recalculate parent recipes (pre-preps)
+        await this.recalculateRecipesUsingPrepreps(affectedRecipes);
+
+        // 2. Recalculate combos using this recipe or affected parents
+        await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos);
+
+        // 3. Recalculate menu items for this recipe and affected parents
+        for (const rId of affectedRecipes) {
+            const receita = await prisma.receita.findUnique({
+                where: { id: rId },
+            });
+
+            if (receita && receita.tipo === 'Final') {
+                await this.recalculateMenuItemsForRecipe(rId, affectedMenuItems);
+            }
+        }
+
+        // 4. Recalculate menu items for affected combos
+        for (const comboId of affectedCombos) {
+            await this.recalculateMenuItemsForCombo(comboId, affectedMenuItems);
+        }
+
+        return {
+            receitasAfetadas: affectedRecipes.size,
+            combosAfetados: affectedCombos.size,
+            menusAfetados: affectedMenuItems.size,
+        };
+    }
+
+    /**
+     * Recalculate entities after a combo change
+     */
+    async recalculateAfterComboChange(comboId: number) {
+        const affectedMenuItems = new Set<number>();
+
+        await this.recalculateMenuItemsForCombo(comboId, affectedMenuItems);
+
+        return {
+            menusAfetados: affectedMenuItems.size,
+        };
+    }
+
+    /**
      * Recalculate recipes that directly use a product
      */
     private async recalculateRecipesUsingProduct(
@@ -107,19 +157,23 @@ export class RecalculationService {
                         ing.quantidade_bruta
                     );
 
-                    await prisma.ingredienteReceita.update({
-                        where: { id: ing.id },
-                        data: { custo_ingrediente: novoCusto },
-                    });
+                    const custoAnterior = new Decimal(ing.custo_ingrediente);
 
-                    // Mark parent recipe as affected
-                    if (!affectedRecipes.has(ing.receita_id)) {
+                    // Only update and propagate if cost changed
+                    if (!custoAnterior.equals(novoCusto)) {
+                        await prisma.ingredienteReceita.update({
+                            where: { id: ing.id },
+                            data: { custo_ingrediente: novoCusto },
+                        });
+
                         affectedRecipes.add(ing.receita_id);
-                        hasChanges = true; // Continue loop to propagate further
+                        hasChanges = true; // Continue loop because a cost changed
                     }
                 }
 
-                // Recalculate parent recipes
+                // Recalculate parent recipes if any of their ingredients changed
+                // We can optimize this by only recalculating those that had changes, 
+                // but for now recalculating all potential parents in this batch is safer.
                 if (hasChanges) {
                     const parentRecipeIds = [
                         ...new Set(parentIngredients.map((i) => i.receita_id)),
@@ -212,9 +266,10 @@ export class RecalculationService {
                 produto_id: produtoId,
                 ativo: true,
             },
-            orderBy: {
-                data_ultima_compra: 'desc',
-            },
+            orderBy: [
+                { data_ultima_compra: 'desc' },
+                { id: 'desc' }
+            ],
         });
 
         if (!variacao) {
@@ -356,16 +411,21 @@ export class RecalculationService {
                     in: [...affectedRecipes],
                 },
             },
-            include: {
-                receita: true,
-            },
         });
 
         // Update each combo item's cost based on updated recipe cost
         for (const item of comboItems) {
-            if (!item.receita) continue;
+            if (!item.receita_id) continue;
 
-            const novoCustoUnitario = item.receita.custo_por_porcao;
+            // Fetch fresh recipe data to get the UPDATED cost
+            const receita = await prisma.receita.findUnique({
+                where: { id: item.receita_id },
+                select: { custo_por_porcao: true },
+            });
+
+            if (!receita) continue;
+
+            const novoCustoUnitario = receita.custo_por_porcao;
             const novoCustoTotal = new Decimal(item.quantidade).times(novoCustoUnitario);
 
             await prisma.comboItem.update({
@@ -379,8 +439,43 @@ export class RecalculationService {
             affectedCombos.add(item.combo_id);
         }
 
+        // Handle ComboOpcoes (for Simple Combos)
+        const comboOptions = await prisma.comboCategoriaOpcao.findMany({
+            where: {
+                receita_id: {
+                    in: [...affectedRecipes],
+                },
+            },
+            include: {
+                categoria: true,
+            },
+        });
+
+        for (const opc of comboOptions) {
+            if (!opc.receita_id) continue;
+
+            // Fetch fresh recipe data to get the UPDATED cost
+            const receita = await prisma.receita.findUnique({
+                where: { id: opc.receita_id },
+                select: { custo_por_porcao: true },
+            });
+
+            if (!receita) continue;
+
+            const novoCusto = receita.custo_por_porcao;
+
+            await prisma.comboCategoriaOpcao.update({
+                where: { id: opc.id },
+                data: { custo_unitario: novoCusto },
+            });
+
+            if (opc.categoria) {
+                affectedCombos.add(opc.categoria.combo_id);
+            }
+        }
+
         // Recalculate total cost for each affected combo
-        const uniqueCombos = [...new Set(comboItems.map((i) => i.combo_id))];
+        const uniqueCombos = [...affectedCombos];
         for (const comboId of uniqueCombos) {
             await this.recalculateSingleCombo(comboId);
         }
@@ -390,14 +485,47 @@ export class RecalculationService {
      * Recalculate single combo total cost
      */
     private async recalculateSingleCombo(comboId: number) {
-        const items = await prisma.comboItem.findMany({
-            where: { combo_id: comboId },
+        const combo = await prisma.combo.findUnique({
+            where: { id: comboId },
+            include: {
+                itens: true,
+                categorias: {
+                    include: {
+                        opcoes: true,
+                    },
+                },
+            },
         });
 
-        const custoTotal = items.reduce(
-            (sum, item) => sum.plus(item.custo_total),
-            new Decimal(0)
-        );
+        if (!combo) return;
+
+        let custoTotal = new Decimal(0);
+
+        // 1. Sum fixed items
+        for (const item of combo.itens) {
+            custoTotal = custoTotal.plus(item.custo_total);
+        }
+
+        // 2. Sum categories (max option cost)
+        for (const cat of combo.categorias) {
+            let maxCost = new Decimal(0);
+
+            for (const opc of cat.opcoes) {
+                // Ensure we use Decimal for comparison
+                const opcCost = new Decimal(opc.custo_unitario);
+                if (opcCost.greaterThan(maxCost)) {
+                    maxCost = opcCost;
+                }
+            }
+
+            // Update category max cost
+            await prisma.comboCategoria.update({
+                where: { id: cat.id },
+                data: { custo_max_calculado: maxCost },
+            });
+
+            custoTotal = custoTotal.plus(maxCost);
+        }
 
         await prisma.combo.update({
             where: { id: comboId },

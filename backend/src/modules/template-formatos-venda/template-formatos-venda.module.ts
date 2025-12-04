@@ -141,8 +141,13 @@ export async function templateFormatoVendaRoutes(server: FastifyInstance) {
 
         const service = new TemplateFormatoVendaService(tenantId);
 
-        const template = await service.create(request.body);
-        return reply.status(201).send(template);
+        try {
+            const template = await service.create(request.body);
+            return reply.status(201).send(template);
+        } catch (error: any) {
+            request.log.error(error);
+            return reply.status(500).send({ error: 'Failed to create template', details: error.message });
+        }
     });
 
     // Update template

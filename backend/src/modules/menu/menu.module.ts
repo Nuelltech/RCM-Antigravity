@@ -342,6 +342,9 @@ class MenuService {
         // Calculate margins
         const margins = calculateMargins(data.pvp, custo_por_porcao);
 
+        // Calculate CMV
+        const cmv = data.pvp > 0 ? (custo_por_porcao / data.pvp) * 100 : 0;
+
         // Create menu item
         const menuItem = await prisma.menuItem.create({
             data: {
@@ -353,6 +356,7 @@ class MenuService {
                 pvp: new Decimal(data.pvp),
                 margem_bruta: margins.margem_bruta,
                 margem_percentual: margins.margem_percentual,
+                cmv_percentual: new Decimal(cmv.toFixed(2)),
                 categoria_menu: data.categoria_menu,
                 descricao_menu: data.descricao_menu,
                 alergenos: data.alergenos,
@@ -443,8 +447,9 @@ class MenuService {
             throw new Error('Item do menu não encontrado');
         }
 
-        // If PVP is being updated, recalculate margins
+        // If PVP is being updated, recalculate margins and CMV
         let margins = undefined;
+        let cmv = undefined;
         if (data.pvp) {
             let custo = 0;
             if (existing.receita_id) custo = Number(existing.receita!.custo_por_porcao);
@@ -452,6 +457,7 @@ class MenuService {
             else if (existing.formato_venda_id) custo = Number(existing.formatoVenda!.custo_unitario);
 
             margins = calculateMargins(data.pvp, custo);
+            cmv = data.pvp > 0 ? (custo / data.pvp) * 100 : 0;
         }
 
         const updateData: any = {
@@ -462,6 +468,7 @@ class MenuService {
             updateData.pvp = new Decimal(data.pvp);
             updateData.margem_bruta = margins?.margem_bruta;
             updateData.margem_percentual = margins?.margem_percentual;
+            updateData.cmv_percentual = new Decimal(cmv!.toFixed(2));
         }
 
         const menuItem = await prisma.menuItem.update({
@@ -631,7 +638,7 @@ class MenuService {
             },
         });
 
-        return recipes.map(recipe => ({
+        return recipes.map((recipe: any) => ({
             ...recipe,
             custo_por_porcao: Number(recipe.custo_por_porcao),
         }));
@@ -667,7 +674,7 @@ class MenuService {
             },
         });
 
-        return combos.map(combo => ({
+        return combos.map((combo: any) => ({
             ...combo,
             custo_total: Number(combo.custo_total),
         }));
@@ -708,7 +715,7 @@ class MenuService {
             },
         });
 
-        return formatos.map(formato => ({
+        return formatos.map((formato: any) => ({
             id: formato.id,
             nome: formato.nome,
             custo_unitario: Number(formato.custo_unitario),

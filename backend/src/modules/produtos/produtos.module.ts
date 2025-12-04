@@ -95,7 +95,13 @@ class ProductService {
                 subfamilia: {
                     include: { familia: true }
                 },
-                variacoes: true
+                variacoes: {
+                    where: { ativo: true },
+                    orderBy: [
+                        { data_ultima_compra: 'desc' },
+                        { id: 'desc' }
+                    ]
+                }
             },
             skip,
             take: limit,
@@ -208,7 +214,42 @@ class ProductService {
 
     async update(productId: number, data: z.infer<typeof createProductSchema>) {
         // Verify product exists and belongs to tenant
-        await this.getById(productId);
+        const existing = await this.getById(productId);
+
+        // Check if subfamily changed - if so, recalculate codigo_interno
+        if (data.subfamilia_id && data.subfamilia_id !== existing.subfamilia_id) {
+            // Get new subfamilia with familia to generate code
+            const subfamilia = await prisma.subfamilia.findUnique({
+                where: { id: data.subfamilia_id },
+                include: { familia: true }
+            });
+
+            if (!subfamilia || subfamilia.tenant_id !== this.tenantId) {
+                throw new Error('Subfamília não encontrada');
+            }
+
+            // Get existing products in new subfamily to calculate next sequence
+            const existingProducts = await this.db.findMany('produto', {
+                where: { subfamilia_id: data.subfamilia_id },
+                orderBy: { codigo_interno: 'desc' },
+                take: 1
+            }) as Array<{ codigo_interno: string | null }>;
+
+            // Calculate next sequence number
+            let nextSeq = 1;
+            if (existingProducts.length > 0 && existingProducts[0].codigo_interno) {
+                const lastCode = existingProducts[0].codigo_interno;
+                const parts = lastCode.split('-');
+                if (parts.length === 3) {
+                    nextSeq = parseInt(parts[2]) + 1;
+                }
+            }
+
+            // Generate new product code
+            const familiaCode = subfamilia.familia.codigo || 'XXX';
+            const subfamiliaCode = subfamilia.codigo || 'XXX';
+            data.codigo_interno = `${familiaCode}-${subfamiliaCode}-${nextSeq.toString().padStart(3, '0')}`;
+        }
 
         return await this.db.update('produto', productId, data);
     }

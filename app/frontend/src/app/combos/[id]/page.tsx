@@ -147,36 +147,57 @@ export default function ViewComboPage() {
                                     <div key={idx} className="border rounded-lg p-4">
                                         <div className="flex justify-between items-start mb-3">
                                             <div>
-                                                <h3 className="font-semibold text-lg">{cat.nome}</h3>
-                                                {cat.descricao && (
-                                                    <p className="text-sm text-gray-600 mt-1">
-                                                        {cat.descricao}
-                                                    </p>
-                                                )}
+                                                <h3 className="font-semibold text-lg">{cat.categoria}</h3>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${cat.obrigatoria ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'}`}>
+                                                        {cat.obrigatoria ? 'Obrigatória' : 'Opcional'}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        Ordem: {cat.ordem}
+                                                    </span>
+                                                </div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="text-sm text-gray-500">Escolher</div>
-                                                <div className="font-bold text-lg">
-                                                    {cat.quantidade_escolher} item(s)
+                                                <div className="text-sm text-gray-500">Custo Máx.</div>
+                                                <div className="font-bold text-lg text-green-600">
+                                                    € {Number(cat.custo_max_calculado || 0).toFixed(2)}
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="border-t pt-3">
                                             <div className="text-sm font-medium text-gray-700 mb-2">
-                                                Itens disponíveis:
+                                                Itens disponíveis: ({cat.opcoes?.length || 0})
                                             </div>
                                             <div className="grid gap-2">
-                                                {cat.menu_items?.map((item: any) => (
-                                                    <div
-                                                        key={item.id}
-                                                        className="flex justify-between items-center bg-gray-50 p-2 rounded"
-                                                    >
-                                                        <span>{item.nome_comercial}</span>
-                                                        <span className="text-sm text-gray-600">
-                                                            € {Number(item.pvp).toFixed(2)}
-                                                        </span>
+                                                {cat.opcoes?.map((opcao: any) => {
+                                                    const isReceita = !!opcao.receita_id;
+                                                    const nome = isReceita
+                                                        ? opcao.receita?.nome
+                                                        : opcao.formatoVenda?.nome;
+                                                    const custo = Number(opcao.custo_unitario || 0);
+
+                                                    return (
+                                                        <div
+                                                            key={opcao.id}
+                                                            className="flex justify-between items-center bg-gray-50 p-2 rounded"
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`px-2 py-0.5 rounded text-xs ${isReceita ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                    {isReceita ? 'Receita' : 'Produto'}
+                                                                </span>
+                                                                <span>{nome || '-'}</span>
+                                                            </div>
+                                                            <span className="text-sm font-medium text-gray-700">
+                                                                € {custo.toFixed(2)}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {(!cat.opcoes || cat.opcoes.length === 0) && (
+                                                    <div className="text-sm text-gray-500 italic p-2">
+                                                        Nenhum item disponível
                                                     </div>
-                                                ))}
+                                                )}
                                             </div>
                                         </div>
                                     </div>

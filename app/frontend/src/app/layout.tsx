@@ -7,6 +7,9 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
     title: "Restaurante Cost Manager",
     description: "SaaS Multi-Tenant for Restaurant Management",
+    icons: {
+        icon: '/images/logo-sidebar.png',
+    },
 };
 
 export default function RootLayout({

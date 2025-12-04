@@ -19,7 +19,7 @@ export default function Home() {
             <nav className="fixed top-0 w-full bg-white/95 backdrop-blur-sm border-b z-50">
                 <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <img src="/images/logo.png" alt="RCM" className="h-10 w-auto" />
+                        <img src="/images/logo-login.png" alt="RCM" className="h-10 w-auto" />
                         <span className="text-xl font-bold text-gray-900">RCM</span>
                     </div>
                     <Link href="/auth/login">
@@ -261,7 +261,7 @@ export default function Home() {
             <footer className="bg-gray-900 text-gray-400 py-12 px-6">
                 <div className="max-w-7xl mx-auto text-center">
                     <div className="flex items-center justify-center gap-2 mb-4">
-                        <img src="/images/logo.png" alt="RCM" className="h-8 w-auto" />
+                        <img src="/images/logo-sidebar.png" alt="RCM" className="h-8 w-auto" />
                         <span className="text-xl font-bold text-white">RCM</span>
                     </div>
                     <p className="mb-4">Restaurant Cost Manager - Controle Total dos Seus Custos</p>

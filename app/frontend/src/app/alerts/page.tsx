@@ -67,8 +67,12 @@ export default function AlertsPage() {
     async function loadAlerts() {
         setLoading(true);
         try {
-            const data = await fetchClient('/alerts');
+            const data = await fetchClient('/alerts/regenerate', {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
             setAlerts(data);
+            toast({ description: "Alertas atualizados com sucesso." });
         } catch (error) {
             console.error('Erro ao carregar alertas:', error);
             toast({

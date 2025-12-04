@@ -205,6 +205,11 @@ export default function EditProductPage() {
         }
     }, [showSaleFormats, isVendavel, productId]);
 
+    // Load templates on mount
+    useEffect(() => {
+        loadTemplates();
+    }, []);
+
     // Load purchase variations
     const loadPurchaseVariations = async () => {
         try {
@@ -843,6 +848,7 @@ export default function EditProductPage() {
                 isOpen={isVariationsModalOpen}
                 onClose={() => setIsVariationsModalOpen(false)}
                 produtoId={productId}
+                produtoUnidade={product?.unidade_medida || "L"}
                 variations={purchaseVariations}
                 mainVariation={mainVariation}
                 onRefresh={loadPurchaseVariations}

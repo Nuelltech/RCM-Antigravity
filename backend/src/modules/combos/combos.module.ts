@@ -3,6 +3,7 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { prisma } from '../../core/database';
 import { Decimal } from '@prisma/client/runtime/library';
+import { recalculationService } from '../produtos/recalculation.service';
 
 // ========================
 // DTO Schemas
@@ -467,7 +468,10 @@ class ComboService {
                             include: {
                                 variacoes: {
                                     where: { ativo: true },
-                                    orderBy: { data_ultima_compra: 'desc' },
+                                    orderBy: [
+                                        { data_ultima_compra: 'desc' },
+                                        { id: 'desc' }
+                                    ],
                                     take: 1,
                                 },
                             },
@@ -505,6 +509,9 @@ class ComboService {
                 where: { id: comboId },
                 data: updateData,
             });
+
+            // Trigger cascade recalculation
+            await recalculationService.recalculateAfterComboChange(comboId);
 
             return {
                 ...updatedCombo,
@@ -601,6 +608,9 @@ class ComboService {
                 where: { id: comboId },
                 data: updateData,
             });
+
+            // Trigger cascade recalculation
+            await recalculationService.recalculateAfterComboChange(comboId);
 
             return {
                 ...updatedCombo,

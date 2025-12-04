@@ -72,7 +72,46 @@ class AlertsService {
         });
     }
 
-    private async generateAlerts() {
+    async regenerateAlerts(): Promise<Alert[]> {
+        // Track valid alert IDs during generation
+        const validAlertIds = new Set<number>();
+
+        // Generate new alerts and collect their IDs
+        await this.generateAlerts(validAlertIds);
+
+        // Archive alerts that are no longer valid (not in the set of generated alerts)
+        // Only archive alerts that are currently active (not archived)
+        if (validAlertIds.size > 0) {
+            await prisma.alertaAi.updateMany({
+                where: {
+                    tenant_id: this.tenantId,
+                    arquivado: false,
+                    NOT: {
+                        id: { in: Array.from(validAlertIds) }
+                    }
+                },
+                data: {
+                    arquivado: true
+                }
+            });
+        } else {
+            // If no alerts were generated, archive ALL active alerts
+            await prisma.alertaAi.updateMany({
+                where: {
+                    tenant_id: this.tenantId,
+                    arquivado: false
+                },
+                data: {
+                    arquivado: true
+                }
+            });
+        }
+
+        // Return updated alerts
+        return await this.getAlerts();
+    }
+
+    private async generateAlerts(validAlertIds?: Set<number>) {
         // Get thresholds or create defaults
         let settings = await prisma.dadosRestaurante.findUnique({
             where: { tenant_id: this.tenantId }
@@ -136,7 +175,7 @@ class AlertsService {
                     entidade_tipo: 'MenuItem',
                     entidade_id: item.id.toString(),
                     dados_contexto: { value: cmv, threshold: severity === 'high' ? cmvHigh : cmvWarning }
-                });
+                }, validAlertIds);
             }
         }
 
@@ -178,7 +217,7 @@ class AlertsService {
                     entidade_tipo: 'HistoricoPreco',
                     entidade_id: change.id.toString(),
                     dados_contexto: { value: percent, threshold: costIncreaseLow }
-                });
+                }, validAlertIds);
             }
         }
 
@@ -212,7 +251,7 @@ class AlertsService {
                     entidade_tipo: 'Venda',
                     entidade_id: lastSale.id.toString(),
                     dados_contexto: { value: daysSinceSale, threshold: inactivityMed }
-                });
+                }, validAlertIds);
             }
         }
 
@@ -233,7 +272,7 @@ class AlertsService {
                     entidade_tipo: 'Compra',
                     entidade_id: lastPurchase.id.toString(),
                     dados_contexto: { value: daysSincePurchase, threshold: inactivityMed }
-                });
+                }, validAlertIds);
             }
         }
     }
@@ -246,7 +285,7 @@ class AlertsService {
         entidade_tipo: string;
         entidade_id: string;
         dados_contexto: any;
-    }) {
+    }, validAlertIds?: Set<number>) {
         // Check if active alert exists for this entity
         const existing = await prisma.alertaAi.findFirst({
             where: {
@@ -258,12 +297,13 @@ class AlertsService {
         });
 
         if (!existing) {
-            await prisma.alertaAi.create({
+            const newAlert = await prisma.alertaAi.create({
                 data: {
                     tenant_id: this.tenantId,
                     ...data
                 }
             });
+            if (validAlertIds) validAlertIds.add(newAlert.id);
         } else {
             // Update existing if severity changed or message updated
             if (existing.severidade !== data.severidade || existing.mensagem !== data.mensagem) {
@@ -277,6 +317,7 @@ class AlertsService {
                     }
                 });
             }
+            if (validAlertIds) validAlertIds.add(existing.id);
         }
     }
 
@@ -319,6 +360,32 @@ export async function alertsRoutes(app: FastifyInstance) {
         if (!req.tenantId) return reply.status(401).send();
         const service = new AlertsService(req.tenantId);
         return await service.getAlerts();
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().post('/regenerate', {
+        schema: {
+            tags: ['Alerts'],
+            security: [{ bearerAuth: [] }],
+            body: z.object({}).optional(),
+            response: {
+                200: z.array(z.object({
+                    id: z.string(),
+                    type: z.enum(['cmv', 'cost_increase', 'inactivity']),
+                    severity: z.enum(['info', 'warning', 'high']),
+                    item: z.string(),
+                    message: z.string(),
+                    date: z.string(),
+                    value: z.number().optional(),
+                    threshold: z.number().optional(),
+                    lido: z.boolean(),
+                    arquivado: z.boolean()
+                }))
+            }
+        }
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const service = new AlertsService(req.tenantId);
+        return await service.regenerateAlerts();
     });
 
     app.withTypeProvider<ZodTypeProvider>().patch('/:id/read', {
