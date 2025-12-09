@@ -25,6 +25,12 @@ const productSchema = z.object({
     unidades_por_compra: z.number().min(0.01, "Quantidade deve ser maior que 0"),
     preco_compra: z.number().min(0.01, "Preço deve ser maior que 0"),
     fornecedor: z.string().optional(),
+    // Sales Format
+    vendavel: z.boolean().default(false),
+    formato_nome: z.string().optional(),
+    formato_unidade: z.string().optional(),
+    formato_quantidade: z.number().optional(),
+    formato_preco: z.number().optional(),
 });
 
 type ProductForm = z.infer<typeof productSchema>;
@@ -35,15 +41,25 @@ interface Family {
     subfamilias: { id: number; nome: string }[];
 }
 
+interface Template {
+    id: number;
+    nome: string;
+    quantidade: number;
+    unidade_medida: string;
+}
+
 export default function NewProductPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [families, setFamilies] = useState<Family[]>([]);
+    const [templates, setTemplates] = useState<Template[]>([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
     const {
         register,
         handleSubmit,
         watch,
+        setValue,
         formState: { errors },
     } = useForm<ProductForm>({
         resolver: zodResolver(productSchema),
@@ -51,14 +67,59 @@ export default function NewProductPage() {
             unidade_medida: "KG",
             unidades_por_compra: 1,
             preco_compra: 0,
+            vendavel: false,
+            formato_quantidade: 1,
         },
     });
+
+    const isVendavel = watch("vendavel");
+    const productName = watch("nome");
+    const productUnit = watch("unidade_medida");
+
+    // Auto-fill sales format fields
+    useEffect(() => {
+        if (isVendavel) {
+            if (productName && !watch("formato_nome")) {
+                setValue("formato_nome", productName);
+            }
+            if (productUnit && !watch("formato_unidade")) {
+                setValue("formato_unidade", productUnit);
+            }
+        }
+    }, [isVendavel, productName, productUnit]);
 
     const selectedFamilyId = watch("familia_id");
 
     useEffect(() => {
         loadFamilies();
+        loadTemplates();
     }, []);
+
+    const loadTemplates = async () => {
+        try {
+            const data = await fetchClient('/template-formatos-venda?ativo=true');
+            setTemplates(data.sort((a: Template, b: Template) => a.nome.localeCompare(b.nome)));
+        } catch (error) {
+            console.error('Failed to load templates:', error);
+        }
+    };
+
+    const handleTemplateSelect = (templateId: string) => {
+        if (!templateId) {
+            setSelectedTemplateId(null);
+            return;
+        }
+
+        const template = templates.find(t => t.id === Number(templateId));
+        if (template) {
+            setSelectedTemplateId(template.id);
+            // Auto-populate fields
+            const currentProductName = watch("nome") || "";
+            setValue('formato_nome', `${currentProductName} ${template.nome}`.trim());
+            setValue('formato_quantidade', template.quantidade);
+            setValue('formato_unidade', template.unidade_medida);
+        }
+    };
 
     const loadFamilies = async () => {
         try {
@@ -78,6 +139,7 @@ export default function NewProductPage() {
                 unidade_medida: data.unidade_medida,
                 descricao: data.descricao,
                 imagem_url: data.imagem_url,
+                vendavel: data.vendavel,
             };
 
             const product = await fetchClient("/products", {
@@ -97,6 +159,24 @@ export default function NewProductPage() {
                 method: "POST",
                 body: JSON.stringify(variationPayload),
             });
+
+            // Create Sales Format if vendavel
+            if (data.vendavel) {
+                const salesFormatPayload = {
+                    produto_id: product.id,
+                    template_id: selectedTemplateId,
+                    nome: data.formato_nome || data.nome,
+                    quantidade_vendida: data.formato_quantidade || 1,
+                    unidade_medida: data.formato_unidade || data.unidade_medida,
+                    preco_venda: data.formato_preco || 0,
+                    disponivel_menu: true,
+                };
+
+                await fetchClient("/formatos-venda", {
+                    method: "POST",
+                    body: JSON.stringify(salesFormatPayload),
+                });
+            }
 
             alert(`✅ Produto criado com sucesso!\n\nCódigo: ${product.codigo_interno || 'N/A'}\nNome: ${product.nome}`);
             router.push("/products");
@@ -206,8 +286,98 @@ export default function NewProductPage() {
                                 />
                                 {errors.imagem_url && <p className="text-xs text-red-500">{errors.imagem_url.message}</p>}
                             </div>
+
+                            <div className="flex items-center space-x-2 pt-2">
+                                <input
+                                    type="checkbox"
+                                    id="vendavel"
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    {...register("vendavel")}
+                                />
+                                <label
+                                    htmlFor="vendavel"
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                >
+                                    Este produto é vendável (pode ser adicionado ao menu)
+                                </label>
+                            </div>
                         </CardContent>
                     </Card>
+
+                    {/* Sales Data (Conditional) */}
+                    {isVendavel && (
+                        <Card className="border-blue-200 bg-blue-50/30">
+                            <CardHeader>
+                                <CardTitle className="text-blue-800 flex items-center gap-2">
+                                    Dados de Venda
+                                    <span className="text-xs font-normal text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                        Produto Vendável
+                                    </span>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {/* Template Selector */}
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Template (Opcional)</label>
+                                    <select
+                                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                        value={selectedTemplateId || ''}
+                                        onChange={(e) => handleTemplateSelect(e.target.value)}
+                                    >
+                                        <option value="">Sem template</option>
+                                        {templates.map((template) => (
+                                            <option key={template.id} value={template.id}>
+                                                {template.nome} ({template.quantidade} {template.unidade_medida})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500">
+                                        Selecione um template para preencher automaticamente os campos
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Nome na Venda</label>
+                                        <Input placeholder="Ex: Coca-Cola Lata" {...register("formato_nome")} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Preço de Venda (€) (Opcional)</label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            {...register("formato_preco", { valueAsNumber: true })}
+                                        />
+                                        <p className="text-xs text-gray-500">Se deixado em branco, será 0.00</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Quantidade Vendida</label>
+                                        <Input
+                                            type="number"
+                                            step="0.001"
+                                            {...register("formato_quantidade", { valueAsNumber: true })}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Unidade de Venda</label>
+                                        <select
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            {...register("formato_unidade")}
+                                        >
+                                            <option value="Unidade">Unidade</option>
+                                            <option value="KG">Quilograma (KG)</option>
+                                            <option value="L">Litro (L)</option>
+                                            <option value="ML">Mililitro (ML)</option>
+                                            <option value="G">Grama (G)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
 
                     <Card>
                         <CardHeader>
@@ -251,6 +421,6 @@ export default function NewProductPage() {
                     </div>
                 </form>
             </div>
-        </AppLayout>
+        </AppLayout >
     );
 }

@@ -5,19 +5,22 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
-import { Plus, Trash2, Calculator, ShoppingCart, Search, Save } from "lucide-react";
+import { Plus, Trash2, Calculator, ShoppingCart, Save } from "lucide-react";
+
+interface AvailableItem {
+    id: number;
+    nome: string;
+}
+
+interface AvailableProduct extends AvailableItem {
+    unidade_medida: string;
+}
 
 interface SimulationItem {
-    tipo: 'receita' | 'combo';
+    tipo: 'receita' | 'combo' | 'formato_venda';
     id: number;
     nome: string;
     quantidade: number;
-}
-
-interface SearchResult {
-    id: number;
-    nome: string;
-    tipo: 'receita' | 'combo';
 }
 
 interface SimulationResult {
@@ -36,62 +39,68 @@ interface SimulationResult {
 
 export default function PurchaseCalculatorPage() {
     const [items, setItems] = useState<SimulationItem[]>([]);
-    const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [isSearching, setIsSearching] = useState(false);
     const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // Debounced search
+    // Tab & Data State
+    const [activeTab, setActiveTab] = useState<"receita" | "combo" | "formato_venda">("receita");
+    const [recipes, setRecipes] = useState<AvailableItem[]>([]);
+    const [combos, setCombos] = useState<AvailableItem[]>([]);
+    const [salesFormats, setSalesFormats] = useState<AvailableProduct[]>([]);
+    const [dataLoading, setDataLoading] = useState(true);
+
+    // Selection State
+    const [selectedId, setSelectedId] = useState<string>("");
+
     useEffect(() => {
-        const timer = setTimeout(() => {
-            if (searchTerm.length >= 2) {
-                searchItems();
-            } else {
-                setSearchResults([]);
-            }
-        }, 300);
+        loadAvailableItems();
+    }, []);
 
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
-
-    const searchItems = async () => {
-        setIsSearching(true);
+    const loadAvailableItems = async () => {
         try {
-            // Fetch recipes (returns paginated response with .data)
-            const recipesResponse = await fetchClient(`/recipes?search=${searchTerm}&limit=5`);
-            const recipes = recipesResponse.data || [];
-
-            // Fetch combos (returns array directly)
-            const combos = await fetchClient(`/combos`);
-
-            // Filter combos by search term (since endpoint doesn't support search param)
-            const filteredCombos = Array.isArray(combos)
-                ? combos.filter((c: any) =>
-                    c.nome.toLowerCase().includes(searchTerm.toLowerCase())
-                ).slice(0, 5)
-                : [];
-
-            const results: SearchResult[] = [
-                ...recipes.map((r: any) => ({ id: r.id, nome: r.nome, tipo: 'receita' as const })),
-                ...filteredCombos.map((c: any) => ({ id: c.id, nome: c.nome, tipo: 'combo' as const }))
-            ];
-
-            console.log('Search results:', results);
-            setSearchResults(results);
+            const [recipesData, combosData, formatsData] = await Promise.all([
+                fetchClient("/consumos/items/recipes"),
+                fetchClient("/consumos/items/combos"),
+                fetchClient("/consumos/items/sales-formats"),
+            ]);
+            setRecipes(recipesData);
+            setCombos(combosData);
+            setSalesFormats(formatsData);
         } catch (error) {
-            console.error("Search failed:", error);
-            setSearchResults([]);
+            console.error("Failed to load available items:", error);
         } finally {
-            setIsSearching(false);
+            setDataLoading(false);
         }
     };
 
-    const addItem = (item: SearchResult) => {
-        setItems([...items, { ...item, quantidade: 1 }]);
-        setSearchTerm("");
-        setSearchResults([]);
-        setSimulationResult(null); // Reset result when items change
+    const handleAddItem = () => {
+        if (!selectedId) return;
+        const id = Number(selectedId);
+
+        let newItem: SimulationItem | null = null;
+
+        if (activeTab === "receita") {
+            const recipe = recipes.find(r => r.id === id);
+            if (recipe) {
+                newItem = { tipo: 'receita', id: recipe.id, nome: recipe.nome, quantidade: 1 };
+            }
+        } else if (activeTab === "combo") {
+            const combo = combos.find(c => c.id === id);
+            if (combo) {
+                newItem = { tipo: 'combo', id: combo.id, nome: combo.nome, quantidade: 1 };
+            }
+        } else if (activeTab === "formato_venda") {
+            const format = salesFormats.find(f => f.id === id);
+            if (format) {
+                newItem = { tipo: 'formato_venda', id: format.id, nome: format.nome, quantidade: 1 };
+            }
+        }
+
+        if (newItem) {
+            setItems([...items, newItem]);
+            setSelectedId("");
+            setSimulationResult(null);
+        }
     };
 
     const removeItem = (index: number) => {
@@ -129,6 +138,7 @@ export default function PurchaseCalculatorPage() {
             setSimulationResult(result);
         } catch (error) {
             console.error("Simulation failed:", error);
+            alert("Erro ao calcular. Verifique se todos os itens são válidos.");
         } finally {
             setLoading(false);
         }
@@ -185,35 +195,75 @@ export default function PurchaseCalculatorPage() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* Search Box */}
-                            <div className="relative">
-                                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                                <input
-                                    placeholder="Adicionar receita ou combo..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-8 h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                />
-                                {searchResults.length > 0 && (
-                                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
-                                        {searchResults.map((result, idx) => (
-                                            <div
-                                                key={`${result.tipo}-${result.id}-${idx}`}
-                                                className="p-2 hover:bg-gray-100 cursor-pointer flex justify-between items-center"
-                                                onClick={() => addItem(result)}
-                                            >
-                                                <span>{result.nome}</span>
-                                                <span className="text-xs text-gray-500 uppercase px-2 py-0.5 bg-gray-200 rounded">
-                                                    {result.tipo}
-                                                </span>
-                                            </div>
-                                        ))}
+                            {/* Tabbed Selection */}
+                            <div className="space-y-4">
+                                <div className="flex border-b">
+                                    <button
+                                        type="button"
+                                        className={`flex-1 py-2 text-sm font-medium border-b-2 ${activeTab === "receita"
+                                            ? "border-blue-600 text-blue-600"
+                                            : "border-transparent text-gray-500 hover:text-gray-700"
+                                            }`}
+                                        onClick={() => { setActiveTab("receita"); setSelectedId(""); }}
+                                    >
+                                        Receita
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`flex-1 py-2 text-sm font-medium border-b-2 ${activeTab === "combo"
+                                            ? "border-purple-600 text-purple-600"
+                                            : "border-transparent text-gray-500 hover:text-gray-700"
+                                            }`}
+                                        onClick={() => { setActiveTab("combo"); setSelectedId(""); }}
+                                    >
+                                        Combo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`flex-1 py-2 text-sm font-medium border-b-2 ${activeTab === "formato_venda"
+                                            ? "border-orange-600 text-orange-600"
+                                            : "border-transparent text-gray-500 hover:text-gray-700"
+                                            }`}
+                                        onClick={() => { setActiveTab("formato_venda"); setSelectedId(""); }}
+                                    >
+                                        Produto / Bebida
+                                    </button>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <div className="flex-1">
+                                        <select
+                                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={selectedId}
+                                            onChange={(e) => setSelectedId(e.target.value)}
+                                            disabled={dataLoading}
+                                        >
+                                            <option value="">Selecione...</option>
+                                            {activeTab === "receita" && recipes.map((recipe) => (
+                                                <option key={recipe.id} value={recipe.id}>
+                                                    {recipe.nome}
+                                                </option>
+                                            ))}
+                                            {activeTab === "combo" && combos.map((combo) => (
+                                                <option key={combo.id} value={combo.id}>
+                                                    {combo.nome}
+                                                </option>
+                                            ))}
+                                            {activeTab === "formato_venda" && salesFormats.map((format) => (
+                                                <option key={format.id} value={format.id}>
+                                                    {format.nome} ({format.unidade_medida})
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
-                                )}
+                                    <Button onClick={handleAddItem} disabled={!selectedId}>
+                                        <Plus className="w-4 h-4" />
+                                    </Button>
+                                </div>
                             </div>
 
                             {/* Items List */}
-                            <div className="space-y-2">
+                            <div className="space-y-2 mt-4">
                                 {items.length === 0 ? (
                                     <div className="text-center py-8 text-gray-500 border-2 border-dashed rounded-md">
                                         Adicione itens para começar a simulação
@@ -223,7 +273,9 @@ export default function PurchaseCalculatorPage() {
                                         <div key={index} className="flex items-center gap-2 p-2 border rounded-md bg-gray-50">
                                             <div className="flex-1">
                                                 <div className="font-medium">{item.nome}</div>
-                                                <div className="text-xs text-gray-500 uppercase">{item.tipo}</div>
+                                                <div className="text-xs text-gray-500 uppercase">
+                                                    {item.tipo === 'formato_venda' ? 'Produto' : item.tipo}
+                                                </div>
                                             </div>
                                             <input
                                                 type="number"

@@ -5,7 +5,17 @@ import { X, Calculator, TrendingUp, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
 import { Label } from "@/components/ui/label";
-import type { AvailableRecipe, AvailableProduct } from "@/types/menu";
+import type { AvailableRecipe } from "@/types/menu";
+
+interface AvailableProduct {
+    id: number;
+    nome: string;
+    custo_unitario: number;
+    unidade_medida: string;
+    quantidade_vendida: number;
+    preco_venda?: number;
+    imagem_url: string | null;
+}
 
 interface AddToMenuModalProps {
     onClose: () => void;
@@ -73,8 +83,11 @@ export function AddToMenuModal({ onClose, onSuccess }: AddToMenuModalProps) {
         } else if (activeTab === "produto" && selectedProduct) {
             setNomeComercial(selectedProduct.nome);
             setCategoria("Bebidas"); // Default suggestion
+            if (selectedProduct.preco_venda) {
+                setPvp(selectedProduct.preco_venda.toString());
+            }
         }
-    }, [selectedRecipeId, selectedComboId, selectedProductId, activeTab]);
+    }, [selectedRecipeId, selectedComboId, selectedProductId, activeTab, recipes, combos, products]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
