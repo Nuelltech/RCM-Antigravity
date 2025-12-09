@@ -704,6 +704,7 @@ class MenuService {
                 custo_unitario: true,
                 unidade_medida: true,
                 quantidade_vendida: true,
+                preco_venda: true, // Include selling price
                 produto: {
                     select: {
                         imagem_url: true,
@@ -721,6 +722,7 @@ class MenuService {
             custo_unitario: Number(formato.custo_unitario),
             unidade_medida: formato.unidade_medida,
             quantidade_vendida: Number(formato.quantidade_vendida),
+            preco_venda: Number(formato.preco_venda),
             imagem_url: formato.produto.imagem_url,
         }));
     }

@@ -102,6 +102,7 @@ model User {
   itensContados       ItemInventario[]
 
   @@unique([tenant_id, email])
+  @@index([email]) // Performance: Login lookup
   @@map("users")
 }
 
@@ -326,9 +327,9 @@ model FormatoVenda {
   unidade_medida          String           // "L", "ML", "KG", "G", "UN"
   
   // Pricing (current active price)
-  preco_venda             Decimal          @db.Decimal(10, 2)  // PVP (selling price)
+  preco_venda             Decimal?         @db.Decimal(10, 2)  // PVP (selling price)
   custo_unitario          Decimal          @db.Decimal(10, 2)  // Unit cost (calculated)
-  margem_percentual       Decimal          @db.Decimal(5, 2)   // Auto-calculated %
+  margem_percentual       Decimal?         @db.Decimal(5, 2)   // Auto-calculated %
   
   // Source tracking
   variacao_origem_id      Int?             // Origin variation (if direct sale)
@@ -614,6 +615,7 @@ model Venda {
   menuItem            MenuItem? @relation(fields: [menu_item_id], references: [id])
   user                User?    @relation(fields: [user_id], references: [id])
 
+  @@index([tenant_id, data_venda]) // Performance: Consumption reports
   @@map("vendas")
 }
 
@@ -940,4 +942,20 @@ model CustoEstrutura {
   @@index([tenant_id, ativo])
   @@map("custos_estrutura")
 }
+
+// -----------------------------------------------------------------------------
+// PERFORMANCE INDEXES (ADDITIONAL)
+// -----------------------------------------------------------------------------
+// Note: Some indexes are already defined in the models above.
+// We are ensuring critical paths are covered.
+
+// User: email lookup for login
+// Already has @@unique([tenant_id, email]), but login often searches by email globally first or needs faster access.
+// Since email is not unique globally (only per tenant), we add a normal index.
+// Actually, the login query is `findMany({ where: { email } })`.
+// So we need an index on just `email`.
+// We can't easily add it to the model block without modifying the model block itself.
+// Let's modify the User model block directly in a separate edit if needed, 
+// but here we will just ensure we have the right indexes.
+
 

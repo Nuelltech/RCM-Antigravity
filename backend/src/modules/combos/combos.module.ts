@@ -223,6 +223,35 @@ class ComboService {
                 },
             });
 
+            // Bulk fetch items
+            const recipeIds = data.itens!.filter(i => i.receita_id).map(i => i.receita_id!);
+            const productIds = data.itens!.filter(i => i.produto_id).map(i => i.produto_id!);
+
+            const recipes = recipeIds.length > 0 ? await tx.receita.findMany({
+                where: {
+                    id: { in: recipeIds },
+                    tenant_id: this.tenantId,
+                    tipo: 'Final',
+                }
+            }) : [];
+
+            const products = productIds.length > 0 ? await tx.produto.findMany({
+                where: {
+                    id: { in: productIds },
+                    tenant_id: this.tenantId,
+                },
+                include: {
+                    variacoes: {
+                        where: { ativo: true },
+                        orderBy: { data_ultima_compra: 'desc' },
+                        take: 1,
+                    },
+                },
+            }) : [];
+
+            const recipesMap = new Map(recipes.map(r => [r.id, r]));
+            const productsMap = new Map(products.map(p => [p.id, p]));
+
             let custoTotal = new Decimal(0);
 
             for (let i = 0; i < data.itens!.length; i++) {
@@ -230,38 +259,16 @@ class ComboService {
                 let custoUnitario = new Decimal(0);
 
                 if (item.receita_id) {
-                    const receita = await tx.receita.findFirst({
-                        where: {
-                            id: item.receita_id,
-                            tenant_id: this.tenantId,
-                            tipo: 'Final',
-                        },
-                    });
-
+                    const receita = recipesMap.get(item.receita_id);
                     if (!receita) {
                         throw new Error(`Receita com ID ${item.receita_id} não encontrada`);
                     }
-
                     custoUnitario = receita.custo_por_porcao;
                 } else if (item.produto_id) {
-                    const produto = await tx.produto.findFirst({
-                        where: {
-                            id: item.produto_id,
-                            tenant_id: this.tenantId,
-                        },
-                        include: {
-                            variacoes: {
-                                where: { ativo: true },
-                                orderBy: { data_ultima_compra: 'desc' },
-                                take: 1,
-                            },
-                        },
-                    });
-
+                    const produto = productsMap.get(item.produto_id);
                     if (!produto) {
                         throw new Error(`Produto com ID ${item.produto_id} não encontrado`);
                     }
-
                     custoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
                 }
 
@@ -292,6 +299,9 @@ class ComboService {
                 ...combo,
                 custo_total: Number(custoTotal),
             };
+        }, {
+            maxWait: 5000,
+            timeout: 20000
         });
     }
 
@@ -309,6 +319,38 @@ class ComboService {
                 },
             });
 
+            // Bulk fetch for Simple Combo
+            const recipeIds: number[] = [];
+            const formatIds: number[] = [];
+
+            if (data.categorias) {
+                for (const cat of data.categorias) {
+                    for (const op of cat.opcoes) {
+                        if (op.receita_id) recipeIds.push(op.receita_id);
+                        if (op.formato_venda_id) formatIds.push(op.formato_venda_id);
+                    }
+                }
+            }
+
+            const recipes = recipeIds.length > 0 ? await tx.receita.findMany({
+                where: {
+                    id: { in: recipeIds },
+                    tenant_id: this.tenantId,
+                    tipo: 'Final',
+                }
+            }) : [];
+
+            const formats = formatIds.length > 0 ? await tx.formatoVenda.findMany({
+                where: {
+                    id: { in: formatIds },
+                    tenant_id: this.tenantId,
+                    ativo: true,
+                }
+            }) : [];
+
+            const recipesMap = new Map(recipes.map(r => [r.id, r]));
+            const formatsMap = new Map(formats.map(f => [f.id, f]));
+
             let custoTotal = new Decimal(0);
 
             for (const catData of data.categorias!) {
@@ -319,32 +361,16 @@ class ComboService {
                     let custoOpcao = new Decimal(0);
 
                     if (opcaoData.receita_id) {
-                        const receita = await tx.receita.findFirst({
-                            where: {
-                                id: opcaoData.receita_id,
-                                tenant_id: this.tenantId,
-                                tipo: 'Final',
-                            },
-                        });
-
+                        const receita = recipesMap.get(opcaoData.receita_id);
                         if (!receita) {
                             throw new Error(`Receita com ID ${opcaoData.receita_id} não encontrada`);
                         }
-
                         custoOpcao = receita.custo_por_porcao;
                     } else if (opcaoData.formato_venda_id) {
-                        const formato = await tx.formatoVenda.findFirst({
-                            where: {
-                                id: opcaoData.formato_venda_id,
-                                tenant_id: this.tenantId,
-                                ativo: true,
-                            },
-                        });
-
+                        const formato = formatsMap.get(opcaoData.formato_venda_id);
                         if (!formato) {
                             throw new Error(`Formato de venda com ID ${opcaoData.formato_venda_id} não encontrado`);
                         }
-
                         custoOpcao = formato.custo_unitario;
                     }
 
@@ -371,14 +397,10 @@ class ComboService {
                     let custoOpcao = new Decimal(0);
 
                     if (opcaoData.receita_id) {
-                        const receita = await tx.receita.findFirst({
-                            where: { id: opcaoData.receita_id, tenant_id: this.tenantId },
-                        });
+                        const receita = recipesMap.get(opcaoData.receita_id);
                         custoOpcao = receita!.custo_por_porcao;
                     } else if (opcaoData.formato_venda_id) {
-                        const formato = await tx.formatoVenda.findFirst({
-                            where: { id: opcaoData.formato_venda_id, tenant_id: this.tenantId },
-                        });
+                        const formato = formatsMap.get(opcaoData.formato_venda_id);
                         custoOpcao = formato!.custo_unitario;
                     }
 
@@ -406,6 +428,9 @@ class ComboService {
                 ...combo,
                 custo_total: Number(custoTotal),
             };
+        }, {
+            maxWait: 5000,
+            timeout: 20000
         });
     }
 
@@ -439,6 +464,38 @@ class ComboService {
                     where: { combo_id: comboId },
                 });
 
+                // Bulk fetch items
+                const recipeIds = data.itens.filter(i => i.receita_id).map(i => i.receita_id!);
+                const productIds = data.itens.filter(i => i.produto_id).map(i => i.produto_id!);
+
+                const recipes = recipeIds.length > 0 ? await tx.receita.findMany({
+                    where: {
+                        id: { in: recipeIds },
+                        tenant_id: this.tenantId,
+                        tipo: 'Final',
+                    }
+                }) : [];
+
+                const products = productIds.length > 0 ? await tx.produto.findMany({
+                    where: {
+                        id: { in: productIds },
+                        tenant_id: this.tenantId,
+                    },
+                    include: {
+                        variacoes: {
+                            where: { ativo: true },
+                            orderBy: [
+                                { data_ultima_compra: 'desc' },
+                                { id: 'desc' }
+                            ],
+                            take: 1,
+                        },
+                    },
+                }) : [];
+
+                const recipesMap = new Map(recipes.map(r => [r.id, r]));
+                const productsMap = new Map(products.map(p => [p.id, p]));
+
                 let custoTotal = new Decimal(0);
 
                 for (let i = 0; i < data.itens.length; i++) {
@@ -446,41 +503,16 @@ class ComboService {
                     let custoUnitario = new Decimal(0);
 
                     if (item.receita_id) {
-                        const receita = await tx.receita.findFirst({
-                            where: {
-                                id: item.receita_id,
-                                tenant_id: this.tenantId,
-                                tipo: 'Final',
-                            },
-                        });
-
+                        const receita = recipesMap.get(item.receita_id);
                         if (!receita) {
                             throw new Error(`Receita com ID ${item.receita_id} não encontrada`);
                         }
-
                         custoUnitario = receita.custo_por_porcao;
                     } else if (item.produto_id) {
-                        const produto = await tx.produto.findFirst({
-                            where: {
-                                id: item.produto_id,
-                                tenant_id: this.tenantId,
-                            },
-                            include: {
-                                variacoes: {
-                                    where: { ativo: true },
-                                    orderBy: [
-                                        { data_ultima_compra: 'desc' },
-                                        { id: 'desc' }
-                                    ],
-                                    take: 1,
-                                },
-                            },
-                        });
-
+                        const produto = productsMap.get(item.produto_id);
                         if (!produto) {
                             throw new Error(`Produto com ID ${item.produto_id} não encontrado`);
                         }
-
                         custoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
                     }
 
@@ -517,6 +549,9 @@ class ComboService {
                 ...updatedCombo,
                 custo_total: Number(updatedCombo.custo_total),
             };
+        }, {
+            maxWait: 5000,
+            timeout: 20000
         });
     }
 
@@ -534,6 +569,36 @@ class ComboService {
                     where: { combo_id: comboId },
                 });
 
+                // Bulk fetch for Simple Combo
+                const recipeIds: number[] = [];
+                const formatIds: number[] = [];
+
+                for (const cat of data.categorias) {
+                    for (const op of cat.opcoes) {
+                        if (op.receita_id) recipeIds.push(op.receita_id);
+                        if (op.formato_venda_id) formatIds.push(op.formato_venda_id);
+                    }
+                }
+
+                const recipes = recipeIds.length > 0 ? await tx.receita.findMany({
+                    where: {
+                        id: { in: recipeIds },
+                        tenant_id: this.tenantId,
+                        tipo: 'Final',
+                    }
+                }) : [];
+
+                const formats = formatIds.length > 0 ? await tx.formatoVenda.findMany({
+                    where: {
+                        id: { in: formatIds },
+                        tenant_id: this.tenantId,
+                        ativo: true,
+                    }
+                }) : [];
+
+                const recipesMap = new Map(recipes.map(r => [r.id, r]));
+                const formatsMap = new Map(formats.map(f => [f.id, f]));
+
                 let custoTotal = new Decimal(0);
 
                 for (const catData of data.categorias) {
@@ -543,15 +608,17 @@ class ComboService {
                         let custoOpcao = new Decimal(0);
 
                         if (opcaoData.receita_id) {
-                            const receita = await tx.receita.findFirst({
-                                where: { id: opcaoData.receita_id, tenant_id: this.tenantId },
-                            });
-                            custoOpcao = receita!.custo_por_porcao;
+                            const receita = recipesMap.get(opcaoData.receita_id);
+                            if (!receita) {
+                                throw new Error(`Receita com ID ${opcaoData.receita_id} não encontrada`);
+                            }
+                            custoOpcao = receita.custo_por_porcao;
                         } else if (opcaoData.formato_venda_id) {
-                            const formato = await tx.formatoVenda.findFirst({
-                                where: { id: opcaoData.formato_venda_id, tenant_id: this.tenantId },
-                            });
-                            custoOpcao = formato!.custo_unitario;
+                            const formato = formatsMap.get(opcaoData.formato_venda_id);
+                            if (!formato) {
+                                throw new Error(`Formato de venda com ID ${opcaoData.formato_venda_id} não encontrado`);
+                            }
+                            custoOpcao = formato.custo_unitario;
                         }
 
                         if (custoOpcao.gt(custoMaxCategoria)) {
@@ -575,14 +642,10 @@ class ComboService {
                         let custoOpcao = new Decimal(0);
 
                         if (opcaoData.receita_id) {
-                            const receita = await tx.receita.findFirst({
-                                where: { id: opcaoData.receita_id, tenant_id: this.tenantId },
-                            });
+                            const receita = recipesMap.get(opcaoData.receita_id);
                             custoOpcao = receita!.custo_por_porcao;
                         } else if (opcaoData.formato_venda_id) {
-                            const formato = await tx.formatoVenda.findFirst({
-                                where: { id: opcaoData.formato_venda_id, tenant_id: this.tenantId },
-                            });
+                            const formato = formatsMap.get(opcaoData.formato_venda_id);
                             custoOpcao = formato!.custo_unitario;
                         }
 
@@ -616,6 +679,9 @@ class ComboService {
                 ...updatedCombo,
                 custo_total: Number(updatedCombo.custo_total),
             };
+        }, {
+            maxWait: 5000,
+            timeout: 20000
         });
     }
 

@@ -220,21 +220,27 @@ class RecipeService {
             // 2. Add ingredients and calculate costs
             let custoTotal = new Decimal(0);
 
-            for (const ing of data.ingredientes) {
-                // Fetch product to get price
-                const produto = await tx.produto.findFirst({
-                    where: {
-                        id: ing.produto_id,
-                        tenant_id: this.tenantId
-                    },
-                    include: {
-                        variacoes: {
-                            where: { ativo: true },
-                            orderBy: { data_ultima_compra: 'desc' },
-                            take: 1
-                        }
+            // Bulk fetch products
+            const productIds = data.ingredientes.map(i => i.produto_id);
+            const products = await tx.produto.findMany({
+                where: {
+                    id: { in: productIds },
+                    tenant_id: this.tenantId
+                },
+                include: {
+                    variacoes: {
+                        where: { ativo: true },
+                        orderBy: { data_ultima_compra: 'desc' },
+                        take: 1
                     }
-                });
+                }
+            });
+
+            const produtosMap = new Map(products.map(p => [p.id, p]));
+
+            for (const ing of data.ingredientes) {
+                // Fetch product from map
+                const produto = produtosMap.get(ing.produto_id);
 
                 if (!produto) {
                     throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
@@ -304,6 +310,9 @@ class RecipeService {
                 custo_total: Number(custoTotal),
                 custo_por_porcao: Number(custoPorPorcao),
             };
+        }, {
+            maxWait: 5000,
+            timeout: 20000
         });
     }
 
@@ -328,26 +337,30 @@ class RecipeService {
             });
 
             // 3. Fetch all products once and calculate costs
+            const productIds = data.ingredientes.map(i => i.produto_id);
+            const products = await tx.produto.findMany({
+                where: {
+                    id: { in: productIds },
+                    tenant_id: this.tenantId
+                },
+                include: {
+                    variacoes: {
+                        where: { ativo: true },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1
+                    }
+                }
+            });
+
+            const produtosMap = new Map(products.map(p => [p.id, p]));
             let custoTotal = new Decimal(0);
-            const produtosMap = new Map();
 
             for (const ing of data.ingredientes) {
-                const produto = await tx.produto.findUnique({
-                    where: { id: ing.produto_id },
-                    include: {
-                        variacoes: {
-                            where: { ativo: true },
-                            orderBy: { createdAt: 'desc' },
-                            take: 1
-                        }
-                    }
-                });
+                const produto = produtosMap.get(ing.produto_id);
 
                 if (!produto) {
                     throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
                 }
-
-                produtosMap.set(ing.produto_id, produto);
 
                 const precoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
                 const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
@@ -431,6 +444,9 @@ class RecipeService {
                 custo_total: Number(custoTotal),
                 custo_por_porcao: Number(custoPorPorcao),
             };
+        }, {
+            maxWait: 5000, // default: 2000
+            timeout: 20000 // default: 5000 - increased to 20s for slow connections
         });
 
         // 7. Trigger cascade recalculation AFTER transaction commits

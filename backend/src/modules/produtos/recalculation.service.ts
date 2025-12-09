@@ -21,19 +21,14 @@ export class RecalculationService {
         await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos);
 
         // STEP 4: Recalculate menu items for all affected FINAL recipes
-        for (const receitaId of affectedRecipes) {
-            const receita = await prisma.receita.findUnique({
-                where: { id: receitaId },
-            });
-
-            if (receita && receita.tipo === 'Final') {
-                await this.recalculateMenuItemsForRecipe(receitaId, affectedMenuItems);
-            }
+        // Optimization: Batch update menu items
+        if (affectedRecipes.size > 0) {
+            await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems);
         }
 
         // STEP 5: Recalculate menu items for all affected combos
-        for (const comboId of affectedCombos) {
-            await this.recalculateMenuItemsForCombo(comboId, affectedMenuItems);
+        if (affectedCombos.size > 0) {
+            await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems);
         }
 
         return {
@@ -51,6 +46,9 @@ export class RecalculationService {
         const affectedMenuItems = new Set<number>();
         const affectedCombos = new Set<number>();
 
+        // 0. Recalculate the recipe itself first
+        await this.recalculateSingleRecipe(receitaId);
+
         // 1. Recalculate parent recipes (pre-preps)
         await this.recalculateRecipesUsingPrepreps(affectedRecipes);
 
@@ -58,20 +56,10 @@ export class RecalculationService {
         await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos);
 
         // 3. Recalculate menu items for this recipe and affected parents
-        for (const rId of affectedRecipes) {
-            const receita = await prisma.receita.findUnique({
-                where: { id: rId },
-            });
-
-            if (receita && receita.tipo === 'Final') {
-                await this.recalculateMenuItemsForRecipe(rId, affectedMenuItems);
-            }
-        }
+        await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems);
 
         // 4. Recalculate menu items for affected combos
-        for (const comboId of affectedCombos) {
-            await this.recalculateMenuItemsForCombo(comboId, affectedMenuItems);
-        }
+        await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems);
 
         return {
             receitasAfetadas: affectedRecipes.size,
@@ -86,7 +74,8 @@ export class RecalculationService {
     async recalculateAfterComboChange(comboId: number) {
         const affectedMenuItems = new Set<number>();
 
-        await this.recalculateMenuItemsForCombo(comboId, affectedMenuItems);
+        await this.recalculateSingleCombo(comboId);
+        await this.recalculateMenuItemsForCombos([comboId], affectedMenuItems);
 
         return {
             menusAfetados: affectedMenuItems.size,
@@ -105,84 +94,80 @@ export class RecalculationService {
             where: { produto_id: produtoId },
         });
 
-        // 2. Update each ingredient's cost
-        for (const ing of ingredientes) {
-            const precoUnitario = await this.getPrecoUnitarioAtual(produtoId);
-            const novoCusto = new Decimal(ing.quantidade_bruta).times(precoUnitario);
+        if (ingredientes.length === 0) return;
 
+        // 2. Get current price once
+        const precoUnitario = await this.getPrecoUnitarioAtual(produtoId);
+
+        // 3. Update ingredients in parallel (or batch if possible, but updateMany doesn't support calculation based on other fields easily)
+        // We can group by recipe to minimize recipe recalculations later? No, we need to update ingredients first.
+        // Optimization: Use Promise.all for concurrency
+        await Promise.all(ingredientes.map(async (ing) => {
+            const novoCusto = new Decimal(ing.quantidade_bruta).times(precoUnitario);
             await prisma.ingredienteReceita.update({
                 where: { id: ing.id },
                 data: { custo_ingrediente: novoCusto },
             });
-
             affectedRecipes.add(ing.receita_id);
-        }
+        }));
 
-        // 3. Recalculate total cost for each affected recipe
+        // 4. Recalculate total cost for each affected recipe
+        // Optimization: Process unique recipes in parallel
         const uniqueRecipes = [...new Set(ingredientes.map((i) => i.receita_id))];
-        for (const receitaId of uniqueRecipes) {
-            await this.recalculateSingleRecipe(receitaId);
-        }
+        await Promise.all(uniqueRecipes.map(id => this.recalculateSingleRecipe(id)));
     }
 
     /**
      * Recursively recalculate recipes that use pre-prep recipes
      */
     private async recalculateRecipesUsingPrepreps(affectedRecipes: Set<number>) {
-        let hasChanges = true;
+        let currentBatch = new Set(affectedRecipes);
 
         // Loop until no more recipes are affected (recursive propagation)
-        while (hasChanges) {
-            hasChanges = false;
-            const currentAffected = [...affectedRecipes];
+        // Optimization: Track processed edges to avoid cycles or redundant checks?
+        // For now, simple BFS/Level-by-level approach
 
-            for (const receitaId of currentAffected) {
-                // Find recipes that use this recipe as a pre-prep ingredient
-                const parentIngredients = await prisma.ingredienteReceita.findMany({
-                    where: { receita_preparo_id: receitaId },
-                });
+        while (currentBatch.size > 0) {
+            const nextBatch = new Set<number>();
+            const currentIds = Array.from(currentBatch);
 
-                if (parentIngredients.length === 0) continue;
+            // Find all ingredients that use any of the current batch recipes as pre-prep
+            const parentIngredients = await prisma.ingredienteReceita.findMany({
+                where: {
+                    receita_preparo_id: { in: currentIds }
+                },
+                include: {
+                    receitaPreparo: { select: { custo_por_porcao: true } }
+                }
+            });
 
-                for (const ing of parentIngredients) {
-                    // Get updated cost of pre-prep recipe
-                    const prepreprRecipe = await prisma.receita.findUnique({
-                        where: { id: receitaId },
+            if (parentIngredients.length === 0) break;
+
+            // Update ingredients
+            await Promise.all(parentIngredients.map(async (ing) => {
+                if (!ing.receitaPreparo) return;
+
+                const novoCusto = new Decimal(ing.receitaPreparo.custo_por_porcao).times(ing.quantidade_bruta);
+                const custoAnterior = new Decimal(ing.custo_ingrediente);
+
+                if (!custoAnterior.equals(novoCusto)) {
+                    await prisma.ingredienteReceita.update({
+                        where: { id: ing.id },
+                        data: { custo_ingrediente: novoCusto },
                     });
 
-                    if (!prepreprRecipe) continue;
-
-                    // Update ingredient cost (cost per portion of pre-prep * quantity used)
-                    const novoCusto = new Decimal(prepreprRecipe.custo_por_porcao).times(
-                        ing.quantidade_bruta
-                    );
-
-                    const custoAnterior = new Decimal(ing.custo_ingrediente);
-
-                    // Only update and propagate if cost changed
-                    if (!custoAnterior.equals(novoCusto)) {
-                        await prisma.ingredienteReceita.update({
-                            where: { id: ing.id },
-                            data: { custo_ingrediente: novoCusto },
-                        });
-
-                        affectedRecipes.add(ing.receita_id);
-                        hasChanges = true; // Continue loop because a cost changed
-                    }
+                    // Add parent recipe to next batch
+                    nextBatch.add(ing.receita_id);
+                    affectedRecipes.add(ing.receita_id);
                 }
+            }));
 
-                // Recalculate parent recipes if any of their ingredients changed
-                // We can optimize this by only recalculating those that had changes, 
-                // but for now recalculating all potential parents in this batch is safer.
-                if (hasChanges) {
-                    const parentRecipeIds = [
-                        ...new Set(parentIngredients.map((i) => i.receita_id)),
-                    ];
-                    for (const parentId of parentRecipeIds) {
-                        await this.recalculateSingleRecipe(parentId);
-                    }
-                }
+            // Recalculate costs for all recipes in next batch
+            if (nextBatch.size > 0) {
+                await Promise.all(Array.from(nextBatch).map(id => this.recalculateSingleRecipe(id)));
             }
+
+            currentBatch = nextBatch;
         }
     }
 
@@ -190,49 +175,50 @@ export class RecalculationService {
      * Recalculate single recipe totals
      */
     private async recalculateSingleRecipe(receitaId: number) {
-        const ingredientes = await prisma.ingredienteReceita.findMany({
-            where: { receita_id: receitaId },
-        });
-
-        const custoTotal = ingredientes.reduce(
-            (sum, ing) => sum.plus(ing.custo_ingrediente),
-            new Decimal(0)
-        );
-
         const receita = await prisma.receita.findUnique({
             where: { id: receitaId },
+            include: { ingredientes: true }
         });
 
         if (!receita) return;
+
+        const custoTotal = receita.ingredientes.reduce(
+            (sum, ing) => sum.plus(ing.custo_ingrediente),
+            new Decimal(0)
+        );
 
         const numeroPorcoes = new Decimal(receita.numero_porcoes);
         const custoPorPorcao = numeroPorcoes.greaterThan(0)
             ? custoTotal.dividedBy(numeroPorcoes)
             : new Decimal(0);
 
-        await prisma.receita.update({
-            where: { id: receitaId },
-            data: {
-                custo_total: custoTotal,
-                custo_por_porcao: custoPorPorcao,
-            },
-        });
+        // Only update if changed to avoid DB writes
+        if (!custoTotal.equals(receita.custo_total) || !custoPorPorcao.equals(receita.custo_por_porcao)) {
+            await prisma.receita.update({
+                where: { id: receitaId },
+                data: {
+                    custo_total: custoTotal,
+                    custo_por_porcao: custoPorPorcao,
+                },
+            });
+        }
     }
 
     /**
-     * Recalculate menu items for a final recipe
+     * Recalculate menu items for a list of recipes
      */
-    private async recalculateMenuItemsForRecipe(
-        receitaId: number,
+    private async recalculateMenuItemsForRecipes(
+        receitaIds: number[],
         affectedMenuItems: Set<number>
     ) {
+        // Fetch all menu items linked to these recipes
         const menuItems = await prisma.menuItem.findMany({
-            where: { receita_id: receitaId },
-            include: { receita: true },
+            where: { receita_id: { in: receitaIds } },
+            include: { receita: { select: { custo_por_porcao: true } } },
         });
 
-        for (const item of menuItems) {
-            if (!item.receita) continue;
+        await Promise.all(menuItems.map(async (item) => {
+            if (!item.receita) return;
 
             const custo = new Decimal(item.receita.custo_por_porcao);
             const pvp = new Decimal(item.pvp);
@@ -253,7 +239,44 @@ export class RecalculationService {
             });
 
             affectedMenuItems.add(item.id);
-        }
+        }));
+    }
+
+    /**
+     * Recalculate menu items for a list of combos
+     */
+    private async recalculateMenuItemsForCombos(
+        comboIds: number[],
+        affectedMenuItems: Set<number>
+    ) {
+        const menuItems = await prisma.menuItem.findMany({
+            where: { combo_id: { in: comboIds } },
+            include: { combo: { select: { custo_total: true } } },
+        });
+
+        await Promise.all(menuItems.map(async (item) => {
+            if (!item.combo) return;
+
+            const custo = new Decimal(item.combo.custo_total);
+            const pvp = new Decimal(item.pvp);
+
+            const margem = pvp.minus(custo);
+            const margemPercentual = pvp.greaterThan(0)
+                ? margem.dividedBy(pvp).times(100)
+                : new Decimal(0);
+            const cmv = pvp.greaterThan(0) ? custo.dividedBy(pvp).times(100) : new Decimal(0);
+
+            await prisma.menuItem.update({
+                where: { id: item.id },
+                data: {
+                    margem_bruta: margem,
+                    margem_percentual: margemPercentual,
+                    cmv_percentual: cmv,
+                },
+            });
+
+            affectedMenuItems.add(item.id);
+        }));
     }
 
     /**
@@ -372,11 +395,12 @@ export class RecalculationService {
             where: { produto_id: produtoId },
         });
 
-        // Update each combo item's cost
-        for (const item of comboItems) {
-            const precoUnitario = await this.getPrecoUnitarioAtual(produtoId);
-            const novoCusto = new Decimal(item.quantidade).times(precoUnitario);
+        if (comboItems.length === 0) return;
 
+        const precoUnitario = await this.getPrecoUnitarioAtual(produtoId);
+
+        await Promise.all(comboItems.map(async (item) => {
+            const novoCusto = new Decimal(item.quantidade).times(precoUnitario);
             await prisma.comboItem.update({
                 where: { id: item.id },
                 data: {
@@ -384,15 +408,12 @@ export class RecalculationService {
                     custo_total: novoCusto,
                 },
             });
-
             affectedCombos.add(item.combo_id);
-        }
+        }));
 
         // Recalculate total cost for each affected combo
         const uniqueCombos = [...new Set(comboItems.map((i) => i.combo_id))];
-        for (const comboId of uniqueCombos) {
-            await this.recalculateSingleCombo(comboId);
-        }
+        await Promise.all(uniqueCombos.map(id => this.recalculateSingleCombo(id)));
     }
 
     /**
@@ -404,28 +425,17 @@ export class RecalculationService {
     ) {
         if (affectedRecipes.size === 0) return;
 
-        // Find combo items using affected recipes
+        const recipeIds = Array.from(affectedRecipes);
+
+        // 1. Update ComboItems
         const comboItems = await prisma.comboItem.findMany({
-            where: {
-                receita_id: {
-                    in: [...affectedRecipes],
-                },
-            },
+            where: { receita_id: { in: recipeIds } },
+            include: { receita: { select: { custo_por_porcao: true } } }
         });
 
-        // Update each combo item's cost based on updated recipe cost
-        for (const item of comboItems) {
-            if (!item.receita_id) continue;
-
-            // Fetch fresh recipe data to get the UPDATED cost
-            const receita = await prisma.receita.findUnique({
-                where: { id: item.receita_id },
-                select: { custo_por_porcao: true },
-            });
-
-            if (!receita) continue;
-
-            const novoCustoUnitario = receita.custo_por_porcao;
+        await Promise.all(comboItems.map(async (item) => {
+            if (!item.receita) return;
+            const novoCustoUnitario = item.receita.custo_por_porcao;
             const novoCustoTotal = new Decimal(item.quantidade).times(novoCustoUnitario);
 
             await prisma.comboItem.update({
@@ -435,34 +445,21 @@ export class RecalculationService {
                     custo_total: novoCustoTotal,
                 },
             });
-
             affectedCombos.add(item.combo_id);
-        }
+        }));
 
-        // Handle ComboOpcoes (for Simple Combos)
+        // 2. Update ComboOptions (Simple Combos)
         const comboOptions = await prisma.comboCategoriaOpcao.findMany({
-            where: {
-                receita_id: {
-                    in: [...affectedRecipes],
-                },
-            },
+            where: { receita_id: { in: recipeIds } },
             include: {
                 categoria: true,
+                receita: { select: { custo_por_porcao: true } }
             },
         });
 
-        for (const opc of comboOptions) {
-            if (!opc.receita_id) continue;
-
-            // Fetch fresh recipe data to get the UPDATED cost
-            const receita = await prisma.receita.findUnique({
-                where: { id: opc.receita_id },
-                select: { custo_por_porcao: true },
-            });
-
-            if (!receita) continue;
-
-            const novoCusto = receita.custo_por_porcao;
+        await Promise.all(comboOptions.map(async (opc) => {
+            if (!opc.receita) return;
+            const novoCusto = opc.receita.custo_por_porcao;
 
             await prisma.comboCategoriaOpcao.update({
                 where: { id: opc.id },
@@ -472,13 +469,11 @@ export class RecalculationService {
             if (opc.categoria) {
                 affectedCombos.add(opc.categoria.combo_id);
             }
-        }
+        }));
 
         // Recalculate total cost for each affected combo
-        const uniqueCombos = [...affectedCombos];
-        for (const comboId of uniqueCombos) {
-            await this.recalculateSingleCombo(comboId);
-        }
+        const uniqueCombos = Array.from(affectedCombos);
+        await Promise.all(uniqueCombos.map(id => this.recalculateSingleCombo(id)));
     }
 
     /**
@@ -511,7 +506,6 @@ export class RecalculationService {
             let maxCost = new Decimal(0);
 
             for (const opc of cat.opcoes) {
-                // Ensure we use Decimal for comparison
                 const opcCost = new Decimal(opc.custo_unitario);
                 if (opcCost.greaterThan(maxCost)) {
                     maxCost = opcCost;
@@ -531,43 +525,6 @@ export class RecalculationService {
             where: { id: comboId },
             data: { custo_total: custoTotal },
         });
-    }
-
-    /**
-     * Recalculate menu items for a combo
-     */
-    private async recalculateMenuItemsForCombo(
-        comboId: number,
-        affectedMenuItems: Set<number>
-    ) {
-        const menuItems = await prisma.menuItem.findMany({
-            where: { combo_id: comboId },
-            include: { combo: true },
-        });
-
-        for (const item of menuItems) {
-            if (!item.combo) continue;
-
-            const custo = new Decimal(item.combo.custo_total);
-            const pvp = new Decimal(item.pvp);
-
-            const margem = pvp.minus(custo);
-            const margemPercentual = pvp.greaterThan(0)
-                ? margem.dividedBy(pvp).times(100)
-                : new Decimal(0);
-            const cmv = pvp.greaterThan(0) ? custo.dividedBy(pvp).times(100) : new Decimal(0);
-
-            await prisma.menuItem.update({
-                where: { id: item.id },
-                data: {
-                    margem_bruta: margem,
-                    margem_percentual: margemPercentual,
-                    cmv_percentual: cmv,
-                },
-            });
-
-            affectedMenuItems.add(item.id);
-        }
     }
 }
 

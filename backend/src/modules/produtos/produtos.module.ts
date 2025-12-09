@@ -15,6 +15,7 @@ const createProductSchema = z.object({
     descricao: z.string().optional(),
     codigo_interno: z.string().optional(),
     imagem_url: z.string().optional(),
+    vendavel: z.boolean().optional(),
 });
 
 const createVariationSchema = z.object({
@@ -156,7 +157,8 @@ class ProductService {
             // Create product
             return this.db.create('produto', {
                 ...data,
-                codigo_interno
+                codigo_interno,
+                vendavel: data.vendavel ?? false,
             });
         } catch (error: any) {
             if (error.code === 'P2002') {
