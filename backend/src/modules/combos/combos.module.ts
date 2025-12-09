@@ -451,7 +451,7 @@ class ComboService {
     }
 
     private async updateComplexCombo(comboId: number, data: z.infer<typeof updateComboSchema>) {
-        return await prisma.$transaction(async (tx) => {
+        const updatedCombo = await prisma.$transaction(async (tx) => {
             let updateData: any = {};
 
             if (data.nome !== undefined) updateData.nome = data.nome;
@@ -537,26 +537,26 @@ class ComboService {
                 updateData.custo_total = custoTotal;
             }
 
-            const updatedCombo = await tx.combo.update({
+            return await tx.combo.update({
                 where: { id: comboId },
                 data: updateData,
             });
 
-            // Trigger cascade recalculation
-            await recalculationService.recalculateAfterComboChange(comboId);
-
-            return {
-                ...updatedCombo,
-                custo_total: Number(updatedCombo.custo_total),
-            };
         }, {
             maxWait: 5000,
             timeout: 20000
         });
+
+        // Trigger cascade recalculation
+        recalculationService.recalculateAfterComboChange(comboId).catch(err => {
+            console.error('Error in background recalculation:', err);
+        });
+
+        return updatedCombo;
     }
 
     private async updateSimpleCombo(comboId: number, data: z.infer<typeof updateComboSchema>) {
-        return await prisma.$transaction(async (tx) => {
+        const updatedCombo = await prisma.$transaction(async (tx) => {
             let updateData: any = {};
 
             if (data.nome !== undefined) updateData.nome = data.nome;
@@ -667,22 +667,22 @@ class ComboService {
                 updateData.custo_total = custoTotal;
             }
 
-            const updatedCombo = await tx.combo.update({
+            return await tx.combo.update({
                 where: { id: comboId },
                 data: updateData,
             });
 
-            // Trigger cascade recalculation
-            await recalculationService.recalculateAfterComboChange(comboId);
-
-            return {
-                ...updatedCombo,
-                custo_total: Number(updatedCombo.custo_total),
-            };
         }, {
             maxWait: 5000,
             timeout: 20000
         });
+
+        // Trigger cascade recalculation
+        recalculationService.recalculateAfterComboChange(comboId).catch(err => {
+            console.error('Error in background recalculation:', err);
+        });
+
+        return updatedCombo;
     }
 
     async toggle(comboId: number) {

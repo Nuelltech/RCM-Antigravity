@@ -178,10 +178,13 @@ class ProductService {
             preco_unitario,
         }) as any;
 
-        // Recalculate impact
-        const impact = await recalculationService.recalculateAfterPriceChange(data.produto_id);
+        // Recalculate impact asynchronously
+        recalculationService.recalculateAfterPriceChange(data.produto_id).catch(err => {
+            console.error('Error in background recalculation:', err);
+        });
 
-        // Get new effective unit price
+        // Get new effective unit price (should be the one we just created if it's the latest)
+        // Note: getPrecoUnitarioAtual fetches from DB, so it sees the new variation.
         const precoUnitarioNovo = await recalculationService.getPrecoUnitarioAtual(data.produto_id);
 
         // Record history if effective price changed
@@ -195,8 +198,8 @@ class ProductService {
                 precoUnitarioNovo: precoUnitarioNovo,
                 origem: 'MANUAL',
                 alteradoPor: userId,
-                receitasAfetadas: impact.receitasAfetadas,
-                menusAfetados: impact.menusAfetados,
+                receitasAfetadas: 0, // Async
+                menusAfetados: 0,    // Async
             });
         }
 
@@ -529,26 +532,7 @@ export async function productRoutes(app: FastifyInstance) {
                 variacao.unidades_por_compra
             );
 
-            // Trigger recalculation
-            const impact = await recalculationService.recalculateAfterPriceChange(
-                variacao.produto_id
-            );
-
-            // Record price history
-            await priceHistoryService.createPriceHistory({
-                tenantId: req.tenantId,
-                variacaoId: variacaoId,
-                precoAnterior: variacao.preco_compra,
-                precoNovo: new Decimal(req.body.preco_compra),
-                precoUnitarioAnterior: variacao.preco_unitario,
-                precoUnitarioNovo: novoPrecoUnitario,
-                origem: req.body.origem,
-                alteradoPor: (req as any).user?.id || undefined,
-                receitasAfetadas: impact.receitasAfetadas,
-                menusAfetados: impact.menusAfetados,
-            });
-
-            // Update variation with new price
+            // Update variation with new price FIRST
             const updated = await prisma.variacaoProduto.update({
                 where: { id: variacaoId },
                 data: {
@@ -559,12 +543,31 @@ export async function productRoutes(app: FastifyInstance) {
                 include: { produto: true },
             });
 
+            // Trigger recalculation asynchronously (fire-and-forget)
+            recalculationService.recalculateAfterPriceChange(variacao.produto_id).catch(err => {
+                console.error('Error in background recalculation:', err);
+            });
+
+            // Record price history (impact stats will be 0/unknown for now to prioritize speed)
+            await priceHistoryService.createPriceHistory({
+                tenantId: req.tenantId,
+                variacaoId: variacaoId,
+                precoAnterior: variacao.preco_compra,
+                precoNovo: new Decimal(req.body.preco_compra),
+                precoUnitarioAnterior: variacao.preco_unitario,
+                precoUnitarioNovo: novoPrecoUnitario,
+                origem: req.body.origem,
+                alteradoPor: (req as any).user?.id || undefined,
+                receitasAfetadas: 0, // Async
+                menusAfetados: 0,    // Async
+            });
+
             return {
                 success: true,
                 variacao: updated,
                 impact: {
-                    receitas_afetadas: impact.receitasAfetadas,
-                    menus_afetados: impact.menusAfetados,
+                    receitas_afetadas: 0, // Async
+                    menus_afetados: 0,    // Async
                 },
             };
         } catch (error: any) {

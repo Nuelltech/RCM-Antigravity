@@ -195,7 +195,7 @@ class RecipeService {
 
     async create(data: z.infer<typeof createRecipeSchema>) {
         // Use transaction to ensure all or nothing
-        return await prisma.$transaction(async (tx) => {
+        const recipe = await prisma.$transaction(async (tx) => {
             // 1. Create the recipe
             const recipe = await tx.receita.create({
                 data: {
@@ -314,6 +314,13 @@ class RecipeService {
             maxWait: 5000,
             timeout: 20000
         });
+
+        // Fire-and-forget recalculation to avoid blocking response
+        recalculationService.recalculateAfterRecipeChange(recipe.id).catch(err => {
+            console.error('Error in background recalculation:', err);
+        });
+
+        return recipe;
     }
 
     async update(recipeId: number, data: z.infer<typeof createRecipeSchema>) {
@@ -346,7 +353,7 @@ class RecipeService {
                 include: {
                     variacoes: {
                         where: { ativo: true },
-                        orderBy: { createdAt: 'desc' },
+                        orderBy: { data_ultima_compra: 'desc' },
                         take: 1
                     }
                 }
@@ -445,13 +452,14 @@ class RecipeService {
                 custo_por_porcao: Number(custoPorPorcao),
             };
         }, {
-            maxWait: 5000, // default: 2000
-            timeout: 20000 // default: 5000 - increased to 20s for slow connections
+            maxWait: 5000,
+            timeout: 20000
         });
 
-        // 7. Trigger cascade recalculation AFTER transaction commits
-        // This ensures the recalculation reads the UPDATED recipe costs
-        await recalculationService.recalculateAfterRecipeChange(recipeId);
+        // 7. Trigger cascade recalculation asynchronously
+        recalculationService.recalculateAfterRecipeChange(recipeId).catch(err => {
+            console.error('Error in background recalculation:', err);
+        });
 
         return recipe;
     }
