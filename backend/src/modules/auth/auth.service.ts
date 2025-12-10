@@ -139,44 +139,61 @@ export class AuthService {
     }
 
     async login(input: LoginInput) {
-        const users = await prisma.user.findMany({
+        // Optimized: Use findFirst instead of findMany to get single user
+        const user = await prisma.user.findFirst({
             where: { email: input.email },
             include: { tenant: true },
         });
 
-        if (users.length === 0) {
+        if (!user) {
             throw new Error('Invalid credentials');
         }
 
-        let validUser = null;
-        for (const user of users) {
-            const valid = await bcrypt.compare(input.password, user.password_hash);
-            if (valid) {
-                validUser = user;
-                break;
-            }
-        }
-
-        if (!validUser) {
+        const valid = await bcrypt.compare(input.password, user.password_hash);
+        if (!valid) {
             throw new Error('Invalid credentials');
         }
 
-        if (!validUser.email_verificado) {
+        if (!user.email_verificado) {
             throw new Error('Email not verified. Please check your inbox for the verification code.');
         }
 
-        if (!validUser.ativo || !validUser.tenant.ativo) {
+        if (!user.ativo || !user.tenant.ativo) {
             throw new Error('Account is inactive');
         }
 
         const token = this.app.jwt.sign({
-            id: validUser.id,
-            email: validUser.email,
-            role: validUser.role,
-            tenantId: validUser.tenant_id,
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            tenantId: user.tenant_id,
         });
 
-        return { token, user: validUser, tenant: validUser.tenant };
+        return { token, user, tenant: user.tenant };
+    }
+
+    async validateToken(token: string) {
+        try {
+            const decoded = this.app.jwt.verify(token) as {
+                id: number;
+                email: string;
+                role: string;
+                tenantId: number;
+            };
+
+            const user = await prisma.user.findUnique({
+                where: { id: decoded.id },
+                include: { tenant: true },
+            });
+
+            if (!user || !user.ativo || !user.tenant.ativo) {
+                throw new Error('Invalid token');
+            }
+
+            return { user, tenant: user.tenant };
+        } catch (error) {
+            throw new Error('Invalid token');
+        }
     }
     async forgotPassword(input: ForgotPasswordInput) {
         const user = await prisma.user.findFirst({

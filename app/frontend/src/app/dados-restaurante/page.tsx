@@ -47,6 +47,7 @@ interface DadosRestaurante {
     alerta_inatividade_leve: number;
     alerta_inatividade_medio: number;
     alerta_inatividade_grave: number;
+    dias_alerta_preco_estagnado: number;
 }
 
 interface Custo {
@@ -119,6 +120,7 @@ export default function DadosRestaurantePage() {
         alerta_inatividade_leve: 3,
         alerta_inatividade_medio: 6,
         alerta_inatividade_grave: 10,
+        dias_alerta_preco_estagnado: 30,
     });
 
     const [formCusto, setFormCusto] = useState({
@@ -163,6 +165,7 @@ export default function DadosRestaurantePage() {
                 alerta_inatividade_leve: dadosRes.alerta_inatividade_leve,
                 alerta_inatividade_medio: dadosRes.alerta_inatividade_medio,
                 alerta_inatividade_grave: dadosRes.alerta_inatividade_grave,
+                dias_alerta_preco_estagnado: dadosRes.dias_alerta_preco_estagnado || 30,
             });
             setCustos(custosRes);
             setLocalizacoes(locsRes);
@@ -570,7 +573,7 @@ export default function DadosRestaurantePage() {
                                 <TrendingUp className="h-4 w-4" />
                                 Inatividade (Dias sem Vendas/Compras)
                             </h3>
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="alerta_inatividade_leve">Leve (Dias)</Label>
                                     <Input
@@ -597,6 +600,16 @@ export default function DadosRestaurantePage() {
                                         value={formDados.alerta_inatividade_grave}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_inatividade_grave: parseInt(e.target.value) || 0 })}
                                     />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="dias_alerta_preco_estagnado">Preço Estagnado (Dias)</Label>
+                                    <Input
+                                        id="dias_alerta_preco_estagnado"
+                                        type="number"
+                                        value={formDados.dias_alerta_preco_estagnado}
+                                        onChange={(e) => setFormDados({ ...formDados, dias_alerta_preco_estagnado: parseInt(e.target.value) || 0 })}
+                                    />
+                                    <p className="text-xs text-muted-foreground">Para produtos em uso.</p>
                                 </div>
                             </div>
                         </div>

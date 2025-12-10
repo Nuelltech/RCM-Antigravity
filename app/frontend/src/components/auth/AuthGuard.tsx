@@ -12,7 +12,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const checkAuth = () => {
+        const checkAuth = async () => {
             // Allow access to public paths
             if (PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/auth/")) {
                 setIsLoading(false);
@@ -22,7 +22,34 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             const token = localStorage.getItem("token");
             if (!token) {
                 router.push("/auth/login");
-            } else {
+                return;
+            }
+
+            // Validate token with backend
+            try {
+                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+                const response = await fetch(`${API_URL}/auth/validate`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+
+                if (!response.ok) {
+                    // Token is invalid or expired
+                    localStorage.removeItem("token");
+                    localStorage.removeItem("tenantId");
+                    localStorage.removeItem("userName");
+                    localStorage.removeItem("userEmail");
+                    router.push("/auth/login");
+                    return;
+                }
+
+                // Token is valid
+                setIsLoading(false);
+            } catch (error) {
+                // Network error - allow access to avoid blocking users
+                // In production, you might want to handle this differently
+                console.error("Error validating token:", error);
                 setIsLoading(false);
             }
         };

@@ -920,6 +920,7 @@ model DadosRestaurante {
   alerta_inatividade_leve     Int      @default(3)
   alerta_inatividade_medio    Int      @default(6)
   alerta_inatividade_grave    Int      @default(10)
+  dias_alerta_preco_estagnado Int      @default(30)
   
   @@map("dados_restaurante")
 }

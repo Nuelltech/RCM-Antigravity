@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 
 interface Alert {
     id: string;
-    type: 'cmv' | 'cost_increase' | 'inactivity';
+    type: 'cmv' | 'cost_increase' | 'inactivity' | 'stale_price';
     severity: 'info' | 'warning' | 'high';
     item: string;
     message: string;
@@ -116,6 +116,7 @@ export default function AlertsPage() {
     const cmvAlerts = alerts.filter(a => a.type === 'cmv');
     const costAlerts = alerts.filter(a => a.type === 'cost_increase');
     const inactivityAlerts = alerts.filter(a => a.type === 'inactivity');
+    const stalePriceAlerts = alerts.filter(a => a.type === 'stale_price');
 
     return (
         <AppLayout>
@@ -136,7 +137,7 @@ export default function AlertsPage() {
                     </Button>
                 </div>
 
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
                     {/* CMV Alerts */}
                     <Card className="md:col-span-1 lg:col-span-1">
                         <CardHeader>
@@ -213,6 +214,35 @@ export default function AlertsPage() {
                                 </p>
                             ) : (
                                 inactivityAlerts.map(alert => (
+                                    <AlertItem
+                                        key={alert.id}
+                                        alert={alert}
+                                        onRead={() => handleMarkAsRead(alert.id)}
+                                        onArchive={() => handleArchive(alert.id)}
+                                    />
+                                ))
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Stale Price Alerts */}
+                    <Card className="md:col-span-1 lg:col-span-1">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <AlertCircle className="h-5 w-5" />
+                                Preços Estagnados
+                            </CardTitle>
+                            <CardDescription>
+                                Produtos em uso sem atualização de preço
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {stalePriceAlerts.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4">
+                                    Todos os preços estão atualizados.
+                                </p>
+                            ) : (
+                                stalePriceAlerts.map(alert => (
                                     <AlertItem
                                         key={alert.id}
                                         alert={alert}

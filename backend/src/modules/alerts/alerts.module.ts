@@ -8,7 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 // Types
 interface Alert {
     id: string;
-    type: 'cmv' | 'cost_increase' | 'inactivity';
+    type: 'cmv' | 'cost_increase' | 'inactivity' | 'stale_price';
     severity: 'info' | 'warning' | 'high';
     item: string;
     message: string;
@@ -38,18 +38,29 @@ class AlertsService {
             ]
         });
 
-        return dbAlerts.map(alert => ({
-            id: alert.id.toString(),
-            type: this.mapAlertType(alert.tipo_alerta),
-            severity: this.mapSeverity(alert.severidade),
-            item: alert.titulo,
-            message: alert.mensagem,
-            date: alert.createdAt.toISOString(),
-            lido: alert.lido,
-            arquivado: alert.arquivado,
-            value: (alert.dados_contexto as any)?.value,
-            threshold: (alert.dados_contexto as any)?.threshold
-        }));
+        return dbAlerts.map(alert => {
+            const contextData = alert.dados_contexto as any;
+
+            // Helper to safely convert to number (returns undefined if NaN or null/undefined)
+            const toNumber = (val: any): number | undefined => {
+                if (val == null) return undefined;
+                const num = Number(val);
+                return isNaN(num) ? undefined : num;
+            };
+
+            return {
+                id: alert.id.toString(),
+                type: this.mapAlertType(alert.tipo_alerta),
+                severity: this.mapSeverity(alert.severidade),
+                item: alert.titulo,
+                message: alert.mensagem,
+                date: alert.createdAt.toISOString(),
+                lido: alert.lido,
+                arquivado: alert.arquivado,
+                value: toNumber(contextData?.value),
+                threshold: toNumber(contextData?.threshold)
+            };
+        });
     }
 
     async markAsRead(id: number, userId: number): Promise<void> {
@@ -132,6 +143,7 @@ class AlertsService {
                     alerta_inatividade_leve: 3,
                     alerta_inatividade_medio: 6,
                     alerta_inatividade_grave: 10,
+                    dias_alerta_preco_estagnado: 30
                 }
             });
         }
@@ -144,6 +156,7 @@ class AlertsService {
         const inactivityLow = settings.alerta_inatividade_leve;
         const inactivityMed = settings.alerta_inatividade_medio;
         const inactivityHigh = settings.alerta_inatividade_grave;
+        const stalePriceDays = settings.dias_alerta_preco_estagnado || 30;
 
         // 1. CMV Alerts
         const menuItems = await prisma.menuItem.findMany({
@@ -275,6 +288,97 @@ class AlertsService {
                 }, validAlertIds);
             }
         }
+
+        // 4. Stale Price Alerts (New)
+        // Find products used in Recipes, Combos, or Menus
+        const activeProductIds = new Set<number>();
+
+        // Recipes
+        const recipeIngredients = await prisma.ingredienteReceita.findMany({
+            where: { tenant_id: this.tenantId, produto_id: { not: null } },
+            select: { produto_id: true }
+        });
+        recipeIngredients.forEach((i: any) => i.produto_id && activeProductIds.add(i.produto_id));
+
+        // Combos (Items)
+        const comboItems = await prisma.comboItem.findMany({
+            where: { tenant_id: this.tenantId, produto_id: { not: null } },
+            select: { produto_id: true }
+        });
+        comboItems.forEach((i: any) => i.produto_id && activeProductIds.add(i.produto_id));
+
+        // Menu Items (Direct Product Sales via FormatoVenda)
+        const menuFormats = await prisma.menuItem.findMany({
+            where: { tenant_id: this.tenantId, formato_venda_id: { not: null } },
+            include: { formatoVenda: true }
+        });
+        menuFormats.forEach((m: any) => m.formatoVenda?.produto_id && activeProductIds.add(m.formatoVenda.produto_id));
+
+        if (activeProductIds.size > 0) {
+            const productsToCheck = await prisma.produto.findMany({
+                where: {
+                    id: { in: Array.from(activeProductIds) },
+                    tenant_id: this.tenantId,
+                    ativo: true
+                },
+                include: {
+                    variacoes: {
+                        where: { ativo: true },
+                        include: {
+                            historicoPrecos: {
+                                orderBy: { data_mudanca: 'desc' },
+                                take: 1
+                            }
+                        }
+                    }
+                }
+            });
+
+            for (const product of productsToCheck) {
+                // Check if ANY active variation has a recent price update
+                // If ALL active variations are stale (or no history), then alert.
+                // Or should we alert per variation? Usually per product is enough noise.
+                // Let's alert if the product has NO recent updates on ANY active variation.
+
+                let hasRecentUpdate = false;
+                let lastUpdateDate: Date | null = null;
+
+                for (const variation of product.variacoes) {
+                    const lastHistory = variation.historicoPrecos[0];
+                    if (lastHistory) {
+                        if (!lastUpdateDate || lastHistory.data_mudanca > lastUpdateDate) {
+                            lastUpdateDate = lastHistory.data_mudanca;
+                        }
+                        const daysSinceUpdate = Math.floor((now.getTime() - lastHistory.data_mudanca.getTime()) / (1000 * 60 * 60 * 24));
+                        if (daysSinceUpdate <= stalePriceDays) {
+                            hasRecentUpdate = true;
+                        }
+                    }
+                }
+
+                // If no variations have history, it's stale (never updated/bought)
+                // If all variations have history but > threshold, it's stale.
+                if (!hasRecentUpdate && product.variacoes.length > 0) {
+                    const daysStale = lastUpdateDate
+                        ? Math.floor((now.getTime() - lastUpdateDate.getTime()) / (1000 * 60 * 60 * 24))
+                        : -1; // -1 indicates never updated
+
+                    const message = daysStale >= 0
+                        ? `Preço não atualizado há ${daysStale} dias.`
+                        : `Preço nunca atualizado.`;
+
+                    await this.upsertAlert({
+                        tipo_alerta: 'stale_price',
+                        titulo: product.nome,
+                        mensagem: message,
+                        severidade: 'warning', // Default to warning
+                        entidade_tipo: 'Produto',
+                        entidade_id: product.id.toString(),
+                        dados_contexto: { value: daysStale >= 0 ? daysStale : null, threshold: stalePriceDays }
+                    }, validAlertIds);
+                }
+            }
+        }
     }
 
     private async upsertAlert(data: {
@@ -292,7 +396,8 @@ class AlertsService {
                 tenant_id: this.tenantId,
                 entidade_tipo: data.entidade_tipo,
                 entidade_id: data.entidade_id,
-                arquivado: false
+                arquivado: false,
+                tipo_alerta: data.tipo_alerta // Added type check to differentiate multiple alerts for same entity
             }
         });
 
@@ -321,8 +426,8 @@ class AlertsService {
         }
     }
 
-    private mapAlertType(type: string): 'cmv' | 'cost_increase' | 'inactivity' {
-        if (['cmv', 'cost_increase', 'inactivity'].includes(type)) {
+    private mapAlertType(type: string): 'cmv' | 'cost_increase' | 'inactivity' | 'stale_price' {
+        if (['cmv', 'cost_increase', 'inactivity', 'stale_price'].includes(type)) {
             return type as any;
         }
         return 'cmv'; // Default fallback
@@ -344,7 +449,7 @@ export async function alertsRoutes(app: FastifyInstance) {
             response: {
                 200: z.array(z.object({
                     id: z.string(),
-                    type: z.enum(['cmv', 'cost_increase', 'inactivity']),
+                    type: z.enum(['cmv', 'cost_increase', 'inactivity', 'stale_price']),
                     severity: z.enum(['info', 'warning', 'high']),
                     item: z.string(),
                     message: z.string(),
@@ -370,7 +475,7 @@ export async function alertsRoutes(app: FastifyInstance) {
             response: {
                 200: z.array(z.object({
                     id: z.string(),
-                    type: z.enum(['cmv', 'cost_increase', 'inactivity']),
+                    type: z.enum(['cmv', 'cost_increase', 'inactivity', 'stale_price']),
                     severity: z.enum(['info', 'warning', 'high']),
                     item: z.string(),
                     message: z.string(),

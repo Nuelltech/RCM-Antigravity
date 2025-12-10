@@ -80,4 +80,24 @@ export async function authRoutes(app: FastifyInstance) {
             return reply.status(400).send({ error: err.message });
         }
     });
+
+    app.get('/validate', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Validate JWT token',
+        },
+    }, async (req, reply) => {
+        try {
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return reply.status(401).send({ error: 'No token provided' });
+            }
+
+            const token = authHeader.substring(7);
+            const result = await service.validateToken(token);
+            return reply.send(result);
+        } catch (err: any) {
+            return reply.status(401).send({ error: err.message });
+        }
+    });
 }
