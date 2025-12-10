@@ -4,6 +4,7 @@ import { prisma } from '../../core/database';
 import { recalculationService } from '../produtos/recalculation.service';
 import { priceHistoryService } from '../produtos/price-history.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { AlertsService } from '../alerts/alerts.module';
 
 // DTOs
 export interface CreateVariacaoDto {
@@ -83,6 +84,10 @@ class VariacaoProdutoService {
             });
         }
 
+        // Trigger background alert regeneration (fire-and-forget)
+        const alertsService = new AlertsService(tenant_id);
+        alertsService.regenerateAlertsAsync();
+
         return this.transform(variacao);
     }
 
@@ -141,6 +146,10 @@ class VariacaoProdutoService {
                 receitasAfetadas: impactResult?.receitasAfetadas || 0,
                 menusAfetados: impactResult?.menusAfetados || 0,
             });
+
+            // Trigger background alert regeneration (fire-and-forget)
+            const alertsService = new AlertsService(tenant_id);
+            alertsService.regenerateAlertsAsync();
         }
 
         return {

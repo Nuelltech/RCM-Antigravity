@@ -90,6 +90,16 @@ async function main() {
         return { status: 'ok', timestamp: new Date() };
     });
 
+    // Root Route
+    server.get('/', async () => {
+        return {
+            name: 'RCM API',
+            version: '1.0.0',
+            status: 'running',
+            documentation: '/documentation'
+        };
+    });
+
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });
     server.register(tenantRoutes, { prefix: '/api/tenants' });

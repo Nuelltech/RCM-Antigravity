@@ -23,10 +23,8 @@ class AlertsService {
     constructor(private tenantId: number) { }
 
     async getAlerts(): Promise<Alert[]> {
-        // 1. Run checks and generate new alerts if needed
-        await this.generateAlerts();
-
-        // 2. Return persisted alerts from database
+        // Return persisted alerts from database (fast read-only operation)
+        // Alert regeneration happens in background via regenerateAlertsAsync()
         const dbAlerts = await prisma.alertaAi.findMany({
             where: {
                 tenant_id: this.tenantId,
@@ -120,6 +118,16 @@ class AlertsService {
 
         // Return updated alerts
         return await this.getAlerts();
+    }
+
+    /**
+     * Regenerate alerts in background without blocking the current operation
+     * Fire-and-forget: errors are logged but don't affect the caller
+     */
+    regenerateAlertsAsync(): void {
+        this.regenerateAlerts().catch(err => {
+            console.error(`[AlertsService] Background alert regeneration failed for tenant ${this.tenantId}:`, err);
+        });
     }
 
     private async generateAlerts(validAlertIds?: Set<number>) {
@@ -530,3 +538,6 @@ export async function alertsRoutes(app: FastifyInstance) {
         return reply.status(204).send();
     });
 }
+
+// Export AlertsService for use in other modules
+export { AlertsService };
