@@ -96,8 +96,18 @@ export class AuthService {
             return { tenant, user };
         });
 
-        // Mock Email Sending
-        console.log(`[EMAIL MOCK] Verification code for ${email}: ${verificationCode}`);
+        // Send verification email
+        try {
+            const { sendVerificationCode } = await import('../../core/email.service');
+            await sendVerificationCode(
+                { email: result.user.email, name: result.user.nome },
+                verificationCode
+            );
+            console.log(`[EMAIL] Verification email sent to ${email}`);
+        } catch (error) {
+            console.error('[EMAIL ERROR] Failed to send verification email:', error);
+            // Continue anyway - user can request resend
+        }
 
         return {
             message: 'Registration successful. Please verify your email.',
@@ -217,8 +227,17 @@ export class AuthService {
             },
         });
 
-        // Mock Email Sending
-        console.log(`[EMAIL MOCK] Password recovery code for ${input.email}: ${verificationCode}`);
+        // Send forgot password email
+        try {
+            const { sendForgotPassword } = await import('../../core/email.service');
+            await sendForgotPassword(
+                { email: user.email, name: user.nome },
+                verificationCode
+            );
+        } catch (error) {
+            console.error('[EMAIL ERROR] Failed to send verification code:', error);
+            // Continue anyway for security - don't reveal email sending failure
+        }
 
         return { message: 'Verification code sent.' };
     }

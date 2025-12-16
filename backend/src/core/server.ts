@@ -28,6 +28,7 @@ import { variacoesProdutoRoutes } from '../modules/variacoes-produto/variacoes-p
 import { dadosRestauranteRoutes } from '../modules/dados-restaurante/dados-restaurante.module';
 import { alertsRoutes } from '../modules/alerts/alerts.module';
 import { consumosRoutes } from '../modules/consumos/consumos.module';
+import { invoicesRoutes } from '../modules/invoices/invoices.module';
 
 const server = Fastify({
     logger: true,
@@ -83,6 +84,10 @@ async function main() {
     });
 
     // Global Middleware
+    server.addHook('onRequest', async (req, reply) => {
+        const { authMiddleware } = await import('./middleware');
+        await authMiddleware(req, reply);
+    });
     server.addHook('onRequest', tenantMiddleware);
 
     // Health Check
@@ -120,6 +125,7 @@ async function main() {
     server.register(dadosRestauranteRoutes, { prefix: '/api/dados-restaurante' });
     server.register(alertsRoutes, { prefix: '/api/alerts' });
     server.register(consumosRoutes, { prefix: '/api' });
+    server.register(invoicesRoutes, { prefix: '/api/invoices' });
 
 
 

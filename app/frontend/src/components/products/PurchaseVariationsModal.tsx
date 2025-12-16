@@ -13,6 +13,7 @@ interface VariacaoProduto {
     id: number;
     tipo_unidade_compra: string;
     unidades_por_compra: number;
+    volume_por_unidade?: number;
     preco_compra: number;
     preco_unitario: number;
     fornecedor?: string;
@@ -58,6 +59,7 @@ export function PurchaseVariationsModal({
     const [formData, setFormData] = useState({
         tipo_unidade_compra: "",
         unidades_por_compra: 0,
+        volume_por_unidade: undefined as number | undefined,
         preco_compra: 0,
         fornecedor: "",
         codigo_fornecedor: "",
@@ -87,6 +89,7 @@ export function PurchaseVariationsModal({
         setFormData({
             tipo_unidade_compra: variation.tipo_unidade_compra,
             unidades_por_compra: variation.unidades_por_compra,
+            volume_por_unidade: variation.volume_por_unidade,
             preco_compra: variation.preco_compra,
             fornecedor: variation.fornecedor || "",
             codigo_fornecedor: variation.codigo_fornecedor || "",
@@ -133,6 +136,7 @@ export function PurchaseVariationsModal({
         setFormData({
             tipo_unidade_compra: template.nome,
             unidades_por_compra: template.unidades_por_compra,
+            volume_por_unidade: undefined,
             preco_compra: 0,
             fornecedor: "",
             codigo_fornecedor: "",
@@ -153,6 +157,7 @@ export function PurchaseVariationsModal({
                     produto_id: parseInt(produtoId),
                     tipo_unidade_compra: formData.tipo_unidade_compra,
                     unidades_por_compra: formData.unidades_por_compra,
+                    volume_por_unidade: formData.volume_por_unidade,
                     preco_compra: formData.preco_compra,
                     fornecedor: formData.fornecedor || undefined,
                     codigo_fornecedor: formData.codigo_fornecedor || undefined,
@@ -166,6 +171,7 @@ export function PurchaseVariationsModal({
             setFormData({
                 tipo_unidade_compra: "",
                 unidades_por_compra: 0,
+                volume_por_unidade: undefined,
                 preco_compra: 0,
                 fornecedor: "",
                 codigo_fornecedor: "",
@@ -194,6 +200,7 @@ export function PurchaseVariationsModal({
                                     setFormData({
                                         tipo_unidade_compra: "",
                                         unidades_por_compra: 0,
+                                        volume_por_unidade: undefined,
                                         preco_compra: 0,
                                         fornecedor: "",
                                         codigo_fornecedor: "",
@@ -343,19 +350,38 @@ export function PurchaseVariationsModal({
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Preço de Compra (€)</Label>
+                                <Label>Volume/Qtd por Unidade</Label>
                                 <Input
                                     type="number"
-                                    step="0.01"
-                                    value={formData.preco_compra}
+                                    step="0.001"
+                                    placeholder="Ex: 0.33 para 33cl"
+                                    value={formData.volume_por_unidade || ""}
                                     onChange={(e) =>
                                         setFormData({
                                             ...formData,
-                                            preco_compra: parseFloat(e.target.value) || 0,
+                                            volume_por_unidade: e.target.value ? parseFloat(e.target.value) : undefined,
                                         })
                                     }
                                 />
+                                <p className="text-xs text-gray-500">
+                                    Opcional. Para produtos embalados (ex: 24 garrafas × 0.33L)
+                                </p>
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Preço de Compra (€)</Label>
+                            <Input
+                                type="number"
+                                step="0.01"
+                                value={formData.preco_compra}
+                                onChange={(e) =>
+                                    setFormData({
+                                        ...formData,
+                                        preco_compra: parseFloat(e.target.value) || 0,
+                                    })
+                                }
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -389,14 +415,33 @@ export function PurchaseVariationsModal({
                             <Label htmlFor="ativo">Variação Ativa</Label>
                         </div>
 
-                        <div className="bg-blue-50 p-3 rounded text-sm">
-                            <p className="text-gray-700">
-                                <strong>Preço Unitário Calculado:</strong>{" "}
-                                €
-                                {formData.unidades_por_compra > 0
-                                    ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
-                                    : "0.0000"}
-                            </p>
+                        <div className="bg-blue-50 p-3 rounded text-sm space-y-2">
+                            {formData.volume_por_unidade ? (
+                                <>
+                                    <p className="text-gray-700">
+                                        <strong>Preço por Unidade Embalagem:</strong> €
+                                        {formData.unidades_por_compra > 0
+                                            ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
+                                            : "0.0000"}/un
+                                    </p>
+                                    <p className="text-gray-700 font-semibold">
+                                        <strong>Preço Unitário (Produto):</strong> €
+                                        {formData.unidades_por_compra > 0
+                                            ? (formData.preco_compra / (formData.unidades_por_compra * formData.volume_por_unidade)).toFixed(4)
+                                            : "0.0000"}/{produtoUnidade}
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                        Volume Total: {(formData.unidades_por_compra * formData.volume_por_unidade).toFixed(3)} {produtoUnidade}
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="text-gray-700">
+                                    <strong>Preço Unitário Calculado:</strong> €
+                                    {formData.unidades_por_compra > 0
+                                        ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
+                                        : "0.0000"}
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -472,20 +517,39 @@ export function PurchaseVariationsModal({
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <Label>Preço de Compra (€) *</Label>
+                            <div className=" space-y-2">
+                                <Label>Volume/Qtd por Unidade</Label>
                                 <Input
                                     type="number"
-                                    step="0.01"
-                                    value={formData.preco_compra || ""}
+                                    step="0.001"
+                                    placeholder="Ex: 0.33 para 33cl"
+                                    value={formData.volume_por_unidade || ""}
                                     onChange={(e) =>
                                         setFormData({
                                             ...formData,
-                                            preco_compra: parseFloat(e.target.value) || 0,
+                                            volume_por_unidade: e.target.value ? parseFloat(e.target.value) : undefined,
                                         })
                                     }
                                 />
+                                <p className="text-xs text-gray-500">
+                                    Opcional. Para produtos embalados (ex: 24 garrafas × 0.33L)
+                                </p>
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Preço de Compra (€) *</Label>
+                            <Input
+                                type="number"
+                                step="0.01"
+                                value={formData.preco_compra || ""}
+                                onChange={(e) =>
+                                    setFormData({
+                                        ...formData,
+                                        preco_compra: parseFloat(e.target.value) || 0,
+                                    })
+                                }
+                            />
                         </div>
 
                         <div className="space-y-2">
@@ -508,14 +572,33 @@ export function PurchaseVariationsModal({
                             />
                         </div>
 
-                        <div className="bg-blue-50 p-3 rounded text-sm">
-                            <p className="text-gray-700">
-                                <strong>Preço Unitário Calculado:</strong>{" "}
-                                €
-                                {formData.unidades_por_compra > 0
-                                    ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
-                                    : "0.0000"}
-                            </p>
+                        <div className="bg-blue-50 p-3 rounded text-sm space-y-2">
+                            {formData.volume_por_unidade ? (
+                                <>
+                                    <p className="text-gray-700">
+                                        <strong>Preço por Unidade Embalagem:</strong> €
+                                        {formData.unidades_por_compra > 0
+                                            ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
+                                            : "0.0000"}/un
+                                    </p>
+                                    <p className="text-gray-700 font-semibold">
+                                        <strong>Preço Unitário (Produto):</strong> €
+                                        {formData.unidades_por_compra > 0
+                                            ? (formData.preco_compra / (formData.unidades_por_compra * formData.volume_por_unidade)).toFixed(4)
+                                            : "0.0000"}/{produtoUnidade}
+                                    </p>
+                                    <p className="text-xs text-gray-600">
+                                        Volume Total: {(formData.unidades_por_compra * formData.volume_por_unidade).toFixed(3)} {produtoUnidade}
+                                    </p>
+                                </>
+                            ) : (
+                                <p className="text-gray-700">
+                                    <strong>Preço Unitário Calculado:</strong> €
+                                    {formData.unidades_por_compra > 0
+                                        ? (formData.preco_compra / formData.unidades_por_compra).toFixed(4)
+                                        : "0.0000"}
+                                </p>
+                            )}
                         </div>
                     </div>
 

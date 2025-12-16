@@ -15,7 +15,8 @@ import {
     Building2,
     Bell,
     PieChart,
-    Calculator
+    Calculator,
+    FileText
 } from "lucide-react";
 
 const menuItems = [
@@ -29,6 +30,7 @@ const menuItems = [
     { name: "Menu", href: "/menu", icon: MenuSquare },
     { name: "Compras", href: "/purchases", icon: ShoppingCart },
     { name: "Calculadora", href: "/purchases/calculator", icon: Calculator },
+    { name: "Importar Faturas", href: "/invoices", icon: FileText },
     { name: "Inventário", href: "/inventory", icon: Warehouse },
     { name: "Consumos", href: "/consumos", icon: PieChart },
     { name: "Dados do Restaurante", href: "/dados-restaurante", icon: Building2 },

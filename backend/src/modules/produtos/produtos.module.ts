@@ -22,6 +22,7 @@ const createVariationSchema = z.object({
     produto_id: z.number(),
     tipo_unidade_compra: z.string(),
     unidades_por_compra: z.number(),
+    volume_por_unidade: z.number().optional(),
     preco_compra: z.number(),
     fornecedor: z.string().optional(),
 });
@@ -42,6 +43,22 @@ const createSubfamilySchema = z.object({
 const updatePriceSchema = z.object({
     preco_compra: z.number().positive(),
     origem: z.enum(['MANUAL', 'COMPRA', 'SISTEMA']).default('MANUAL'),
+});
+
+// Quick Create from Invoice Line
+const quickCreateProductSchema = z.object({
+    nome: z.string(),
+    familia_id: z.number().optional(),
+    subfamilia_id: z.number().optional(),
+    unidade_medida: z.enum(['KG', 'L', 'Unidade']).default('KG'),
+    vendavel: z.boolean().default(false),
+    variacao_compra: z.object({
+        tipo_unidade_compra: z.string(),
+        unidades_por_compra: z.number(),
+        preco_compra: z.number(),
+        fornecedor: z.string().optional(),
+    }),
+    line_id: z.number(), // Invoice line to match
 });
 
 // Service
@@ -172,7 +189,12 @@ class ProductService {
         // Get current effective unit price
         const precoUnitarioAnterior = await recalculationService.getPrecoUnitarioAtual(data.produto_id);
 
-        const preco_unitario = data.preco_compra / data.unidades_por_compra;
+        // Calculate unit price considering volume_por_unidade if provided
+        const divisor = data.volume_por_unidade
+            ? data.unidades_por_compra * data.volume_por_unidade
+            : data.unidades_por_compra;
+        const preco_unitario = data.preco_compra / divisor;
+
         const variation = await this.db.create('variacaoProduto', {
             ...data,
             preco_unitario,
@@ -351,6 +373,55 @@ export async function productRoutes(app: FastifyInstance) {
             subfamilyId,
             vendavel: req.query.vendavel
         });
+    });
+
+    // Quick search endpoint for invoice manual matching
+    app.withTypeProvider<ZodTypeProvider>().get('/search', {
+        schema: {
+            querystring: z.object({
+                q: z.string().min(1),
+            }),
+            tags: ['Products'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const service = new ProductService(req.tenantId);
+        const db = new TenantDB(req.tenantId);
+
+        const results = await service.list({
+            page: 1,
+            limit: 20,
+            search: req.query.q,
+        });
+
+        // Fetch variations for each product
+        const productsWithVariations = await Promise.all(
+            results.data.map(async (p: any) => {
+                // Create db instance inside map to avoid closure issues
+                const productDb = new TenantDB(req.tenantId!);
+                // Use Prisma model name (camelCase), not table name
+                const variations = await productDb.findMany('variacaoProduto', {
+                    where: { produto_id: p.id, ativo: true },
+                    orderBy: { data_ultima_compra: 'desc' },
+                });
+
+                return {
+                    id: p.id,
+                    nome: p.nome,
+                    codigo_interno: p.codigo_interno,
+                    variations: variations.map((v: any) => ({
+                        id: v.id,
+                        tipo_unidade_compra: v.tipo_unidade_compra,
+                        unidades_por_compra: v.unidades_por_compra,
+                        preco_compra: v.preco_compra,
+                        preco_unitario: v.preco_unitario,
+                    })),
+                };
+            })
+        );
+
+        return productsWithVariations;
     });
 
     app.withTypeProvider<ZodTypeProvider>().get('/:id', {
@@ -571,6 +642,119 @@ export async function productRoutes(app: FastifyInstance) {
                 },
             };
         } catch (error: any) {
+            return reply.status(500).send({ error: error.message });
+        }
+    });
+
+    // POST /api/products/quick-create - Create product from invoice line
+    app.withTypeProvider<ZodTypeProvider>().post('/quick-create', {
+        schema: {
+            body: quickCreateProductSchema,
+            description: 'Quickly create product with variation from invoice line and auto-match',
+            tags: ['Products', 'Invoice Integration'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        const { nome, familia_id, subfamilia_id, unidade_medida, vendavel, variacao_compra, line_id } = req.body;
+
+        try {
+            // Start transaction
+            const result = await prisma.$transaction(async (tx) => {
+                // 1. Generate codigo_interno if subfamilia exists
+                let codigo_interno: string | undefined;
+
+                if (subfamilia_id) {
+                    const subfamilia = await tx.subfamilia.findUnique({
+                        where: { id: subfamilia_id },
+                        include: { familia: true }
+                    });
+
+                    if (subfamilia && subfamilia.tenant_id === req.tenantId) {
+                        // Get existing products to calculate next sequence
+                        const existingProducts = await tx.produto.findMany({
+                            where: {
+                                subfamilia_id: subfamilia_id,
+                                tenant_id: req.tenantId
+                            },
+                            orderBy: { codigo_interno: 'desc' },
+                            take: 1,
+                            select: { codigo_interno: true }
+                        });
+
+                        // Calculate next sequence number
+                        let nextSeq = 1;
+                        if (existingProducts.length > 0 && existingProducts[0].codigo_interno) {
+                            const lastCode = existingProducts[0].codigo_interno;
+                            const parts = lastCode.split('-');
+                            if (parts.length === 3) {
+                                nextSeq = parseInt(parts[2]) + 1;
+                            }
+                        }
+
+                        // Generate product code
+                        const familiaCode = subfamilia.familia.codigo || 'XXX';
+                        const subfamiliaCode = subfamilia.codigo || 'XXX';
+                        codigo_interno = `${familiaCode}-${subfamiliaCode}-${nextSeq.toString().padStart(3, '0')}`;
+                    }
+                }
+
+                // 2. Create Product
+                const productData: any = {
+                    tenant_id: req.tenantId!,
+                    nome,
+                    unidade_medida,
+                    vendavel: vendavel || false,
+                    ativo: true,
+                };
+                if (familia_id) productData.familia_id = familia_id;
+                if (subfamilia_id) productData.subfamilia_id = subfamilia_id;
+                if (codigo_interno) productData.codigo_interno = codigo_interno;
+
+                const produto = await tx.produto.create({
+                    data: productData
+                });
+
+                // 3. Create Purchase Variation
+                const precoPorUnidade = variacao_compra.preco_compra / variacao_compra.unidades_por_compra;
+
+                const variacao = await tx.variacaoProduto.create({
+                    data: {
+                        tenant_id: req.tenantId!,
+                        produto_id: produto.id,
+                        tipo_unidade_compra: variacao_compra.tipo_unidade_compra,
+                        unidades_por_compra: new Decimal(variacao_compra.unidades_por_compra),
+                        preco_compra: new Decimal(variacao_compra.preco_compra),
+                        preco_unitario: new Decimal(precoPorUnidade),
+                        fornecedor: variacao_compra.fornecedor,
+                    }
+                });
+
+                // 4. Auto-match to invoice line
+                const linha = await tx.faturaLinhaImportacao.update({
+                    where: {
+                        id: line_id,
+                        tenant_id: req.tenantId!,
+                    },
+                    data: {
+                        produto_id: produto.id,
+                        variacao_id: variacao.id,
+                        status: 'matched',
+                        confianca_match: new Decimal(100), // Manual match = 100%
+                    }
+                });
+
+                return { produto, variacao, linha };
+            });
+
+            return {
+                produto: result.produto,
+                variacao: result.variacao,
+                linha_matched: true,
+            };
+        } catch (error: any) {
+            console.error('[Quick Create] Error:', error);
             return reply.status(500).send({ error: error.message });
         }
     });

@@ -1,0 +1,72 @@
+
+
+// -----------------------------------------------------------------------------
+// FORNECEDORES (Suppliers)
+// -----------------------------------------------------------------------------
+
+model Fornecedor {
+  id                  Int      @id @default(autoincrement())
+  uuid                String   @default(uuid())
+  
+  // Supplier Info
+  nome                String
+  nif                 String   @unique  // Tax ID - primary identifier
+  
+  // Contact
+  email               String?
+  telefone            String?
+  morada              String?
+  
+  // Status
+  ativo               Boolean  @default(true)
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  invoiceTemplate     InvoiceTemplate?
+  
+  @@map("fornecedores")
+}
+
+// -----------------------------------------------------------------------------
+// INVOICE TEMPLATES
+// -----------------------------------------------------------------------------
+
+model InvoiceTemplate {
+  id                  Int      @id @default(autoincrement())
+  fornecedor_id       Int      @unique  // One template per supplier
+  uuid                String   @default(uuid())
+  
+  // Template Info
+  template_name       String   // "Makro - Standard Invoice"
+  template_version    Int      @default(1)
+  
+  // Template Structure (JSON)
+  header_config       Json     // { "nif_pattern": "...", "date_pattern": "...", "total_pattern": "..." }
+  table_config        Json     // { "columns": [...], "start_marker": "...", "end_marker": "...", "row_pattern": "..." }
+  
+  // Learning & Statistics (across ALL tenants using this supplier)
+  is_active           Boolean  @default(true)
+  confidence_score    Float    @default(0.0)  // 0-100 (based on success rate)
+  times_used          Int      @default(0)    // How many times template was applied
+  times_successful    Int      @default(0)    // How many times it worked correctly
+  
+  // AI Generation
+  created_from_ai     Boolean  @default(false)
+  ai_prompt_used      String?  @db.Text
+  created_by_tenant   Int?     // Which tenant first created this template
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  fornecedor          Fornecedor @relation(fields: [fornecedor_id], references: [id], onDelete: Cascade)
+  createdBy           Tenant?    @relation(fields: [created_by_tenant], references: [id], onDelete: SetNull)
+  
+  @@index([fornecedor_id])
+  @@index([is_active])
+  @@map("invoice_templates")
+}

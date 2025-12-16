@@ -40,6 +40,8 @@ model Tenant {
   historicoPrecos     HistoricoPreco[]
   compras             Compra[]
   comprasTemporarias  CompraTemporaria[]
+  comprasFaturas      CompraFatura[]
+  comprasItens        CompraItem[]
   receitas            Receita[]
   ingredientesReceita IngredienteReceita[]
   etapasReceita       EtapaReceita[]
@@ -63,6 +65,10 @@ model Tenant {
   listasCalculadora   ListaCalculadora[]
   sessoesInventario   SessaoInventario[]
   itensInventario     ItemInventario[]
+  faturasImportacao   FaturaImportacao[]
+  faturasLinhasImportacao FaturaLinhaImportacao[]
+  matchingHistorico   MatchingHistorico[]
+  createdTemplates    InvoiceTemplate[]  // Templates created by this tenant
 
   @@map("tenants")
 }
@@ -88,9 +94,11 @@ model User {
   tenant              Tenant    @relation(fields: [tenant_id], references: [id])
   sessions            Session[]
   twoFactorBackupCodes TwoFactorBackupCode[]
+  passwordResets      PasswordReset[]
   auditLogs           AuditLog[]
   comprasValidadas    Compra[]
   comprasTempCriadas  CompraTemporaria[]
+  comprasFaturasValidadas CompraFatura[]
   receitasCriadas     Receita[]
   vendasRegistadas    Venda[]
   conversasAi         ConversaAi[]
@@ -100,6 +108,7 @@ model User {
   sessoesCriadas      SessaoInventario[] @relation("SessaoCriador")
   sessoesFechadas     SessaoInventario[] @relation("SessaoFechador")
   itensContados       ItemInventario[]
+  matchingHistorico   MatchingHistorico[]
 
   @@unique([tenant_id, email])
   @@index([email]) // Performance: Login lookup
@@ -136,6 +145,21 @@ model TwoFactorBackupCode {
   user      User     @relation(fields: [user_id], references: [id])
 
   @@map("two_factor_backup_codes")
+}
+
+model PasswordReset {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  token      String   @unique @db.VarChar(255)
+  expires_at DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([user_id])
+  @@map("password_resets")
 }
 
 model TenantLimits {
@@ -242,6 +266,9 @@ model Produto {
   comboItens      ComboItem[]
   formatosVenda   FormatoVenda[] // NEW: Sell formats for this product
   itensInventario ItemInventario[]
+  comprasItens    CompraItem[]
+  faturasLinhasImportacao FaturaLinhaImportacao[]
+  matchingHistorico MatchingHistorico[]
 
   @@unique([tenant_id, subfamilia_id, nome])
   @@map("produtos")
@@ -253,6 +280,7 @@ model VariacaoProduto {
   produto_id          Int
   tipo_unidade_compra String   // ex: "Caixa 12un"
   unidades_por_compra Decimal  @db.Decimal(10, 4)
+  volume_por_unidade  Decimal? @db.Decimal(10, 4) // Optional: volume/quantity per individual unit (e.g., 0.33 for 33cl bottle)
   preco_compra        Decimal  @db.Decimal(10, 2)
   preco_unitario      Decimal  @db.Decimal(10, 4) // Computed in app, stored for cache
   fornecedor          String?
@@ -269,9 +297,12 @@ model VariacaoProduto {
   historicoPrecos     HistoricoPreco[]
   compras             Compra[]
   comprasTemporarias  CompraTemporaria[]
+  comprasItens        CompraItem[]
   stockTeorico        StockTeorico[]
   formatosVendaOrigem FormatoVenda[] @relation("VariacaoOrigem") // NEW: Sell formats using this variation as origin
   itensInventario     ItemInventario[]
+  faturasLinhasImportacao FaturaLinhaImportacao[]
+  matchingHistorico   MatchingHistorico[]
 
   @@map("variacoes_produto")
 }
@@ -436,12 +467,14 @@ model Compra {
   validado            Boolean  @default(true)
   data_validacao      DateTime?
   user_id             Int?
+  fatura_importacao_id Int?    // Link to imported invoice
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
   variacao            VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
   user                User?    @relation(fields: [user_id], references: [id])
+  faturaImportacao    FaturaImportacao? @relation(fields: [fatura_importacao_id], references: [id])
 
   @@map("compras")
 }
@@ -469,6 +502,85 @@ model CompraTemporaria {
 
   @@map("compras_temporarias")
 }
+
+// -----------------------------------------------------------------------------
+// COMPRAS - Faturação (Invoice-based Purchases)
+// -----------------------------------------------------------------------------
+
+model CompraFatura {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  
+  // Supplier Info
+  fornecedor_nome     String
+  fornecedor_nif      String?
+  
+  // Invoice Info
+  numero_fatura       String
+  data_fatura         DateTime
+  
+  // Totals
+  total_sem_iva       Decimal  @db.Decimal(10, 2)
+  total_iva           Decimal  @db.Decimal(10, 2)
+  total_com_iva       Decimal  @db.Decimal(10, 2)
+  
+  // Source tracking
+  metodo_entrada      String   // Manual, OCR, API, Import
+  documento_url       String?
+  fatura_importacao_id Int?    // Link to imported invoice if from OCR
+  
+  // Validation
+  validado            Boolean  @default(false)
+  data_validacao      DateTime?
+  validado_por        Int?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  validador           User?    @relation(fields: [validado_por], references: [id])
+  faturaImportacao    FaturaImportacao? @relation(fields: [fatura_importacao_id], references: [id])
+  itens               CompraItem[]
+  
+  @@map("compras_faturas")
+}
+
+model CompraItem {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  
+  // Parent invoice
+  compra_fatura_id    Int
+  
+  // Product Info
+  produto_id          Int
+  variacao_id         Int?
+  
+  // Line Data
+  descricao           String
+  quantidade          Decimal  @db.Decimal(10, 4)
+  unidade             String   // KG, L, UN, etc.
+  preco_unitario      Decimal  @db.Decimal(10, 4)
+  preco_total         Decimal  @db.Decimal(10, 2)
+  iva_percentual      Decimal? @db.Decimal(5, 2)
+  iva_valor           Decimal? @db.Decimal(10, 2)
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  compraFatura        CompraFatura @relation(fields: [compra_fatura_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  
+  @@map("compras_itens")
+}
+
 
 // -----------------------------------------------------------------------------
 // RECEITAS & MENU
@@ -945,6 +1057,139 @@ model CustoEstrutura {
 }
 
 // -----------------------------------------------------------------------------
+// INVOICE IMPORT (OCR & STAGING)
+// -----------------------------------------------------------------------------
+
+model FaturaImportacao {
+  id                Int      @id @default(autoincrement())
+  tenant_id         Int
+  
+  // Supplier Info (extracted from OCR)
+  fornecedor_nome   String?
+  fornecedor_nif    String?
+  
+  // Invoice Info
+  numero_fatura     String?
+  data_fatura       DateTime?
+  
+  // Totals
+  total_sem_iva     Decimal?  @db.Decimal(10, 2)
+  total_iva         Decimal?  @db.Decimal(10, 2)
+  total_com_iva     Decimal?  @db.Decimal(10, 2)
+  
+  // File & Processing
+  ficheiro_nome     String
+  ficheiro_url      String
+  ficheiro_tipo     String    // pdf, jpg, png
+  ficheiro_paths    Json?     // NEW: Array of file paths for multi-page invoices
+  ocr_texto_bruto   String?   @db.Text
+  ocr_metadata      Json?
+  
+  // Status
+  status            String    // pending, reviewing, approved, rejected, error
+  erro_mensagem     String?   @db.Text
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  processado_em     DateTime?
+  aprovado_em       DateTime?
+  aprovado_por      Int?
+  
+  // Relations
+  tenant            Tenant    @relation(fields: [tenant_id], references: [id])
+  linhas            FaturaLinhaImportacao[]
+  compras           Compra[]
+  comprasFaturas    CompraFatura[]
+  
+  @@index([tenant_id, status])
+  @@index([tenant_id, data_fatura])
+  @@map("faturas_importacao")
+}
+
+model FaturaLinhaImportacao {
+  id                    Int      @id @default(autoincrement())
+  fatura_importacao_id  Int
+  tenant_id             Int
+  linha_numero          Int
+  
+  // Extracted Data from OCR
+  descricao_original    String
+  descricao_limpa       String?   // Product name without package info (NEW)
+  quantidade            Decimal?  @db.Decimal(10, 3)
+  unidade               String?   // kg, un, cx, l, etc
+  preco_unitario        Decimal?  @db.Decimal(10, 4)
+  preco_total           Decimal?  @db.Decimal(10, 2)
+  iva_percentual        Decimal?  @db.Decimal(5, 2)
+  iva_valor             Decimal?  @db.Decimal(10, 2)
+  
+  // Package Information (NEW - extracted by Gemini)
+  emb_tipo              String?   // caixa, saco, embalagem, garrafa, pacote
+  emb_quantidade        Decimal?  @db.Decimal(10, 3)  // 4, 800, 20, etc.
+  emb_unidade           String?   // kg, g, L, ml, un
+  
+  // Calculated Prices (NEW - computed by Gemini)
+  preco_por_kg          Decimal?  @db.Decimal(10, 4)  // Normalized price per kg
+  preco_por_litro       Decimal?  @db.Decimal(10, 4)  // Normalized price per liter
+  preco_por_unidade     Decimal?  @db.Decimal(10, 4)  // Normalized price per unit
+  
+  // Product Matching
+  produto_id            Int?
+  variacao_id           Int?
+  confianca_match       Decimal?  @db.Decimal(5, 2)  // 0-100%
+  status                String    // pending, matched, manual_review, new_product, approved
+  
+  // New Product Data (if creating new product)
+  familia_id            Int?
+  subfamilia_id         Int?
+  criar_produto         Boolean   @default(false)
+  
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  fatura                FaturaImportacao @relation(fields: [fatura_importacao_id], references: [id], onDelete: Cascade)
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  produto               Produto?  @relation(fields: [produto_id], references: [id])
+  variacao              VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  
+  @@index([fatura_importacao_id])
+  @@index([tenant_id, status])
+  @@index([produto_id])
+  @@map("faturas_linhas_importacao")
+}
+
+model MatchingHistorico {
+  id                    Int      @id @default(autoincrement())
+  tenant_id             Int
+  
+  // Original invoice description
+  descricao_fatura      String
+  fornecedor_nome       String?
+  
+  // Matched product
+  produto_id            Int
+  variacao_id           Int?
+  
+  // Confidence & Confirmation
+  confianca_inicial     Decimal?  @db.Decimal(5, 2)
+  confirmado_por        Int       // user_id
+  createdAt             DateTime  @default(now())
+  
+  // Relations
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  produto               Produto   @relation(fields: [produto_id], references: [id])
+  variacao              VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  user                  User      @relation(fields: [confirmado_por], references: [id])
+  
+  @@index([tenant_id, descricao_fatura])
+  @@index([produto_id])
+  @@map("matching_historico")
+}
+
+// -----------------------------------------------------------------------------
 // PERFORMANCE INDEXES (ADDITIONAL)
 // -----------------------------------------------------------------------------
 // Note: Some indexes are already defined in the models above.
@@ -960,3 +1205,73 @@ model CustoEstrutura {
 // but here we will just ensure we have the right indexes.
 
 
+// -----------------------------------------------------------------------------
+// FORNECEDORES (Suppliers)
+// -----------------------------------------------------------------------------
+
+model Fornecedor {
+  id                  Int      @id @default(autoincrement())
+  uuid                String   @default(uuid())
+  
+  // Supplier Info
+  nome                String
+  nif                 String   @unique  // Tax ID - primary identifier
+  
+  // Contact
+  email               String?
+  telefone            String?
+  morada              String?
+  
+  // Status
+  ativo               Boolean  @default(true)
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  invoiceTemplate     InvoiceTemplate?
+  
+  @@map("fornecedores")
+}
+
+// -----------------------------------------------------------------------------
+// INVOICE TEMPLATES
+// -----------------------------------------------------------------------------
+
+model InvoiceTemplate {
+  id                  Int      @id @default(autoincrement())
+  fornecedor_id       Int      @unique  // One template per supplier
+  uuid                String   @default(uuid())
+  
+  // Template Info
+  template_name       String   // "Makro - Standard Invoice"
+  template_version    Int      @default(1)
+  
+  // Template Structure (JSON)
+  header_config       Json     // { "nif_pattern": "...", "date_pattern": "...", "total_pattern": "..." }
+  table_config        Json     // { "columns": [...], "start_marker": "...", "end_marker": "...", "row_pattern": "..." }
+  
+  // Learning & Statistics (across ALL tenants using this supplier)
+  is_active           Boolean  @default(true)
+  confidence_score    Float    @default(0.0)  // 0-100 (based on success rate)
+  times_used          Int      @default(0)    // How many times template was applied
+  times_successful    Int      @default(0)    // How many times it worked correctly
+  
+  // AI Generation
+  created_from_ai     Boolean  @default(false)
+  ai_prompt_used      String?  @db.Text
+  created_by_tenant   Int?     // Which tenant first created this template
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  fornecedor          Fornecedor @relation(fields: [fornecedor_id], references: [id], onDelete: Cascade)
+  createdBy           Tenant?    @relation(fields: [created_by_tenant], references: [id], onDelete: SetNull)
+  
+  @@index([fornecedor_id])
+  @@index([is_active])
+  @@map("invoice_templates")
+}

@@ -40,3 +40,12 @@ next-env.d.ts
 # Prisma
 /backend/prisma/migrations/
 !/backend/prisma/migrations/migration_lock.toml
+
+# Database backups (sensitive data)
+*.sql
+backup_*.sql
+
+# Google Cloud API Keys (sensitive)
+**/config/vision-api-key.json
+**/config/*-key.json
+backend/config/*.json
