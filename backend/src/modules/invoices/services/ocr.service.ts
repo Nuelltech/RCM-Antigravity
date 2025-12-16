@@ -26,19 +26,31 @@ export interface OCRBlock {
 
 export class OCRService {
     private client: any; // vision.ImageAnnotatorClient - using any to avoid namespace issues
+    private isAvailable: boolean = false;
 
     constructor() {
         // Initialize Vision API client
-        // Will use GOOGLE_APPLICATION_CREDENTIALS env var or default credentials
         const keyPath = process.env.GOOGLE_VISION_API_KEY_PATH;
 
-        if (keyPath && fs.existsSync(keyPath)) {
-            this.client = new vision.ImageAnnotatorClient({
-                keyFilename: keyPath
-            });
-        } else {
-            // Try default credentials
-            this.client = new vision.ImageAnnotatorClient();
+        try {
+            if (keyPath && fs.existsSync(keyPath)) {
+                this.client = new vision.ImageAnnotatorClient({
+                    keyFilename: keyPath
+                });
+                this.isAvailable = true;
+                console.log('[OCR] Google Vision initialized with key file.');
+            } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+                this.client = new vision.ImageAnnotatorClient();
+                this.isAvailable = true;
+                console.log('[OCR] Google Vision initialized with default credentials.');
+            } else {
+                console.warn('[OCR] Google Vision API not configured. OCR will not be available.');
+                console.warn('[OCR] Set GOOGLE_VISION_API_KEY_PATH or GOOGLE_APPLICATION_CREDENTIALS to enable OCR.');
+                this.isAvailable = false;
+            }
+        } catch (error) {
+            console.error('[OCR] Failed to initialize Google Vision:', error);
+            this.isAvailable = false;
         }
     }
 
@@ -46,6 +58,16 @@ export class OCRService {
      * Extract text from image or PDF file
      */
     async extractText(filepath: string): Promise<OCRResult> {
+        // Check if OCR is available
+        if (!this.isAvailable) {
+            console.warn('[OCR] Service not available. Returning empty result.');
+            return {
+                fullText: '',
+                pages: [],
+                confidence: 0
+            };
+        }
+
         try {
             // Read file
             const fileBuffer = fs.readFileSync(filepath);
@@ -190,12 +212,13 @@ export class OCRService {
      * Test OCR service
      */
     async testConnection(): Promise<boolean> {
-        try {
-            // Just verify client is initialized
-            return !!this.client;
-        } catch (error) {
-            console.error('OCR Service Test Failed:', error);
-            return false;
-        }
+        return this.isAvailable;
+    }
+
+    /**
+     * Check if OCR is available
+     */
+    public checkAvailability(): boolean {
+        return this.isAvailable;
     }
 }

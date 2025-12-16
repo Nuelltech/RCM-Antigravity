@@ -48,25 +48,39 @@ export class GeminiInvoiceParserService {
         const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
 
         if (!apiKey) {
-            throw new Error('GOOGLE_AI_API_KEY or GEMINI_API_KEY environment variable is required');
+            console.warn('[GEMINI] No API key found. Gemini invoice parsing will not be available.');
+            console.warn('[GEMINI] Set GOOGLE_AI_API_KEY or GEMINI_API_KEY environment variable to enable this feature.');
+            return;
         }
 
         this.ai = new GoogleGenerativeAI(apiKey);
+        console.log('[GEMINI] Invoice parser initialized successfully.');
     }
 
     /**
      * Parse invoice text using Gemini AI
      */
     async parseInvoice(ocrText: string): Promise<ParsedInvoice> {
+        // If Gemini is not initialized, return empty structure
+        if (!this.ai) {
+            console.warn('[GEMINI] Parser not initialized. Returning empty structure.');
+            return {
+                header: {},
+                lineItems: [],
+                rawText: ocrText
+            };
+        }
+
         const prompt = this.buildPrompt(ocrText);
 
         try {
-            const response = await this.ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt
-            });
+            // Get the model
+            const model = this.ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-            const text = response.text;
+            // Generate content
+            const result = await model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
 
             // Extract JSON from response (may be wrapped in markdown code blocks)
             const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) || text.match(/\{[\s\S]*\}/);
