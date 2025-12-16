@@ -75,7 +75,7 @@ export class GeminiInvoiceParserService {
 
         try {
             // Get the model
-            const model = this.ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            const model = this.ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
             // Generate content
             const result = await model.generateContent(prompt);
