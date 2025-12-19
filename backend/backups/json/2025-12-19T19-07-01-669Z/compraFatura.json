@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "uuid": "b2ed4c05-85a1-43a5-b961-6c65dea7e303",
+    "fornecedor_nome": "Coelho & Dias. S.A.",
+    "fornecedor_nif": "501122583",
+    "numero_fatura": "FTV 25001/070673",
+    "data_fatura": "2025-11-11T00:00:00.000Z",
+    "total_sem_iva": "395.6",
+    "total_iva": "56.65",
+    "total_com_iva": "452.25",
+    "metodo_entrada": "OCR",
+    "documento_url": "/opt/render/project/src/backend/uploads/invoices/tenant_1/Compras_Restaurante_Alambique_exemplo_3_1765908796838.jpg",
+    "fatura_importacao_id": 7,
+    "validado": false,
+    "data_validacao": null,
+    "validado_por": null,
+    "createdAt": "2025-12-16T18:32:33.882Z",
+    "updatedAt": "2025-12-16T18:32:33.882Z"
+  }
+]

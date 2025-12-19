@@ -1,0 +1,28 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "uuid": "822cd1bc-52a0-49eb-bc59-bfd80a1b2b2d",
+    "nome": "Prato do dia Bife à portuguesa",
+    "tipo": "Simples",
+    "descricao": null,
+    "imagem_url": null,
+    "custo_total": "4.5014",
+    "ativo": true,
+    "createdAt": "2025-12-04T14:31:10.100Z",
+    "updatedAt": "2025-12-10T14:46:18.172Z"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "uuid": "0ed4b87c-7532-4d77-a0f0-e3bac430e4ac",
+    "nome": "Prato do dia - Feijoada Transmontada",
+    "tipo": "Simples",
+    "descricao": "teste",
+    "imagem_url": null,
+    "custo_total": "1.7845",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:02:45.422Z",
+    "updatedAt": "2025-12-10T14:46:19.261Z"
+  }
+]

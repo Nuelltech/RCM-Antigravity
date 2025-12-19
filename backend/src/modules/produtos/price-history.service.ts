@@ -29,6 +29,16 @@ export class PriceHistoryService {
                 .minus(params.precoAnterior)
                 .dividedBy(params.precoAnterior)
                 .times(100);
+        } else if (params.precoNovo.greaterThan(0)) {
+            // First variation - set to 100% since there's no previous price
+            percentualMudanca = new Decimal(100);
+        }
+
+        // Cap at ±999.99 to prevent database overflow
+        if (percentualMudanca.greaterThan(999.99)) {
+            percentualMudanca = new Decimal(999.99);
+        } else if (percentualMudanca.lessThan(-999.99)) {
+            percentualMudanca = new Decimal(-999.99);
         }
 
         return await prisma.historicoPreco.create({

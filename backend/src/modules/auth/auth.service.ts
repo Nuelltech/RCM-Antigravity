@@ -51,17 +51,26 @@ export class AuthService {
                 },
             });
 
-            // 2. Create User
+            // 2. Create User (global)
             const user = await tx.user.create({
                 data: {
-                    tenant_id: tenant.id,
                     nome: nome_usuario,
                     email,
                     password_hash: hashedPassword,
-                    role: 'owner',
                     verification_code: verificationCode,
                     verification_code_expires_at: verificationExpiresAt,
                     email_verificado: false,
+                },
+            });
+
+            // 3. Create UserTenant relationship
+            await tx.userTenant.create({
+                data: {
+                    user_id: user.id,
+                    tenant_id: tenant.id,
+                    role: 'owner',
+                    ativo: true,
+                    activated_at: new Date(),
                 },
             });
 
@@ -149,14 +158,18 @@ export class AuthService {
     }
 
     async login(input: LoginInput) {
-        // Optimized: Use findFirst instead of findMany to get single user
+        // Find user by email
         const user = await prisma.user.findFirst({
             where: { email: input.email },
-            include: { tenant: true },
         });
 
         if (!user) {
             throw new Error('Invalid credentials');
+        }
+
+        // Check if user has a password set
+        if (!user.password_hash) {
+            throw new Error('Password not set. Please accept your invitation first.');
         }
 
         const valid = await bcrypt.compare(input.password, user.password_hash);
@@ -168,39 +181,145 @@ export class AuthService {
             throw new Error('Email not verified. Please check your inbox for the verification code.');
         }
 
-        if (!user.ativo || !user.tenant.ativo) {
-            throw new Error('Account is inactive');
-        }
-
-        const token = this.app.jwt.sign({
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            tenantId: user.tenant_id,
+        // Get all tenants this user has access to
+        const userTenants = await prisma.userTenant.findMany({
+            where: {
+                user_id: user.id,
+                ativo: true, // Only active relationships
+            },
+            include: {
+                tenant: {
+                    select: {
+                        id: true,
+                        nome_restaurante: true,
+                        slug: true,
+                        ativo: true,
+                    },
+                },
+            },
         });
 
-        return { token, user, tenant: user.tenant };
+        // Filter out inactive tenants
+        const activeTenants = userTenants.filter((ut) => ut.tenant.ativo);
+
+        if (activeTenants.length === 0) {
+            throw new Error('No active tenants found for this user');
+        }
+
+        // Use first active tenant as default
+        const defaultTenant = activeTenants[0];
+
+        const token = this.app.jwt.sign({
+            userId: user.id,
+            email: user.email,
+            role: defaultTenant.role, // Role from UserTenant
+            tenantId: defaultTenant.tenant_id,
+        });
+
+        return {
+            token,
+            user: {
+                id: user.id,
+                nome: user.nome,
+                email: user.email,
+                role: defaultTenant.role,
+                tenant_id: defaultTenant.tenant_id,
+            },
+            tenant: defaultTenant.tenant,
+            tenants: activeTenants.map((ut) => ({
+                id: ut.tenant.id,
+                nome_restaurante: ut.tenant.nome_restaurante,
+                slug: ut.tenant.slug,
+                role: ut.role, // User's role in this tenant
+            })),
+        };
+    }
+
+    /**
+     * Switch to a different tenant
+     * Validates that user has access to the target tenant
+     */
+    async switchTenant(userId: number, targetTenantId: number) {
+        // Check if user has access to target tenant
+        const userTenant = await prisma.userTenant.findUnique({
+            where: {
+                user_id_tenant_id: {
+                    user_id: userId,
+                    tenant_id: targetTenantId,
+                },
+            },
+            include: {
+                user: true,
+                tenant: true,
+            },
+        });
+
+        if (!userTenant || !userTenant.ativo) {
+            throw new Error('Não tem acesso a este restaurante');
+        }
+
+        // Generate new JWT with new tenantId
+        const newToken = this.app.jwt.sign({
+            userId: userTenant.user.id,
+            email: userTenant.user.email,
+            tenantId: targetTenantId,
+            role: userTenant.role, // Role specific to this tenant
+        });
+
+        return {
+            access_token: newToken,
+            user: {
+                id: userTenant.user.id,
+                nome: userTenant.user.nome,
+                email: userTenant.user.email,
+                role: userTenant.role,
+            },
+            tenant: {
+                id: userTenant.tenant.id,
+                nome_restaurante: userTenant.tenant.nome_restaurante,
+                slug: userTenant.tenant.slug,
+            },
+        };
     }
 
     async validateToken(token: string) {
         try {
             const decoded = this.app.jwt.verify(token) as {
-                id: number;
+                userId: number;
                 email: string;
                 role: string;
                 tenantId: number;
             };
 
             const user = await prisma.user.findUnique({
-                where: { id: decoded.id },
-                include: { tenant: true },
+                where: { id: decoded.userId },
             });
 
-            if (!user || !user.ativo || !user.tenant.ativo) {
+            if (!user) {
                 throw new Error('Invalid token');
             }
 
-            return { user, tenant: user.tenant };
+            // Check if user still has an active relationship with this tenant
+            const userTenant = await prisma.userTenant.findUnique({
+                where: {
+                    user_id_tenant_id: {
+                        user_id: decoded.userId,
+                        tenant_id: decoded.tenantId,
+                    },
+                },
+            });
+
+            if (!userTenant || !userTenant.ativo) {
+                throw new Error('Invalid token - no active tenant relationship');
+            }
+
+            return {
+                isValid: true,
+                userId: decoded.userId,
+                email: decoded.email,
+                tenantId: decoded.tenantId,
+                role: decoded.role,
+            };
         } catch (error) {
             throw new Error('Invalid token');
         }

@@ -209,13 +209,14 @@ class ProductService {
         // Note: getPrecoUnitarioAtual fetches from DB, so it sees the new variation.
         const precoUnitarioNovo = await recalculationService.getPrecoUnitarioAtual(data.produto_id);
 
-        // Record history if effective price changed
+        // Record history only if unit price (€/L) changed
+        // This is the correct metric since all variations normalize to the same unit (liters)
         if (!precoUnitarioAnterior.equals(precoUnitarioNovo)) {
             await priceHistoryService.createPriceHistory({
                 tenantId: this.tenantId,
                 variacaoId: variation.id,
-                precoAnterior: new Decimal(0),
-                precoNovo: new Decimal(data.preco_compra),
+                precoAnterior: precoUnitarioAnterior,  // Previous unit price (€/L)
+                precoNovo: precoUnitarioNovo,           // New unit price (€/L)
                 precoUnitarioAnterior: precoUnitarioAnterior,
                 precoUnitarioNovo: precoUnitarioNovo,
                 origem: 'MANUAL',
@@ -702,14 +703,22 @@ export async function productRoutes(app: FastifyInstance) {
 
                 // 2. Create Product
                 const productData: any = {
-                    tenant_id: req.tenantId!,
                     nome,
                     unidade_medida,
                     vendavel: vendavel || false,
                     ativo: true,
+                    tenant: {
+                        connect: { id: req.tenantId! }
+                    }
                 };
-                if (familia_id) productData.familia_id = familia_id;
-                if (subfamilia_id) productData.subfamilia_id = subfamilia_id;
+
+                // Use relation connect for subfamilia (Prisma requirement)
+                if (subfamilia_id) {
+                    productData.subfamilia = {
+                        connect: { id: subfamilia_id }
+                    };
+                }
+
                 if (codigo_interno) productData.codigo_interno = codigo_interno;
 
                 const produto = await tx.produto.create({
@@ -755,7 +764,30 @@ export async function productRoutes(app: FastifyInstance) {
             };
         } catch (error: any) {
             console.error('[Quick Create] Error:', error);
-            return reply.status(500).send({ error: error.message });
+
+            // User-friendly error messages
+            if (error.code === 'P2002') {
+                return reply.status(400).send({
+                    error: 'Já existe um produto com este nome nesta subfamília.'
+                });
+            }
+
+            if (error.code === 'P2025') {
+                return reply.status(404).send({
+                    error: 'Subfamília não encontrada. Por favor, selecione uma subfamília válida.'
+                });
+            }
+
+            if (error.message?.includes('subfamilia')) {
+                return reply.status(400).send({
+                    error: 'Por favor, selecione uma subfamília antes de criar o produto.'
+                });
+            }
+
+            // Generic fallback
+            return reply.status(500).send({
+                error: 'Erro ao criar produto. Verifique se todos os campos obrigatórios estão preenchidos.'
+            });
         }
     });
 

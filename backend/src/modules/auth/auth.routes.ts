@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { AuthService } from './auth.service';
 import { loginSchema, registerSchema, verifyEmailSchema, forgotPasswordSchema, resetPasswordSchema } from './auth.schema';
 
@@ -98,6 +99,34 @@ export async function authRoutes(app: FastifyInstance) {
             return reply.send(result);
         } catch (err: any) {
             return reply.status(401).send({ error: err.message });
+        }
+    });
+
+    // Switch tenant endpoint (multi-tenant support)
+    app.post('/switch-tenant', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Switch to a different tenant',
+            body: z.object({
+                tenantId: z.number(),
+            }),
+        },
+    }, async (req, reply) => {
+        try {
+            // Authenticate manually
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return reply.status(401).send({ error: 'No token provided' });
+            }
+
+            const token = authHeader.substring(7);
+            const decoded = await app.jwt.verify(token) as { userId: number };
+
+            const { tenantId } = req.body as { tenantId: number };
+            const result = await service.switchTenant(decoded.userId, tenantId);
+            return reply.send(result);
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message });
         }
     });
 }

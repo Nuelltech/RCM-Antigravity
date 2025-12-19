@@ -16,7 +16,7 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply) {
     }
 
     // Skip auth for public routes
-    const publicRoutes = ['/api/auth/login', '/api/auth/register', '/api/auth/verify', '/health'];
+    const publicRoutes = ['/api/auth/login', '/api/auth/register', '/api/auth/verify', '/api/users/accept-invite', '/api/users/validate-invite-token', '/health'];
 
     // Check for exact root route match
     if (req.url === '/' || req.url === '') {
@@ -47,14 +47,23 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply) {
         req.log.info(`[AUTH] Token extracted, length: ${token.length}`);
 
         // Verify JWT token using the server's jwt instance
-        const decoded = await req.server.jwt.verify(token);
-        req.log.info(`[AUTH] Token verified successfully, user ID: ${(decoded as any).id || (decoded as any).userId}`);
+        const decoded = await req.server.jwt.verify(token) as any;
+        req.log.info(`[AUTH] Token verified successfully, user ID: ${decoded.id || decoded.userId}`);
 
-        // Set user info on request
-        req.userId = (decoded as any).id || (decoded as any).userId;
+        // Set user info on request - IMPORTANT: Set full user object for authorization middleware
+        req.userId = decoded.id || decoded.userId;
+        (req as any).user = {
+            id: decoded.id || decoded.userId,
+            role: decoded.role,
+            email: decoded.email,
+            tenantId: decoded.tenantId
+        };
+
+        req.log.info(`[AUTH] User object set: id=${(req as any).user.id}, role=${(req as any).user.role}`);
 
     } catch (error) {
         req.log.error(`[AUTH] Token verification failed: ${error}`);
         return reply.status(401).send({ error: 'Invalid or expired token' });
     }
 }
+

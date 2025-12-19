@@ -19,13 +19,22 @@ interface Product {
     }[];
 }
 
+interface Recipe {
+    id: number;
+    nome: string;
+    custo_por_porcao: number;
+    unidade_medida: string;
+}
+
 interface IngredientRow {
     id: string;
+    tipo: 'produto' | 'preparo';
     produto_id: number | null;
+    receita_preparo_id: number | null;
     produto_nome: string;
     quantidade_bruta: number;
     quantidade_liquida: number;
-    rentabilidade: number; // Calculado: (Qtd Líquida / Qtd Bruta) * 100
+    rentabilidade: number;
     unidade: string;
     preco_unitario: number;
     custo_ingrediente: number;
@@ -44,6 +53,7 @@ export default function EditRecipePage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
+    const [prepreparos, setPrepreparos] = useState<Recipe[]>([]);
 
     // Recipe form fields
     const [nome, setNome] = useState("");
@@ -66,6 +76,7 @@ export default function EditRecipePage() {
 
     useEffect(() => {
         loadProducts();
+        loadPrepreparos();
         loadRecipe();
     }, [params.id]);
 
@@ -82,6 +93,15 @@ export default function EditRecipePage() {
             setProducts((data.data || []).sort((a: Product, b: Product) => a.nome.localeCompare(b.nome)));
         } catch (error) {
             console.error("Failed to load products:", error);
+        }
+    };
+
+    const loadPrepreparos = async () => {
+        try {
+            const data = await fetchClient("/recipes?type=Pre-preparo&limit=1000");
+            setPrepreparos((data.data || []).sort((a: Recipe, b: Recipe) => a.nome.localeCompare(b.nome)));
+        } catch (error) {
+            console.error("Failed to load pre-preparations:", error);
         }
     };
 
@@ -111,13 +131,15 @@ export default function EditRecipePage() {
 
                 return {
                     id: ing.id.toString(),
+                    tipo: ing.receita_preparo_id ? 'preparo' : 'produto',
                     produto_id: ing.produto_id,
-                    produto_nome: ing.produto?.nome || "",
+                    receita_preparo_id: ing.receita_preparo_id,
+                    produto_nome: ing.produto?.nome || ing.receita_preparo?.nome || "",
                     quantidade_bruta: quantidadeBruta,
                     quantidade_liquida: quantidadeLiquida,
                     rentabilidade: rentabilidade,
-                    unidade: ing.produto?.unidade_medida || ing.unidade || "",
-                    preco_unitario: Number(ing.produto?.variacoes?.[0]?.preco_unitario || 0),
+                    unidade: ing.produto?.unidade_medida || ing.receita_preparo?.unidade_medida || ing.unidade || "",
+                    preco_unitario: Number(ing.produto?.variacoes?.[0]?.preco_unitario || 0) || Number(ing.receita_preparo?.custo_por_porcao || 0),
                     custo_ingrediente: Number(ing.custo_ingrediente || 0),
                     notas: ing.notas || "",
                 };
@@ -158,10 +180,20 @@ export default function EditRecipePage() {
                     }
                 }
 
+                // If pre-preparation changed, fetch recipe details
+                if (field === "receita_preparo_id" && value) {
+                    const preparo = prepreparos.find((r) => r.id === value);
+                    if (preparo) {
+                        updated.produto_nome = preparo.nome;
+                        updated.unidade = preparo.unidade_medida || 'Porção';
+                        updated.preco_unitario = Number(preparo.custo_por_porcao);
+                    }
+                }
+
                 // Recalculate cost
                 updated.custo_ingrediente = updated.quantidade_bruta * updated.preco_unitario;
 
-                // Recalculate rentabilidade: (Qtd Líquida / Qtd Bruta) * 100
+                // Recalculate rentabilidade
                 if (updated.quantidade_bruta > 0) {
                     updated.rentabilidade = (updated.quantidade_liquida / updated.quantidade_bruta) * 100;
                 } else {
@@ -178,11 +210,33 @@ export default function EditRecipePage() {
             ...ingredients,
             {
                 id: Date.now().toString(),
+                tipo: 'produto',
                 produto_id: null,
+                receita_preparo_id: null,
                 produto_nome: "",
                 quantidade_bruta: 0,
                 quantidade_liquida: 0,
-                rentabilidade: 100, // Default 100%
+                rentabilidade: 100,
+                unidade: "",
+                preco_unitario: 0,
+                custo_ingrediente: 0,
+                notas: "",
+            },
+        ]);
+    };
+
+    const addPreparo = () => {
+        setIngredients([
+            ...ingredients,
+            {
+                id: Date.now().toString(),
+                tipo: 'preparo',
+                produto_id: null,
+                receita_preparo_id: null,
+                produto_nome: "",
+                quantidade_bruta: 0,
+                quantidade_liquida: 0,
+                rentabilidade: 100,
                 unidade: "",
                 preco_unitario: 0,
                 custo_ingrediente: 0,
@@ -232,7 +286,8 @@ export default function EditRecipePage() {
                 imagem_url: imagemUrl,
                 video_url: videoUrl,
                 ingredientes: ingredients.map((ing) => ({
-                    produto_id: ing.produto_id!,
+                    produto_id: ing.tipo === 'produto' ? ing.produto_id! : undefined,
+                    receita_preparo_id: ing.tipo === 'preparo' ? ing.receita_preparo_id! : undefined,
                     quantidade_bruta: ing.quantidade_bruta,
                     quantidade_liquida: ing.quantidade_liquida || undefined,
                     notas: ing.notas,
@@ -470,7 +525,7 @@ export default function EditRecipePage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {ingredients.map((ing) => (
+                                    {ingredients.filter(ing => ing.tipo === 'produto').map((ing) => (
                                         <tr key={ing.id} className="border-b">
                                             <td className="p-2">
                                                 <select
@@ -572,6 +627,120 @@ export default function EditRecipePage() {
                                 </tbody>
                             </table>
                         </div>
+                    </CardContent>
+                </Card>
+
+                {/* Pre-Preparations */}
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <CardTitle>Pré-Preparos</CardTitle>
+                            <Button type="button" onClick={addPreparo} size="sm">
+                                <Plus className="w-4 h-4 mr-2" />
+                                Adicionar Pré-Preparo
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        {ingredients.filter(ing => ing.tipo === 'preparo').length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                                Nenhum pré-preparo adicionado.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b">
+                                            <th className="text-left p-2">Pré-Preparo</th>
+                                            <th className="text-left p-2">Qty (Porções)</th>
+                                            <th className="text-left p-2">Unidade</th>
+                                            <th className="text-left p-2">Custo/Porção</th>
+                                            <th className="text-left p-2">Custo Total</th>
+                                            <th className="text-left p-2">Notas</th>
+                                            <th className="text-left p-2"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {ingredients.filter(ing => ing.tipo === 'preparo').map((ing) => (
+                                            <tr key={ing.id} className="border-b">
+                                                <td className="p-2">
+                                                    <select
+                                                        value={ing.receita_preparo_id || ""}
+                                                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                                                            updateIngredient(ing.id, "receita_preparo_id", parseInt(e.target.value))
+                                                        }
+                                                        className="w-full px-2 py-1 border rounded"
+                                                        required
+                                                    >
+                                                        <option value="">Selecione...</option>
+                                                        {prepreparos.map((r) => (
+                                                            <option key={r.id} value={r.id}>
+                                                                {r.nome}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        lang="en"
+                                                        inputMode="decimal"
+                                                        value={ing.quantidade_bruta}
+                                                        onChange={(e) =>
+                                                            updateIngredient(ing.id, "quantidade_bruta", parseFloat(e.target.value) || 0)
+                                                        }
+                                                        className="w-24"
+                                                        required
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={ing.unidade}
+                                                        className="w-20 bg-gray-50"
+                                                        readOnly
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        value={ing.preco_unitario}
+                                                        className="w-24 bg-gray-50"
+                                                        readOnly
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={`€ ${ing.custo_ingrediente.toFixed(2)}`}
+                                                        className="w-24 bg-gray-50"
+                                                        readOnly
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Input
+                                                        value={ing.notas}
+                                                        onChange={(e) => updateIngredient(ing.id, "notas", e.target.value)}
+                                                        className="w-32"
+                                                        placeholder="Notas..."
+                                                    />
+                                                </td>
+                                                <td className="p-2">
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeIngredient(ing.id)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                                    </Button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 

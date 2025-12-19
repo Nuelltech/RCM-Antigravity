@@ -102,7 +102,7 @@ export function PurchaseVariationsModal({
         if (!editingVariation) return;
 
         try {
-            await fetchClient(`/variacoes-produto/${editingVariation.id}`, {
+            await fetchClient(`/products/variations/${editingVariation.id}`, {
                 method: "PUT",
                 body: JSON.stringify(formData),
             });
@@ -120,7 +120,7 @@ export function PurchaseVariationsModal({
         if (!confirm("Tem a certeza que deseja desativar esta variação?")) return;
 
         try {
-            await fetchClient(`/variacoes-produto/${id}`, {
+            await fetchClient(`/products/variations/${id}`, {
                 method: "DELETE",
             });
 
@@ -151,7 +151,7 @@ export function PurchaseVariationsModal({
         }
 
         try {
-            await fetchClient("/variacoes-produto", {
+            await fetchClient("/products/variations", {
                 method: "POST",
                 body: JSON.stringify({
                     produto_id: parseInt(produtoId),
@@ -255,12 +255,12 @@ export function PurchaseVariationsModal({
                                                     </div>
                                                     <div>
                                                         <span className="text-gray-600">Preço de compra:</span>
-                                                        <p className="font-medium">€{variation.preco_compra.toFixed(2)}</p>
+                                                        <p className="font-medium">€{Number(variation.preco_compra).toFixed(2)}</p>
                                                     </div>
                                                     <div>
                                                         <span className="text-gray-600">Preço unitário:</span>
                                                         <p className="font-medium text-blue-600">
-                                                            €{variation.preco_unitario.toFixed(4)}
+                                                            €{Number(variation.preco_unitario).toFixed(4)}
                                                         </p>
                                                     </div>
                                                     {variation.fornecedor && (

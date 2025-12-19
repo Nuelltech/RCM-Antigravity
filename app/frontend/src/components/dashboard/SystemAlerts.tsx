@@ -65,9 +65,20 @@ function AlertItem({ alert }: { alert: Alert }) {
 export function SystemAlerts() {
     const [alerts, setAlerts] = useState<Alert[]>([]);
 
+    // ✅ FIX: Track tenantId to reload when it changes
+    const [tenantId, setTenantId] = useState<string | null>(null);
+
     useEffect(() => {
-        loadAlerts();
+        const currentTenantId = localStorage.getItem('tenantId');
+        setTenantId(currentTenantId);
     }, []);
+
+    useEffect(() => {
+        if (!tenantId) return;
+        // ✅ FIX: Reset alerts before loading
+        setAlerts([]);
+        loadAlerts();
+    }, [tenantId]); // ✅ FIX: Reload when tenant changes
 
     async function loadAlerts() {
         try {

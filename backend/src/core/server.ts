@@ -24,11 +24,13 @@ import { formatosVendaRoutes } from '../modules/formatos-venda/formatos-venda.mo
 import { templateFormatoVendaRoutes } from '../modules/template-formatos-venda/template-formatos-venda.module';
 import { templateVariacaoCompraRoutes } from '../modules/template-variacoes-compra/template-variacoes-compra.module';
 import { dashboardRoutes } from '../modules/dashboard/dashboard.module';
-import { variacoesProdutoRoutes } from '../modules/variacoes-produto/variacoes-produto.module';
+// import { variacoesProdutoRoutes } from '../modules/variacoes-produto/variacoes-produto.module';
 import { dadosRestauranteRoutes } from '../modules/dados-restaurante/dados-restaurante.module';
 import { alertsRoutes } from '../modules/alerts/alerts.module';
 import { consumosRoutes } from '../modules/consumos/consumos.module';
 import { invoicesRoutes } from '../modules/invoices/invoices.module';
+import { usersRoutes } from '../modules/users/users.routes';
+import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
 
 const server = Fastify({
     logger: true,
@@ -121,11 +123,13 @@ async function main() {
     server.register(templateFormatoVendaRoutes, { prefix: '/api' });
     server.register(templateVariacaoCompraRoutes, { prefix: '/api' });
     server.register(dashboardRoutes, { prefix: '/api/dashboard' });
-    server.register(variacoesProdutoRoutes, { prefix: '/api/variacoes-produto' });
+    // server.register(variacoesProdutoRoutes, { prefix: '/api/variacoes-produto' });
     server.register(dadosRestauranteRoutes, { prefix: '/api/dados-restaurante' });
     server.register(alertsRoutes, { prefix: '/api/alerts' });
     server.register(consumosRoutes, { prefix: '/api' });
     server.register(invoicesRoutes, { prefix: '/api/invoices' });
+    server.register(usersRoutes, { prefix: '/api/users' });
+    server.register(purchasesDashboardRoutes, { prefix: '/api/purchases' });  // Dashboard analytics
 
 
 

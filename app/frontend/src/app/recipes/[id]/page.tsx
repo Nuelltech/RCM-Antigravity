@@ -176,6 +176,7 @@ export default function ViewRecipePage() {
                 </Card>
 
                 {/* Ingredients */}
+                {/* Ingredients (Products) */}
                 <Card>
                     <CardHeader>
                         <CardTitle>Ingredientes</CardTitle>
@@ -195,7 +196,7 @@ export default function ViewRecipePage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {recipe.ingredientes?.map((ing: any, idx: number) => (
+                                    {recipe.ingredientes?.filter((i: any) => i.produto_id).map((ing: any, idx: number) => (
                                         <tr key={idx} className="border-b">
                                             <td className="px-4 py-2">{ing.produto?.nome || "-"}</td>
                                             <td className="px-4 py-2 text-right">
@@ -216,6 +217,61 @@ export default function ViewRecipePage() {
                                             <td className="px-4 py-2 text-sm text-gray-600">{ing.notas || "-"}</td>
                                         </tr>
                                     ))}
+                                    {(!recipe.ingredientes?.filter((i: any) => i.produto_id).length) && (
+                                        <tr>
+                                            <td colSpan={7} className="px-4 py-4 text-center text-gray-500">
+                                                Nenhum ingrediente registado.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Pre-Preparations */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Pré-Preparos</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead>
+                                    <tr className="border-b">
+                                        <th className="px-4 py-2 text-left text-sm font-medium">Pré-Preparo</th>
+                                        <th className="px-4 py-2 text-right text-sm font-medium">Qtd (Porções)</th>
+                                        <th className="px-4 py-2 text-center text-sm font-medium">Unidade</th>
+                                        <th className="px-4 py-2 text-right text-sm font-medium">Custo/Porção</th>
+                                        <th className="px-4 py-2 text-right text-sm font-medium">Custo Total</th>
+                                        <th className="px-4 py-2 text-left text-sm font-medium">Notas</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {recipe.ingredientes?.filter((i: any) => i.receita_preparo_id).map((ing: any, idx: number) => (
+                                        <tr key={idx} className="border-b">
+                                            <td className="px-4 py-2">{ing.receitaPreparo?.nome || ing.receita_preparo?.nome || "-"}</td>
+                                            <td className="px-4 py-2 text-right">
+                                                {Number(ing.quantidade_bruta).toFixed(3)}
+                                            </td>
+                                            <td className="px-4 py-2 text-center">{ing.receitaPreparo?.unidade_medida || ing.receita_preparo?.unidade_medida || "-"}</td>
+                                            <td className="px-4 py-2 text-right">
+                                                € {Number(ing.receitaPreparo?.custo_por_porcao || ing.receita_preparo?.custo_por_porcao || 0).toFixed(2)}
+                                            </td>
+                                            <td className="px-4 py-2 text-right font-medium">
+                                                € {Number(ing.custo_ingrediente || 0).toFixed(2)}
+                                            </td>
+                                            <td className="px-4 py-2 text-sm text-gray-600">{ing.notas || "-"}</td>
+                                        </tr>
+                                    ))}
+                                    {(!recipe.ingredientes?.filter((i: any) => i.receita_preparo_id).length) && (
+                                        <tr>
+                                            <td colSpan={6} className="px-4 py-4 text-center text-gray-500">
+                                                Nenhum pré-preparo registado.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>

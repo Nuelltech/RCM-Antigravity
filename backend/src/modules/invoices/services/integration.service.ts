@@ -57,7 +57,9 @@ export class InvoiceIntegrationService {
                     metodo_entrada: 'OCR',
                     documento_url: fatura.ficheiro_url,
                     fatura_importacao_id: faturaId,
-                    validado: false
+                    validado: true,  // Manual approval by manager
+                    data_validacao: new Date(),
+                    validado_por: userId
                 }
             });
 

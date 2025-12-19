@@ -3,6 +3,7 @@ import { render } from '@react-email/render';
 import ResetPasswordEmail from '../email-templates/ResetPassword';
 import VerifyAccountEmail from '../email-templates/VerifyAccount';
 import ForgotPasswordEmail from '../email-templates/ForgotPassword';
+import UserInvite from '../email-templates/UserInvite';
 
 // SMTP Configuration (Hostinger)
 const smtpPort = parseInt(process.env.SMTP_PORT || '465');
@@ -154,6 +155,61 @@ Se não pediste para redefinir a password, podes ignorar este email.
 }
 
 /**
+ * Send user invite email
+ */
+export async function sendUserInvite(
+    user: EmailUser,
+    restaurantName: string,
+    inviteToken: string
+): Promise<void> {
+    const inviteLink = `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`;
+
+    console.log('🔗 [EMAIL DEBUG] FRONTEND_URL:', process.env.FRONTEND_URL);
+    console.log('🔗 [EMAIL DEBUG] Generated invite link:', inviteLink);
+
+    try {
+        // Render React Email template to HTML
+        const emailHtml = render(
+            UserInvite({
+                userName: user.name,
+                restaurantName,
+                inviteLink,
+            })
+        );
+
+        // Generate plain text version
+        const emailText = `
+Bem-vindo, ${user.name}!
+
+Foi convidado para aceder ao sistema de gestão do restaurante ${restaurantName}.
+
+Para aceitar o convite e definir a sua password, aceda ao seguinte link:
+${inviteLink}
+
+Este convite é válido por 7 dias.
+
+---
+© ${new Date().getFullYear()} Nuelltech RCM. Todos os direitos reservados.
+Se não solicitou este convite, pode ignorar este email.
+        `;
+
+        // Send email via SMTP
+        const info = await transporter.sendMail({
+            from: `${FROM_NAME} <${FROM_EMAIL}>`,
+            to: user.email,
+            subject: `Convite para ${restaurantName} - Restaurante Manager`,
+            html: emailHtml,
+            text: emailText,
+        });
+
+        console.log('User invite email sent:', info.messageId);
+    } catch (error: any) {
+        console.error('Email service error:', error);
+        throw new Error(`Failed to send user invite email: ${error.message}`);
+    }
+}
+
+/**
  * Send price alert email (future use)
  */
 export async function sendPriceAlert(
@@ -163,3 +219,4 @@ export async function sendPriceAlert(
     // TODO: Implement price alert email template
     console.log('Price alert email - to be implemented');
 }
+

@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "uuid": "c028e020-3343-4b38-86cc-50fc3752299f",
+    "numero": 1,
+    "nome": "inventario de 5 Dezembro para pratos do dia",
+    "tipo": "Calculadora",
+    "status": "Aberto",
+    "data_inicio": "2025-12-05T14:43:35.691Z",
+    "data_fim": null,
+    "filtros_usados": {
+      "lista_calculadora_id": 1
+    },
+    "criado_por": 1,
+    "fechado_por": null,
+    "createdAt": "2025-12-05T14:43:35.691Z",
+    "updatedAt": "2025-12-05T14:43:35.691Z"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "uuid": "bf1d678d-e719-48f5-a79f-38f2a776be3a",
+    "numero": 2,
+    "nome": "Inventário #2",
+    "tipo": "Calculadora",
+    "status": "Aberto",
+    "data_inicio": "2025-12-10T14:43:20.334Z",
+    "data_fim": null,
+    "filtros_usados": {
+      "lista_calculadora_id": 2
+    },
+    "criado_por": 1,
+    "fechado_por": null,
+    "createdAt": "2025-12-10T14:43:20.334Z",
+    "updatedAt": "2025-12-10T14:43:20.334Z"
+  }
+]

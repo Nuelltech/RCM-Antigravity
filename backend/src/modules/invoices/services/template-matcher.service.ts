@@ -65,72 +65,75 @@ export class TemplateMatcherService {
 
     /**
      * Find template by supplier NIF
+     * TEMPORARILY DISABLED: InvoiceTemplate feature not yet implemented
      */
     async findTemplateByNIF(nif: string): Promise<any | null> {
+        // TODO: Re-enable when InvoiceTemplate is implemented
+        return null;
+
+        /* ORIGINAL CODE - Re-enable later
         try {
-            // Find supplier by NIF
-            const fornecedor = await prisma.fornecedor.findUnique({
-                where: { nif },
-                include: {
-                    invoiceTemplate: true
-                }
+            const fornecedor = await prisma.fornecedor.findFirst({
+                where: { nif, tenant_id: tenantId },
+                include: { invoiceTemplate: true }
             });
-
-            if (!fornecedor || !fornecedor.invoiceTemplate) {
-                return null;
-            }
-
+            if (!fornecedor?.invoiceTemplate) return null;
             return fornecedor.invoiceTemplate;
         } catch (error) {
             console.error('Error finding template by NIF:', error);
             return null;
         }
+        */
     }
 
     /**
      * Find template by supplier name (fuzzy match)
+     * TEMPORARILY DISABLED: InvoiceTemplate feature not yet implemented
      */
     async findTemplateBySupplierName(name: string): Promise<any | null> {
-        try {
-            // Normalize name for comparison
-            const normalizedName = name.toLowerCase().trim();
+        // TODO: Re-enable when InvoiceTemplate is implemented
+        return null;
 
-            // Find suppliers with similar names
+        /*ORIGINAL CODE - Re-enable later
+        try {
+            const normalizedName = name.toLowerCase().trim();
             const fornecedores = await prisma.fornecedor.findMany({
                 where: {
-                    nome: {
-                        contains: normalizedName
-                    }
+                    nome_normalize: { contains: normalizedName },
+                    ativo: true
                 },
-                include: {
-                    invoiceTemplate: true
-                }
+                include: { invoiceTemplate: true }
             });
-
-            // Return first match with a template
             const match = fornecedores.find(f => f.invoiceTemplate !== null);
             return match?.invoiceTemplate || null;
         } catch (error) {
             console.error('Error finding template by name:', error);
             return null;
         }
+        */
     }
 
     /**
      * Find or create supplier
+     * Multi-tenant version
      */
-    async findOrCreateSupplier(nif: string, nome: string): Promise<any> {
-        // Try to find existing supplier
-        let fornecedor = await prisma.fornecedor.findUnique({
-            where: { nif }
+    async findOrCreateSupplier(tenantId: number, nif: string | null, nome: string): Promise<any> {
+        const nomeNormalize = nome.toLowerCase().trim();
+
+        // Try to find existing supplier by tenant + normalized name
+        let fornecedor = await prisma.fornecedor.findFirst({
+            where: {
+                tenant_id: tenantId,
+                nome_normalize: nomeNormalize
+            }
         });
 
         if (fornecedor) {
-            // Update name if different
-            if (fornecedor.nome !== nome) {
+            // Update NIF if we have one and it's different
+            if (nif && fornecedor.nif !== nif) {
                 fornecedor = await prisma.fornecedor.update({
                     where: { id: fornecedor.id },
-                    data: { nome }
+                    data: { nif }
                 });
             }
             return fornecedor;
@@ -139,8 +142,10 @@ export class TemplateMatcherService {
         // Create new supplier
         fornecedor = await prisma.fornecedor.create({
             data: {
-                nif,
-                nome
+                tenant_id: tenantId,
+                nome,
+                nome_normalize: nomeNormalize,
+                nif
             }
         });
 

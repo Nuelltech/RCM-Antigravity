@@ -17,6 +17,9 @@ export function SalesChart() {
     const [data, setData] = useState<SalesTrendData[]>([]);
     const [loading, setLoading] = useState(true);
 
+    // ✅ FIX: Track tenantId to reload when it changes
+    const [tenantId, setTenantId] = useState<string | null>(null);
+
     const periodLabels: Record<Period, string> = {
         '7d': 'Últimos 7 dias',
         '30d': 'Últimos 30 dias',
@@ -26,8 +29,17 @@ export function SalesChart() {
     };
 
     useEffect(() => {
+        const currentTenantId = localStorage.getItem('tenantId');
+        setTenantId(currentTenantId);
+    }, []);
+
+    useEffect(() => {
+        if (!tenantId) return;
+        // ✅ FIX: Reset data before loading
+        setData([]);
+        setLoading(true);
         loadSalesData();
-    }, [period]);
+    }, [period, tenantId]); // ✅ FIX: Added tenantId dependency
 
     async function loadSalesData() {
         setLoading(true);

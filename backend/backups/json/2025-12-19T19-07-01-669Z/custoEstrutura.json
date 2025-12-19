@@ -1,0 +1,112 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "uuid": "01747e65-dd27-4134-97bb-1d2737665e36",
+    "descricao": "Salario chef",
+    "classificacao": "Salário",
+    "valor_mensal": "1300",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:06:35.094Z",
+    "updatedAt": "2025-12-04T15:06:35.094Z"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "uuid": "639e66ee-bd49-40cc-a03f-a11a496ab893",
+    "descricao": "salario ajudante cozinha",
+    "classificacao": "Salário",
+    "valor_mensal": "950",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:06:57.183Z",
+    "updatedAt": "2025-12-04T15:06:57.183Z"
+  },
+  {
+    "id": 3,
+    "tenant_id": 1,
+    "uuid": "40516ff4-4e02-48b3-848c-76118ee05de4",
+    "descricao": "Salario ajudante cozinha 2",
+    "classificacao": "Salário",
+    "valor_mensal": "900",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:07:14.567Z",
+    "updatedAt": "2025-12-04T15:07:14.567Z"
+  },
+  {
+    "id": 4,
+    "tenant_id": 1,
+    "uuid": "ebf87edd-d981-46d6-b521-a45b670014d2",
+    "descricao": "Luz",
+    "classificacao": "Eletricidade",
+    "valor_mensal": "1020",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:07:39.396Z",
+    "updatedAt": "2025-12-04T15:07:39.396Z"
+  },
+  {
+    "id": 5,
+    "tenant_id": 1,
+    "uuid": "70234d8c-fd01-4894-9681-fe61c2ca26f1",
+    "descricao": "Agua",
+    "classificacao": "Água",
+    "valor_mensal": "320",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:07:57.713Z",
+    "updatedAt": "2025-12-04T15:07:57.713Z"
+  },
+  {
+    "id": 6,
+    "tenant_id": 1,
+    "uuid": "e3a891d5-ecac-44a0-84d6-9d3a500556e8",
+    "descricao": "contabilista",
+    "classificacao": "Contabilidade",
+    "valor_mensal": "180",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:08:18.825Z",
+    "updatedAt": "2025-12-04T15:08:18.825Z"
+  },
+  {
+    "id": 7,
+    "tenant_id": 1,
+    "uuid": "d6381cb2-7f4f-4601-a072-018839951dff",
+    "descricao": "POS",
+    "classificacao": "Sistemas",
+    "valor_mensal": "110",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:08:44.461Z",
+    "updatedAt": "2025-12-04T15:08:44.461Z"
+  },
+  {
+    "id": 8,
+    "tenant_id": 1,
+    "uuid": "41c12305-8dfc-4be7-8139-ce9695da2923",
+    "descricao": "Renda do Restaurante",
+    "classificacao": "Renda",
+    "valor_mensal": "1500",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:09:18.468Z",
+    "updatedAt": "2025-12-04T15:09:18.468Z"
+  },
+  {
+    "id": 9,
+    "tenant_id": 1,
+    "uuid": "003eab51-2854-42f3-a6a0-e47142234580",
+    "descricao": "Marketing Digital",
+    "classificacao": "Marketing",
+    "valor_mensal": "450",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:09:41.304Z",
+    "updatedAt": "2025-12-04T15:09:41.304Z"
+  },
+  {
+    "id": 10,
+    "tenant_id": 1,
+    "uuid": "7c191dba-b910-482c-aa1a-ee9f2f9898e0",
+    "descricao": "Publicidade jornais",
+    "classificacao": "Marketing",
+    "valor_mensal": "50",
+    "ativo": true,
+    "createdAt": "2025-12-04T15:10:07.419Z",
+    "updatedAt": "2025-12-04T15:10:07.419Z"
+  }
+]

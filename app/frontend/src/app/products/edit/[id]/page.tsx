@@ -213,15 +213,18 @@ export default function EditProductPage() {
     // Load purchase variations
     const loadPurchaseVariations = async () => {
         try {
-            const variations = await fetchClient(`/variacoes-produto?produto_id=${productId}`);
+            const variations = await fetchClient(`/products/${productId}/variations`);
             setPurchaseVariations(variations);
 
-            // Get main variation
-            try {
-                const main = await fetchClient(`/variacoes-produto/main?produto_id=${productId}`);
-                setMainVariation(main);
-            } catch {
-                // No main variation found
+            // Find main variation (most recent)
+            if (variations.length > 0) {
+                const sortedVariations = [...variations].sort((a: any, b: any) => {
+                    const dateA = new Date(a.data_ultima_compra || a.updatedAt).getTime();
+                    const dateB = new Date(b.data_ultima_compra || b.updatedAt).getTime();
+                    return dateB - dateA;
+                });
+                setMainVariation(sortedVariations[0]);
+            } else {
                 setMainVariation(null);
             }
         } catch (error) {
@@ -581,10 +584,10 @@ export default function EditProductPage() {
                                         <p className="text-sm text-gray-600">Variação Principal (Custo Atual)</p>
                                         <h4 className="font-semibold text-lg">{mainVariation.tipo_unidade_compra}</h4>
                                         <p className="text-sm text-gray-700 mt-1">
-                                            {mainVariation.unidades_por_compra} unidades por €{mainVariation.preco_compra.toFixed(2)}
+                                            {mainVariation.unidades_por_compra} unidades por €{Number(mainVariation.preco_compra).toFixed(2)}
                                         </p>
                                         <p className="text-blue-600 font-semibold mt-2">
-                                            Preço Unitário: €{mainVariation.preco_unitario.toFixed(4)}
+                                            Preço Unitário: €{Number(mainVariation.preco_unitario).toFixed(4)}
                                         </p>
                                         {mainVariation.data_ultima_compra && (
                                             <p className="text-xs text-gray-500 mt-1">

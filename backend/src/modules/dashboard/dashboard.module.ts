@@ -13,6 +13,7 @@ export async function dashboardRoutes(app: FastifyInstance) {
                     vendasMes: z.number(),
                     custoMercadoria: z.number(),
                     cmvTeorico: z.number(),
+                    comprasMes: z.number(),
                     allItems: z.array(z.object({
                         id: z.number(),
                         name: z.string(),
@@ -132,10 +133,27 @@ export async function dashboardRoutes(app: FastifyInstance) {
             return sum + Number(custo.valor_mensal);
         }, 0);
 
+        // Calculate monthly purchases
+        const comprasFaturas = await prisma.compraFatura.findMany({
+            where: {
+                tenant_id: req.tenantId,
+                data_fatura: {
+                    gte: startOfMonth,
+                    lte: endOfMonth
+                },
+                validado: true  // Only validated invoices
+            }
+        });
+
+        const comprasMes = comprasFaturas.reduce((sum, fatura) =>
+            sum + Number(fatura.total_com_iva), 0
+        );
+
         return {
             vendasMes: Number(vendasMes.toFixed(2)),
             custoMercadoria: Number(custoMercadoria.toFixed(2)),
             cmvTeorico: Number(cmvTeorico.toFixed(2)),
+            comprasMes: Number(comprasMes.toFixed(2)),
             allItems,
             categories: Array.from(new Set(allItems.map(i => i.category))).sort(),
             custoEstrutura: {

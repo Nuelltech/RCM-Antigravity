@@ -1,0 +1,57 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "combo_id": 1,
+    "categoria": "Entrada",
+    "ordem": 0,
+    "obrigatoria": true,
+    "custo_max_calculado": "0.324",
+    "createdAt": "2025-12-04T14:31:10.100Z",
+    "updatedAt": "2025-12-10T14:46:16.789Z"
+  },
+  {
+    "id": 2,
+    "tenant_id": 1,
+    "combo_id": 1,
+    "categoria": "Prato",
+    "ordem": 1,
+    "obrigatoria": true,
+    "custo_max_calculado": "4.1774",
+    "createdAt": "2025-12-04T14:31:10.100Z",
+    "updatedAt": "2025-12-10T14:46:17.481Z"
+  },
+  {
+    "id": 14,
+    "tenant_id": 1,
+    "combo_id": 2,
+    "categoria": "Entrada",
+    "ordem": 0,
+    "obrigatoria": true,
+    "custo_max_calculado": "0.324",
+    "createdAt": "2025-12-09T20:10:32.753Z",
+    "updatedAt": "2025-12-10T14:46:16.789Z"
+  },
+  {
+    "id": 15,
+    "tenant_id": 1,
+    "combo_id": 2,
+    "categoria": "Prato",
+    "ordem": 1,
+    "obrigatoria": true,
+    "custo_max_calculado": "1.1605",
+    "createdAt": "2025-12-09T20:10:32.753Z",
+    "updatedAt": "2025-12-10T14:46:17.886Z"
+  },
+  {
+    "id": 16,
+    "tenant_id": 1,
+    "combo_id": 2,
+    "categoria": "Bebida",
+    "ordem": 2,
+    "obrigatoria": true,
+    "custo_max_calculado": "0.3",
+    "createdAt": "2025-12-09T20:10:32.753Z",
+    "updatedAt": "2025-12-10T14:46:18.575Z"
+  }
+]

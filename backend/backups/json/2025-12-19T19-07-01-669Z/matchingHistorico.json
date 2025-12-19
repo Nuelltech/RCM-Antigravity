@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "tenant_id": 1,
+    "descricao_fatura": "CAMARAO 20/30 VANNAME! cx 2Kg Pescanova",
+    "fornecedor_nome": null,
+    "produto_id": 30,
+    "variacao_id": 30,
+    "confianca_inicial": null,
+    "confirmado_por": 1,
+    "createdAt": "2025-12-16T18:18:01.749Z"
+  }
+]

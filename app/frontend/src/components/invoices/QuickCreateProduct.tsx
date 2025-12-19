@@ -148,13 +148,16 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Erro ao criar produto');
+                // Display Prisma validation error clearly
+                const errorMessage = errorData.error || errorData.message || 'Erro ao criar produto';
+                throw new Error(errorMessage);
             }
 
             onSuccess();
             onClose();
         } catch (err: any) {
-            setError(err.message);
+            console.error('Quick create error:', err);
+            setError(err.message || 'Erro desconhecido ao criar produto');
         } finally {
             setLoading(false);
         }

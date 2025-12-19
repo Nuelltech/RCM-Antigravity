@@ -254,26 +254,33 @@ export async function invoicesRoutes(app: FastifyInstance) {
         // Add variations to each suggestion
         const suggestionsWithVariations = await Promise.all(
             suggestions.map(async (s) => {
-                const variations = await prisma.variacaoProduto.findMany({
-                    where: {
-                        produto_id: s.produtoId,
-                        tenant_id: req.tenantId,
-                        ativo: true
-                    },
-                    select: {
-                        id: true,
-                        tipo_unidade_compra: true,
-                        unidades_por_compra: true,
-                        preco_compra: true,
-                        preco_unitario: true
-                    },
-                    orderBy: {
-                        id: 'asc'  // First variation created = default
-                    }
-                });
+                const [variations, produto] = await Promise.all([
+                    prisma.variacaoProduto.findMany({
+                        where: {
+                            produto_id: s.produtoId,
+                            tenant_id: req.tenantId,
+                            ativo: true
+                        },
+                        select: {
+                            id: true,
+                            tipo_unidade_compra: true,
+                            unidades_por_compra: true,
+                            preco_compra: true,
+                            preco_unitario: true
+                        },
+                        orderBy: {
+                            id: 'asc'  // First variation created = default
+                        }
+                    }),
+                    prisma.produto.findUnique({
+                        where: { id: s.produtoId },
+                        select: { unidade_medida: true }
+                    })
+                ]);
 
                 return {
                     ...s,
+                    unidadeMedida: produto?.unidade_medida || 'UN',
                     variations
                 };
             })

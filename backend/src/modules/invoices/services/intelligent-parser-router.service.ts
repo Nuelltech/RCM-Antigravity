@@ -204,7 +204,7 @@ export class IntelligentParserRouter {
     ): Promise<void> {
         try {
             // Find or create supplier
-            const fornecedor = await this.matcher.findOrCreateSupplier(nif, supplierName);
+            const fornecedor = await this.matcher.findOrCreateSupplier(tenantId, nif, supplierName);
 
             // If template exists, don't recreate (it will improve over time with stats)
             if (existingTemplate) {

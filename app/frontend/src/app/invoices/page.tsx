@@ -65,6 +65,7 @@ export default function InvoicesPage() {
             processing: { label: 'Processando', variant: 'default', icon: Clock },
             reviewing: { label: 'Em Revisão', variant: 'default', icon: AlertCircle },
             approved: { label: 'Aprovada', variant: 'default', icon: CheckCircle, className: 'bg-green-600 text-white hover:bg-green-700' },
+            approved_partial: { label: 'Aprovada Parcial', variant: 'default', icon: CheckCircle, className: 'bg-yellow-600 text-white hover:bg-yellow-700' },
             rejected: { label: 'Rejeitada', variant: 'destructive', icon: XCircle },
             error: { label: 'Erro', variant: 'destructive', icon: AlertCircle },
         };

@@ -8,11 +8,15 @@ import { recalculationService } from '../produtos/recalculation.service';
 
 // Schemas
 const ingredientSchema = z.object({
-    produto_id: z.number(),
+    produto_id: z.number().optional(),
+    receita_preparo_id: z.number().optional(),
     quantidade_bruta: z.number().min(0.001),
     quantidade_liquida: z.number().min(0).optional(),
     notas: z.string().optional(),
-});
+}).refine(
+    (data) => (data.produto_id && !data.receita_preparo_id) || (!data.produto_id && data.receita_preparo_id),
+    { message: 'Deve fornecer produto_id OU receita_preparo_id, mas não ambos' }
+);
 
 const stepSchema = z.object({
     ordem: z.number().int().min(1),
@@ -155,7 +159,8 @@ class RecipeService {
                             select: {
                                 id: true,
                                 nome: true,
-                                unidade_medida: true
+                                unidade_medida: true,
+                                custo_por_porcao: true
                             }
                         }
                     }
@@ -220,8 +225,11 @@ class RecipeService {
             // 2. Add ingredients and calculate costs
             let custoTotal = new Decimal(0);
 
+            // Separate product and pre-preparation IDs
+            const productIds = data.ingredientes.filter(i => i.produto_id).map(i => i.produto_id!);
+            const receitaPreparoIds = data.ingredientes.filter(i => i.receita_preparo_id).map(i => i.receita_preparo_id!);
+
             // Bulk fetch products
-            const productIds = data.ingredientes.map(i => i.produto_id);
             const products = await tx.produto.findMany({
                 where: {
                     id: { in: productIds },
@@ -236,19 +244,49 @@ class RecipeService {
                 }
             });
 
+            // Bulk fetch pre-preparation recipes
+            const receitasPreparo = await tx.receita.findMany({
+                where: {
+                    id: { in: receitaPreparoIds },
+                    tenant_id: this.tenantId,
+                    tipo: 'Pre-preparo'
+                }
+            });
+
             const produtosMap = new Map(products.map(p => [p.id, p]));
+            const receitasMap = new Map(receitasPreparo.map(r => [r.id, r]));
 
             for (const ing of data.ingredientes) {
-                // Fetch product from map
-                const produto = produtosMap.get(ing.produto_id);
+                let custoIngrediente: Decimal;
+                let unidade: string;
 
-                if (!produto) {
-                    throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
+                if (ing.produto_id) {
+                    // Process regular product
+                    const produto = produtosMap.get(ing.produto_id);
+
+                    if (!produto) {
+                        throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
+                    }
+
+                    // Get unit price from most recent variation
+                    const precoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
+                    custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
+                    unidade = produto.unidade_medida;
+                } else if (ing.receita_preparo_id) {
+                    // Process pre-preparation recipe
+                    const receitaPreparo = receitasMap.get(ing.receita_preparo_id);
+
+                    if (!receitaPreparo) {
+                        throw new Error(`Receita de pré-preparo com ID ${ing.receita_preparo_id} não encontrada`);
+                    }
+
+                    // Cost = custo_por_porcao × quantidade (quantidade = number of portions)
+                    custoIngrediente = receitaPreparo.custo_por_porcao.mul(new Decimal(ing.quantidade_bruta));
+                    unidade = receitaPreparo.unidade_medida || 'Porção';
+                } else {
+                    throw new Error('Ingrediente deve ter produto_id ou receita_preparo_id');
                 }
 
-                // Get unit price from most recent variation
-                const precoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
-                const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
                 custoTotal = custoTotal.add(custoIngrediente);
 
                 // Calculate rentabilidade
@@ -262,11 +300,12 @@ class RecipeService {
                     data: {
                         tenant_id: this.tenantId,
                         receita_id: recipe.id,
-                        produto_id: ing.produto_id,
+                        produto_id: ing.produto_id || null,
+                        receita_preparo_id: ing.receita_preparo_id || null,
                         quantidade_bruta: new Decimal(ing.quantidade_bruta),
                         quantidade_liquida: qtdLiquida ? new Decimal(qtdLiquida) : null,
                         rentabilidade: new Decimal(rentabilidade),
-                        unidade: produto.unidade_medida,
+                        unidade: unidade,
                         custo_ingrediente: custoIngrediente,
                         notas: ing.notas,
                         ordem: 0,
@@ -343,8 +382,10 @@ class RecipeService {
                 where: { receita_id: recipeId }
             });
 
-            // 3. Fetch all products once and calculate costs
-            const productIds = data.ingredientes.map(i => i.produto_id);
+            // 3. Fetch all products and pre-preparations and calculate costs
+            const productIds = data.ingredientes.filter(i => i.produto_id).map(i => i.produto_id!);
+            const receitaPreparoIds = data.ingredientes.filter(i => i.receita_preparo_id).map(i => i.receita_preparo_id!);
+
             const products = await tx.produto.findMany({
                 where: {
                     id: { in: productIds },
@@ -359,19 +400,34 @@ class RecipeService {
                 }
             });
 
+            const receitasPreparo = await tx.receita.findMany({
+                where: {
+                    id: { in: receitaPreparoIds },
+                    tenant_id: this.tenantId,
+                    tipo: 'Pre-preparo'
+                }
+            });
+
             const produtosMap = new Map(products.map(p => [p.id, p]));
+            const receitasMap = new Map(receitasPreparo.map(r => [r.id, r]));
             let custoTotal = new Decimal(0);
 
+            // Calculate total cost
             for (const ing of data.ingredientes) {
-                const produto = produtosMap.get(ing.produto_id);
-
-                if (!produto) {
-                    throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
+                if (ing.produto_id) {
+                    const produto = produtosMap.get(ing.produto_id);
+                    if (!produto) {
+                        throw new Error(`Produto com ID ${ing.produto_id} não encontrado`);
+                    }
+                    const precoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
+                    custoTotal = custoTotal.add(new Decimal(ing.quantidade_bruta).mul(precoUnitario));
+                } else if (ing.receita_preparo_id) {
+                    const receitaPreparo = receitasMap.get(ing.receita_preparo_id);
+                    if (!receitaPreparo) {
+                        throw new Error(`Receita de pré-preparo com ID ${ing.receita_preparo_id} não encontrada`);
+                    }
+                    custoTotal = custoTotal.add(receitaPreparo.custo_por_porcao.mul(new Decimal(ing.quantidade_bruta)));
                 }
-
-                const precoUnitario = produto.variacoes[0]?.preco_unitario || new Decimal(0);
-                const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
-                custoTotal = custoTotal.add(custoIngrediente);
             }
 
             const custoPorPorcao = data.numero_porcoes > 0
@@ -400,11 +456,23 @@ class RecipeService {
                 }
             });
 
-            // 5. Create new ingredients using cached product data
+            // 5. Create new ingredients
             for (const ing of data.ingredientes) {
-                const produto = produtosMap.get(ing.produto_id);
-                const precoUnitario = produto?.variacoes[0]?.preco_unitario || new Decimal(0);
-                const custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
+                let custoIngrediente: Decimal;
+                let unidade: string;
+
+                if (ing.produto_id) {
+                    const produto = produtosMap.get(ing.produto_id);
+                    const precoUnitario = produto?.variacoes[0]?.preco_unitario || new Decimal(0);
+                    custoIngrediente = new Decimal(ing.quantidade_bruta).mul(precoUnitario);
+                    unidade = produto?.unidade_medida || 'KG';
+                } else if (ing.receita_preparo_id) {
+                    const receitaPreparo = receitasMap.get(ing.receita_preparo_id);
+                    custoIngrediente = receitaPreparo!.custo_por_porcao.mul(new Decimal(ing.quantidade_bruta));
+                    unidade = receitaPreparo?.unidade_medida || 'Porção';
+                } else {
+                    throw new Error('Ingrediente deve ter produto_id ou receita_preparo_id');
+                }
 
                 // Calculate rentabilidade
                 const qtdLiquida = ing.quantidade_liquida || ing.quantidade_bruta;
@@ -416,11 +484,12 @@ class RecipeService {
                     data: {
                         tenant_id: this.tenantId,
                         receita_id: recipe.id,
-                        produto_id: ing.produto_id,
+                        produto_id: ing.produto_id || null,
+                        receita_preparo_id: ing.receita_preparo_id || null,
                         quantidade_bruta: new Decimal(ing.quantidade_bruta),
                         quantidade_liquida: qtdLiquida ? new Decimal(qtdLiquida) : null,
                         rentabilidade: new Decimal(rentabilidade),
-                        unidade: produto?.unidade_medida || 'KG',
+                        unidade: unidade,
                         custo_ingrediente: custoIngrediente,
                         notas: ing.notas,
                         ordem: 0,

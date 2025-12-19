@@ -9,7 +9,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchClient } from "@/lib/api";
+import { wakeUpBackend } from "@/lib/wakeup";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { TenantSelector } from "@/components/TenantSelector";
 
 const loginSchema = z.object({
     email: z.string().min(1, "Email ou nome de utilizador é obrigatório"),
@@ -18,12 +20,22 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+interface Tenant {
+    id: number;
+    nome_restaurante: string;
+    slug: string;
+    role: string;
+}
+
 function LoginPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [showTenantSelector, setShowTenantSelector] = useState(false);
+    const [availableTenants, setAvailableTenants] = useState<Tenant[]>([]);
+    const [tempLoginData, setTempLoginData] = useState<any>(null);
 
     const {
         register,
@@ -41,6 +53,10 @@ function LoginPageContent() {
         }
     }, [searchParams]);
 
+    useEffect(() => {
+        wakeUpBackend();
+    }, []);
+
     const onSubmit = async (data: LoginForm) => {
         setLoading(true);
         setError(null);
@@ -52,26 +68,109 @@ function LoginPageContent() {
                 body: JSON.stringify(data),
             });
 
-            if (response.token) {
-                localStorage.setItem("token", response.token);
-
-                // Save user data
-                if (response.user && response.user.tenant_id) {
-                    localStorage.setItem("tenantId", response.user.tenant_id.toString());
-                    localStorage.setItem("userName", response.user.nome || "Utilizador");
-                    localStorage.setItem("userEmail", response.user.email || "");
+            if (response.token && response.tenants) {
+                // If multiple tenants, show selector
+                if (response.tenants.length > 1) {
+                    setAvailableTenants(response.tenants);
+                    setTempLoginData(response);
+                    setShowTenantSelector(true);
+                    setLoading(false);
+                } else {
+                    // Single tenant - proceed directly
+                    completLogin(response);
                 }
-
-                router.push("/dashboard");
             } else {
                 setError("Login falhou: Token não recebido");
+                setLoading(false);
             }
         } catch (err: any) {
             setError(err.message || "Falha ao fazer login");
-        } finally {
             setLoading(false);
         }
     };
+
+    const handleTenantSelect = async (tenantId: number) => {
+        setLoading(true);
+        try {
+            // Call switch-tenant to get token for selected tenant
+            const response = await fetchClient("/auth/switch-tenant", {
+                method: "POST",
+                body: JSON.stringify({ tenantId }),
+                headers: {
+                    Authorization: `Bearer ${tempLoginData.token}`,
+                },
+            });
+
+            completLogin(response);
+        } catch (err: any) {
+            setError(err.message || "Falha ao selecionar restaurante");
+            setLoading(false);
+        }
+    };
+
+    const completLogin = (response: any) => {
+        localStorage.setItem("token", response.access_token || response.token);
+
+        // Save user data
+        if (response.user && response.user.tenant_id) {
+            localStorage.setItem("userId", response.user.id.toString());
+            localStorage.setItem("tenantId", response.user.tenant_id.toString());
+            localStorage.setItem("userName", response.user.nome || "Utilizador");
+            localStorage.setItem("userEmail", response.user.email || "");
+            localStorage.setItem("userRole", response.user.role || "operador");
+        }
+
+        // Save restaurant name
+        if (response.tenant) {
+            localStorage.setItem("restaurantName", response.tenant.nome_restaurante || "Meu Restaurante");
+        }
+
+        // Save tenants list for switcher
+        if (response.tenants) {
+            localStorage.setItem("userTenants", JSON.stringify(response.tenants));
+        } else if (tempLoginData && tempLoginData.tenants) {
+            localStorage.setItem("userTenants", JSON.stringify(tempLoginData.tenants));
+        }
+
+        // Dispatch custom event to notify components (e.g., Sidebar)
+        window.dispatchEvent(new Event("userRoleUpdated"));
+        console.log("[Login] Dispatched userRoleUpdated event, role:", response.user?.role);
+
+        // Redirect based on user role
+        // Note: Backend sends "gestor" but we check it directly (no normalization here)
+        const userRole = response.user?.role || "operador";
+        let redirectPath = "/dashboard"; // Default for admin/gestor/manager
+
+        switch (userRole) {
+            case "admin":
+            case "gestor":  // Backend sends "gestor" (Portuguese)
+            case "manager":  // Just in case backend sends English
+                redirectPath = "/dashboard";
+                break;
+            case "operador":
+                redirectPath = "/recipes";
+                break;
+            case "visualizador":
+                redirectPath = "/menu";
+                break;
+            default:
+                redirectPath = "/recipes";
+        }
+
+        router.push(redirectPath);
+    };
+
+    if (showTenantSelector) {
+        return (
+            <div className="flex min-h-screen bg-gray-50 items-center justify-center p-8">
+                <TenantSelector
+                    tenants={availableTenants}
+                    onSelect={handleTenantSelect}
+                    loading={loading}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className="flex min-h-screen bg-gray-50">

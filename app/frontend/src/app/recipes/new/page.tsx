@@ -19,9 +19,18 @@ interface Product {
     }[];
 }
 
+interface Recipe {
+    id: number;
+    nome: string;
+    custo_por_porcao: number;
+    unidade_medida: string;
+}
+
 interface IngredientRow {
     id: string;
+    tipo: 'produto' | 'preparo'; // Type to distinguish
     produto_id: number | null;
+    receita_preparo_id: number | null;
     produto_nome: string;
     quantidade_bruta: number;
     quantidade_liquida: number;
@@ -42,6 +51,7 @@ export default function NewRecipePage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
+    const [prepreparos, setPrepreparos] = useState<Recipe[]>([]);
 
     // Recipe form fields
     const [nome, setNome] = useState("");
@@ -64,6 +74,7 @@ export default function NewRecipePage() {
 
     useEffect(() => {
         loadProducts();
+        loadPrepreparos();
     }, []);
 
     useEffect(() => {
@@ -85,12 +96,45 @@ export default function NewRecipePage() {
         }
     };
 
+    const loadPrepreparos = async () => {
+        try {
+            console.log('🔍 Loading pre-preparations...');
+            const data = await fetchClient("/recipes?type=Pre-preparo&limit=1000");
+            console.log('✅ Pre-preparations loaded:', data?.data?.length || 0);
+            setPrepreparos((data.data || []).sort((a: Recipe, b: Recipe) => a.nome.localeCompare(b.nome)));
+        } catch (error) {
+            console.error("❌ Failed to load pre-preparations:", error);
+        }
+    };
+
     const addIngredient = () => {
         setIngredients([
             ...ingredients,
             {
                 id: Date.now().toString(),
+                tipo: 'produto',
                 produto_id: null,
+                receita_preparo_id: null,
+                produto_nome: "",
+                quantidade_bruta: 0,
+                quantidade_liquida: 0,
+                rentabilidade: 100,
+                unidade: "",
+                preco_unitario: 0,
+                custo_ingrediente: 0,
+                notas: "",
+            },
+        ]);
+    };
+
+    const addPreparo = () => {
+        setIngredients([
+            ...ingredients,
+            {
+                id: Date.now().toString(),
+                tipo: 'preparo',
+                produto_id: null,
+                receita_preparo_id: null,
                 produto_nome: "",
                 quantidade_bruta: 0,
                 quantidade_liquida: 0,
@@ -120,15 +164,24 @@ export default function NewRecipePage() {
                     if (product) {
                         updated.produto_nome = product.nome;
                         updated.unidade = product.unidade_medida;
-                        // Convert Decimal to number
                         updated.preco_unitario = Number(product.variacoes[0]?.preco_unitario || 0);
+                    }
+                }
+
+                // If pre-preparation changed, fetch recipe details
+                if (field === "receita_preparo_id" && value) {
+                    const preparo = prepreparos.find((r) => r.id === value);
+                    if (preparo) {
+                        updated.produto_nome = preparo.nome;
+                        updated.unidade = preparo.unidade_medida || 'Porção';
+                        updated.preco_unitario = Number(preparo.custo_por_porcao);
                     }
                 }
 
                 // Recalculate cost
                 updated.custo_ingrediente = updated.quantidade_bruta * updated.preco_unitario;
 
-                // Recalculate rentabilidade: (Qtd Líquida / Qtd Bruta) * 100
+                // Recalculate rentabilidade
                 if (updated.quantidade_bruta > 0) {
                     updated.rentabilidade = (updated.quantidade_liquida / updated.quantidade_bruta) * 100;
                 } else {
@@ -174,8 +227,13 @@ export default function NewRecipePage() {
             return;
         }
 
-        if (ingredients.some((ing) => !ing.produto_id)) {
-            alert("❌ Selecione um produto para todos os ingredientes");
+        if (ingredients.some((ing) => ing.tipo === 'produto' && !ing.produto_id)) {
+            alert("❌ Selecione um produto para todos os ingredientes de produto");
+            return;
+        }
+
+        if (ingredients.some((ing) => ing.tipo === 'preparo' && !ing.receita_preparo_id)) {
+            alert("❌ Selecione um pré-preparo para todos os ingredientes de pré-preparo");
             return;
         }
 
@@ -198,7 +256,8 @@ export default function NewRecipePage() {
                 imagem_url: imagemUrl || undefined,
                 video_url: videoUrl || undefined,
                 ingredientes: ingredients.map((ing) => ({
-                    produto_id: ing.produto_id!,
+                    produto_id: ing.tipo === 'produto' ? ing.produto_id! : undefined,
+                    receita_preparo_id: ing.tipo === 'preparo' ? ing.receita_preparo_id! : undefined,
                     quantidade_bruta: ing.quantidade_bruta,
                     quantidade_liquida: ing.quantidade_liquida || ing.quantidade_bruta,
                     notas: ing.notas || undefined,
@@ -471,7 +530,7 @@ export default function NewRecipePage() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y">
-                                            {ingredients.map((ing) => (
+                                            {ingredients.filter(ing => ing.tipo === 'produto').map((ing) => (
                                                 <tr key={ing.id}>
                                                     <td className="px-2 py-2">
                                                         <select
@@ -512,6 +571,90 @@ export default function NewRecipePage() {
                                                             ? ((ing.quantidade_liquida / ing.quantidade_bruta) * 100).toFixed(1) + '%'
                                                             : '-'
                                                         }
+                                                    </td>
+                                                    <td className="px-2 py-2 text-center text-sm">{ing.unidade || "-"}</td>
+                                                    <td className="px-2 py-2 text-right text-sm">€ {Number(ing.preco_unitario || 0).toFixed(2)}</td>
+                                                    <td className="px-2 py-2 text-right font-medium">€ {Number(ing.custo_ingrediente || 0).toFixed(2)}</td>
+                                                    <td className="px-2 py-2">
+                                                        <Input
+                                                            className="h-9"
+                                                            value={ing.notas}
+                                                            onChange={(e) => updateIngredient(ing.id, "notas", e.target.value)}
+                                                            placeholder="Notas..."
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => removeIngredient(ing.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4 text-red-600" />
+                                                        </Button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Pre-Preparations */}
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <CardTitle>Pré-Preparos</CardTitle>
+                            <Button type="button" onClick={addPreparo} size="sm">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Adicionar
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            {ingredients.filter(ing => ing.tipo === 'preparo').length === 0 ? (
+                                <div className="text-center py-8 text-gray-500">
+                                    Nenhum pré-preparo adicionado. Clique em "Adicionar" para começar.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">Pré-Preparo</th>
+                                                <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">Qty (Porções)</th>
+                                                <th className="px-2 py-2 text-center text-xs font-medium text-gray-500">Unid</th>
+                                                <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">Custo/Porção</th>
+                                                <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">Custo Total</th>
+                                                <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">Comentário</th>
+                                                <th className="px-2 py-2"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {ingredients.filter(ing => ing.tipo === 'preparo').map((ing) => (
+                                                <tr key={ing.id}>
+                                                    <td className="px-2 py-2">
+                                                        <select
+                                                            className="flex h-9 w-full rounded border border-input bg-background px-2 text-sm"
+                                                            value={ing.receita_preparo_id || ""}
+                                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => updateIngredient(ing.id, "receita_preparo_id", Number(e.target.value))}
+                                                        >
+                                                            <option value="">Selecione...</option>
+                                                            {prepreparos.map((r) => (
+                                                                <option key={r.id} value={r.id}>{r.nome}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-2 py-2">
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            lang="en"
+                                                            inputMode="decimal"
+                                                            className="h-9 w-24 text-right"
+                                                            value={ing.quantidade_bruta}
+                                                            onChange={(e) => updateIngredient(ing.id, "quantidade_bruta", Number(e.target.value))}
+                                                        />
                                                     </td>
                                                     <td className="px-2 py-2 text-center text-sm">{ing.unidade || "-"}</td>
                                                     <td className="px-2 py-2 text-right text-sm">€ {Number(ing.preco_unitario || 0).toFixed(2)}</td>

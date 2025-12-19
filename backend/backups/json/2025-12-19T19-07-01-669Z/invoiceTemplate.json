@@ -1,0 +1,57 @@
+[
+  {
+    "id": 1,
+    "fornecedor_id": 1,
+    "uuid": "ede625da-2710-44d4-b607-c6eaf063254e",
+    "template_name": "Coelho & Dias. SA - Auto-generated",
+    "template_version": 1,
+    "header_config": {
+      "nif_pattern": "NIF[:\\s]+(\\d{9})",
+      "nome_pattern": "^([A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝ\\s&.,]+)$",
+      "numero_fatura_pattern": "FT[TV]?[:\\s]+([A-Z0-9\\/\\-]+)",
+      "data_pattern": "Data[:\\s]+(\\d{2}[-\\/]\\d{2}[-\\/]\\d{4})",
+      "total_pattern": "Total[:\\s]+EUR?[:\\s]+([\\d.,]+)"
+    },
+    "table_config": {
+      "start_marker": "PRODUTO|DESCRI[ÇC][ÃA]O|ARTIGO",
+      "end_marker": "RESUMO|TOTAL|OBSERVA[ÇC]",
+      "columns": [
+        {
+          "name": "descricao",
+          "index": 0,
+          "type": "string"
+        },
+        {
+          "name": "quantidade",
+          "index": 1,
+          "type": "number"
+        },
+        {
+          "name": "unidade",
+          "index": 2,
+          "type": "string"
+        },
+        {
+          "name": "precoUnitario",
+          "index": 3,
+          "type": "number"
+        },
+        {
+          "name": "precoTotal",
+          "index": 4,
+          "type": "number"
+        }
+      ],
+      "row_pattern": "^(.+?)\\s+([\\d.,]+)\\s+(\\w+)\\s+([\\d.,]+)\\s+([\\d.,]+)$"
+    },
+    "is_active": true,
+    "confidence_score": 60,
+    "times_used": 0,
+    "times_successful": 0,
+    "created_from_ai": true,
+    "ai_prompt_used": null,
+    "created_by_tenant": 1,
+    "createdAt": "2025-12-16T12:37:55.438Z",
+    "updatedAt": "2025-12-16T12:37:55.438Z"
+  }
+]

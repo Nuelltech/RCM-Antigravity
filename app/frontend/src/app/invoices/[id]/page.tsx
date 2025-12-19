@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { QuickCreateProduct } from '@/components/invoices/QuickCreateProduct';
+import { QuickCreateVariation } from '@/components/invoices/QuickCreateVariation';
 import { SelectVariationModal } from '@/components/invoices/SelectVariationModal';
 
 interface InvoiceLine {
@@ -73,6 +74,7 @@ interface Invoice {
 interface ProductSuggestion {
     produtoId: number;
     produtoNome: string;
+    unidadeMedida?: string;  // Unit of measurement (L, KG, UN)
     confianca: number;
     matchReason: string;
     variations?: Array<{
@@ -100,6 +102,7 @@ export default function InvoiceReviewPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
     const [showQuickCreate, setShowQuickCreate] = useState(false);  // NEW
+    const [showQuickCreateVariation, setShowQuickCreateVariation] = useState(false); // NEW
     const [selectingVariation, setSelectingVariation] = useState<{
         lineId: number;
         produto: ProductSuggestion;
@@ -215,9 +218,9 @@ export default function InvoiceReviewPage() {
     const handleMatchProduct = async (lineId: number, produtoId: number, produtoNome: string, variations?: any[]) => {
         console.log('🔍 CALLED:', { lineId, produtoId, produtoNome, variations });
 
-        // If multiple variations, show selection modal
-        if (variations && variations.length > 1) {
-            console.log('✅ MULTI VARIATION');
+        // If product has variations, show selection modal (allows creating new variations)
+        if (variations && variations.length > 0) {
+            console.log('✅ HAS VARIATIONS - SHOW MODAL');
             const produto = suggestions.find(s => s.produtoId === produtoId);
             if (produto) {
                 console.log('✅ SETTING STATE');
@@ -229,10 +232,9 @@ export default function InvoiceReviewPage() {
             return;
         }
 
-        console.log('ℹ️ AUTO MATCH');
-        // Single or no variation - auto match
-        const variacaoId = variations?.[0]?.id;
-        await performMatch(lineId, produtoId, variacaoId);
+        console.log('ℹ️ NO VARIATIONS - AUTO MATCH');
+        // No variations - auto match product directly
+        await performMatch(lineId, produtoId, undefined);
     };
 
     const performMatch = async (lineId: number, produtoId: number, variacaoId?: number) => {
@@ -722,10 +724,34 @@ export default function InvoiceReviewPage() {
                         }
                     }}
                     onCreateNew={() => {
-                        setShowQuickCreate(true);
-                        setSelectingVariation(null);
+                        setShowQuickCreateVariation(true);
                     }}
                 />
+
+                {/* Quick Create Variation Modal */}
+                {selectingVariation && (
+                    <QuickCreateVariation
+                        open={showQuickCreateVariation}
+                        onClose={() => setShowQuickCreateVariation(false)}
+                        onSuccess={(variacaoId) => {
+                            // Match the line with the newly created variation
+                            if (selectingVariation) {
+                                performMatch(
+                                    selectingVariation.lineId,
+                                    selectingVariation.produto.produtoId,
+                                    variacaoId
+                                );
+                            }
+                            setShowQuickCreateVariation(false);
+                        }}
+                        produto={{
+                            id: selectingVariation.produto.produtoId,
+                            nome: selectingVariation.produto.produtoNome,
+                            unidade_medida: selectingVariation.produto.unidadeMedida || 'UN'
+                        }}
+                        lineData={matchingLine || undefined}
+                    />
+                )}
             </div>
         </AppLayout>
     );
