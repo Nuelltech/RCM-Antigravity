@@ -14,10 +14,14 @@
         "jsx": "react"
     },
     "include": [
-        "src/**/*"
+        "src/core/**/*",
+        "src/modules/**/*",
+        "src/email-templates/**/*"
     ],
     "exclude": [
         "node_modules",
-        "src/email-templates/**/*.tsx"
+        "src/scripts",
+        "src/workers",
+        "src/modules/leads"
     ]
 }

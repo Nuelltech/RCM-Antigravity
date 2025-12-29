@@ -10,7 +10,7 @@ export class TenantDB {
             throw new Error('Tenant ID is required for TenantDB');
         }
         this.tenantId = tenantId;
-        this.db = prisma;
+        this.db = prisma as any;
     }
 
     // Generic findById with tenant isolation
