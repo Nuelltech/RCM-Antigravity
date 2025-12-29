@@ -3,9 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 
-const API_URL = typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev')
-    ? window.location.origin.replace('-3000.', '-3001.')
-    : 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 const getAuthHeaders = (): Record<string, string> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
