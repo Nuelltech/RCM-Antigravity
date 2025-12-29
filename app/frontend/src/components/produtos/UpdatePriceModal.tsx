@@ -90,7 +90,7 @@ export default function UpdatePriceModal({
         const pollInterval = setInterval(async () => {
             try {
                 const response = await fetch(
-                    `${API_URL}/api/products/jobs/${jobId}`,
+                    `${API_URL}/products/jobs/${jobId}`,
                     {
                         credentials: 'include',
                         headers: getAuthHeaders()
@@ -127,7 +127,7 @@ export default function UpdatePriceModal({
         setLoadingImpact(true);
         try {
             const response = await fetch(
-                `${API_URL}/api/products/variations/${variacao.id}/impact`,
+                `${API_URL}/products/variations/${variacao.id}/impact`,
                 {
                     credentials: 'include',
                     headers: getAuthHeaders()
@@ -151,7 +151,7 @@ export default function UpdatePriceModal({
 
         try {
             const response = await fetch(
-                `${API_URL}/api/products/variations/${variacao.id}/price`,
+                `${API_URL}/products/variations/${variacao.id}/price`,
                 {
                     method: 'PUT',
                     credentials: 'include',
@@ -431,3 +431,4 @@ export default function UpdatePriceModal({
         </div>
     );
 }
+
