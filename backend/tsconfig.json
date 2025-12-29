@@ -21,8 +21,6 @@
     "exclude": [
         "node_modules",
         "src/scripts",
-        "src/workers",
-        "src/modules/leads",
-        "src/core/queue.ts"
+        "src/modules/leads"
     ]
-}// Queue excluded from build
+}

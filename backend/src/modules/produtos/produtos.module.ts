@@ -238,12 +238,16 @@ class ProductService {
             preco_unitario,
         }) as any;
 
-        // Enqueue recalculation job (async processing)
-        const job = await addPriceChangeJob(
-            data.produto_id,
-            this.tenantId,
-            userId || 0
-        );
+        // Try queue-based recalculation (background), fallback to sync if fails
+        try {
+            await addPriceChangeJob(data.produto_id, this.tenantId, userId || 0);
+            console.log(`✅ Price change job queued for product ${data.produto_id}`);
+        } catch (queueError) {
+            console.warn('⚠️  Queue unavailable, using sync recalculation:', queueError);
+            recalculationService.recalculateAfterPriceChange(data.produto_id).catch(err => {
+                console.error('Error in fallback recalculation:', err);
+            });
+        }
 
         // Get new effective unit price (should be the one we just created if it's the latest)
         // Note: getPrecoUnitarioAtual fetches from DB, so it sees the new variation.
@@ -655,12 +659,16 @@ export async function productRoutes(app: FastifyInstance) {
                 include: { produto: true },
             });
 
-            // Enqueue recalculation job instead of fire-and-forget
-            const recalcJob = await addPriceChangeJob(
-                variacao.produto_id,
-                req.tenantId,
-                (req as any).user?.id || 0
-            );
+            // Try queue-based recalculation (background), fallback to sync if fails
+            try {
+                await addPriceChangeJob(variacao.produto_id, req.tenantId, (req as any).user?.id || 0);
+                console.log(`✅ Price change job queued for product ${variacao.produto_id}`);
+            } catch (queueError) {
+                console.warn('⚠️  Queue unavailable, using sync recalculation:', queueError);
+                recalculationService.recalculateAfterPriceChange(variacao.produto_id).catch((err: any) => {
+                    console.error('Error in fallback recalculation:', err);
+                });
+            }
 
             // Record price history (impact stats will be 0/unknown for now to prioritize speed)
             await priceHistoryService.createPriceHistory({
@@ -676,12 +684,10 @@ export async function productRoutes(app: FastifyInstance) {
                 menusAfetados: 0,    // Async
             });
 
-            return reply.status(202).send({
+            return reply.send({
                 success: true,
                 variacao: updated,
-                jobId: recalcJob.jobId,
-                message: 'Preço atualizado. Recálculo em processamento...',
-                jobStatus: recalcJob.status,
+                message: 'Preço atualizado com sucesso!',
             });
         } catch (error: any) {
             return reply.status(500).send({ error: error.message });
