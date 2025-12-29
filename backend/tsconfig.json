@@ -16,6 +16,7 @@
     "include": [
         "src/core/**/*",
         "src/modules/**/*",
+        "src/workers/**/*",
         "src/email-templates/**/*"
     ],
     "exclude": [
