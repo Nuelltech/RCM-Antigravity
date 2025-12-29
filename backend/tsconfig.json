@@ -25,4 +25,4 @@
         "src/modules/leads",
         "src/core/queue.ts"
     ]
-}
+}// Queue excluded from build
