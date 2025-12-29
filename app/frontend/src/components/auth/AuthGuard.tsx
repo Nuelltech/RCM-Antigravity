@@ -19,6 +19,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 return;
             }
 
+            // Allow access to internal routes (separate auth system)
+            if (pathname.startsWith("/internal")) {
+                setIsLoading(false);
+                return;
+            }
+
+            // Allow demo page
+            if (pathname === "/demo") {
+                setIsLoading(false);
+                return;
+            }
+
             const token = localStorage.getItem("token");
             if (!token) {
                 router.push("/auth/login");

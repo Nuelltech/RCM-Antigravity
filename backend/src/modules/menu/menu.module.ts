@@ -3,6 +3,8 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { prisma } from '../../core/database';
 import { Decimal } from '@prisma/client/runtime/library';
+import { AlertsService } from '../alerts/alerts.module';
+import { menuCache } from '../../core/menu-cache';
 
 // Validation Schemas
 const createMenuItemSchema = z.object({
@@ -62,6 +64,13 @@ class MenuService {
     }
 
     async list(categoria?: string, onlyActive: boolean = true) {
+        // Check cache first
+        const cacheOptions = { categoria, ativo: onlyActive };
+        const cached = await menuCache.get(this.tenantId, cacheOptions);
+        if (cached) {
+            return cached;
+        }
+
         const whereClause: any = {
             tenant_id: this.tenantId,
         };
@@ -123,7 +132,7 @@ class MenuService {
         });
 
         // Calculate CMV% for each item
-        return menuItems.map(item => {
+        const result = menuItems.map(item => {
             const pvp = Number(item.pvp);
             let custo = 0;
 
@@ -160,6 +169,11 @@ class MenuService {
                 } : null,
             };
         });
+
+        // Cache the result
+        await menuCache.set(this.tenantId, result, cacheOptions);
+
+        return result;
     }
 
     async getById(menuItemId: number) {
@@ -401,6 +415,13 @@ class MenuService {
             },
         });
 
+        // Regenerate alerts in background (fire-and-forget)
+        const alertsService = new AlertsService(this.tenantId);
+        alertsService.regenerateAlertsAsync();
+
+        // Invalidate menu cache
+        await menuCache.invalidateTenant(this.tenantId);
+
         const pvp = Number(menuItem.pvp);
         let custo = 0;
         if (menuItem.receita_id) custo = Number(menuItem.receita!.custo_por_porcao);
@@ -509,6 +530,15 @@ class MenuService {
             },
         });
 
+        // Regenerate alerts in background if PVP changed (fire-and-forget)
+        if (data.pvp) {
+            const alertsService = new AlertsService(this.tenantId);
+            alertsService.regenerateAlertsAsync();
+        }
+
+        // Invalidate menu cache
+        await menuCache.invalidateTenant(this.tenantId);
+
         const pvp = Number(menuItem.pvp);
         let custo = 0;
         if (menuItem.receita_id) custo = Number(menuItem.receita!.custo_por_porcao);
@@ -550,6 +580,9 @@ class MenuService {
             throw new Error('Item do menu não encontrado');
         }
 
+        // Invalidate menu cache
+        await menuCache.invalidateTenant(this.tenantId);
+
         const menuItem = await prisma.menuItem.update({
             where: { id: menuItemId },
             data: {
@@ -583,6 +616,9 @@ class MenuService {
                 menu_item_id: menuItemId,
             },
         });
+
+        // Invalidate menu cache
+        await menuCache.invalidateTenant(this.tenantId);
 
         if (salesCount > 0) {
             // Soft delete by setting ativo to false

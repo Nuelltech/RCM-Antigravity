@@ -3,9 +3,11 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import z from 'zod';
 import { TenantDB } from '../../core/database-tenant';
 import { prisma } from '../../core/database';
+import { productsCache } from '../../core/products-cache';
 import { priceHistoryService } from './price-history.service';
 import { recalculationService } from './recalculation.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { addPriceChangeJob, getJobStatus } from '../../core/queue';
 
 // Schema
 const createProductSchema = z.object({
@@ -74,6 +76,13 @@ class ProductService {
         subfamilyId?: number;
         vendavel?: string;
     }) {
+        // Check cache first
+        const cacheOptions = { page: params.page, limit: params.limit, search: params.search };
+        const cached = await productsCache.get(this.tenantId, cacheOptions);
+        if (cached) {
+            return cached;
+        }
+
         const page = params.page || 1;
         const limit = params.limit || 50;
         const skip = (page - 1) * limit;
@@ -107,18 +116,38 @@ class ProductService {
             }
         });
 
+        // OPTIMIZED: Remove nested familia include, select only needed fields
         const data = await this.db.findMany('produto', {
             where,
-            include: {
+            select: {
+                id: true,
+                nome: true,
+                codigo_interno: true,
+                unidade_medida: true,
+                vendavel: true,
+                imagem_url: true,
                 subfamilia: {
-                    include: { familia: true }
+                    select: {
+                        id: true,
+                        nome: true,
+                        familia_id: true,
+                        // Skip nested familia - fetch separately if needed
+                    }
                 },
                 variacoes: {
                     where: { ativo: true },
+                    select: {
+                        id: true,
+                        tipo_unidade_compra: true,
+                        preco_compra: true,
+                        preco_unitario: true,
+                        data_ultima_compra: true,
+                    },
                     orderBy: [
                         { data_ultima_compra: 'desc' },
                         { id: 'desc' }
-                    ]
+                    ],
+                    take: 3, // Limit variations per product (most recent only)
                 }
             },
             skip,
@@ -126,7 +155,7 @@ class ProductService {
             orderBy: { nome: 'asc' }
         });
 
-        return {
+        const result = {
             data,
             meta: {
                 total,
@@ -135,8 +164,12 @@ class ProductService {
                 totalPages: Math.ceil(total / limit)
             }
         };
-    }
 
+        // Cache the result
+        await productsCache.set(this.tenantId, result, cacheOptions);
+
+        return result;
+    }
     async create(data: z.infer<typeof createProductSchema>) {
         try {
             // Get subfamilia with familia to generate code
@@ -172,11 +205,16 @@ class ProductService {
             const codigo_interno = `${familiaCode}-${subfamiliaCode}-${nextSeq.toString().padStart(3, '0')}`;
 
             // Create product
-            return this.db.create('produto', {
+            const product = await this.db.create('produto', {
                 ...data,
                 codigo_interno,
                 vendavel: data.vendavel ?? false,
             });
+
+            // Invalidate products cache
+            await productsCache.invalidateTenant(this.tenantId);
+
+            return product;
         } catch (error: any) {
             if (error.code === 'P2002') {
                 throw new Error('Produto com este nome já existe nesta subfamília');
@@ -200,10 +238,12 @@ class ProductService {
             preco_unitario,
         }) as any;
 
-        // Recalculate impact asynchronously
-        recalculationService.recalculateAfterPriceChange(data.produto_id).catch(err => {
-            console.error('Error in background recalculation:', err);
-        });
+        // Enqueue recalculation job (async processing)
+        const job = await addPriceChangeJob(
+            data.produto_id,
+            this.tenantId,
+            userId || 0
+        );
 
         // Get new effective unit price (should be the one we just created if it's the latest)
         // Note: getPrecoUnitarioAtual fetches from DB, so it sees the new variation.
@@ -615,10 +655,12 @@ export async function productRoutes(app: FastifyInstance) {
                 include: { produto: true },
             });
 
-            // Trigger recalculation asynchronously (fire-and-forget)
-            recalculationService.recalculateAfterPriceChange(variacao.produto_id).catch(err => {
-                console.error('Error in background recalculation:', err);
-            });
+            // Enqueue recalculation job instead of fire-and-forget
+            const recalcJob = await addPriceChangeJob(
+                variacao.produto_id,
+                req.tenantId,
+                (req as any).user?.id || 0
+            );
 
             // Record price history (impact stats will be 0/unknown for now to prioritize speed)
             await priceHistoryService.createPriceHistory({
@@ -634,14 +676,13 @@ export async function productRoutes(app: FastifyInstance) {
                 menusAfetados: 0,    // Async
             });
 
-            return {
+            return reply.status(202).send({
                 success: true,
                 variacao: updated,
-                impact: {
-                    receitas_afetadas: 0, // Async
-                    menus_afetados: 0,    // Async
-                },
-            };
+                jobId: recalcJob.jobId,
+                message: 'Preço atualizado. Recálculo em processamento...',
+                jobStatus: recalcJob.status,
+            });
         } catch (error: any) {
             return reply.status(500).send({ error: error.message });
         }
@@ -837,6 +878,35 @@ export async function productRoutes(app: FastifyInstance) {
                 variacao.produto_id
             );
             return impact;
+        } catch (error: any) {
+            return reply.status(500).send({ error: error.message });
+        }
+    });
+
+    // GET /api/products/jobs/:jobId - Check recalculation job status
+    app.withTypeProvider<ZodTypeProvider>().get('/jobs/:jobId', {
+        schema: {
+            params: z.object({ jobId: z.string() }),
+            tags: ['Products', 'Jobs'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        try {
+            const status = await getJobStatus(req.params.jobId);
+
+            if (status.status === 'not-found') {
+                return reply.status(404).send({ error: 'Job not found' });
+            }
+
+            return {
+                jobId: req.params.jobId,
+                status: status.status,
+                progress: status.progress || 0,
+                result: status.result,
+                error: status.error,
+            };
         } catch (error: any) {
             return reply.status(500).send({ error: error.message });
         }

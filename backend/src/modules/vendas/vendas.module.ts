@@ -3,6 +3,7 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import z from 'zod';
 import { TenantDB } from '../../core/database-tenant';
 import { prisma } from '../../core/database';
+import { dashboardCache } from '../../core/cache.service';
 
 const createBatchSalesSchema = z.object({
     date: z.string().datetime(),
@@ -156,6 +157,10 @@ export async function salesRoutes(app: FastifyInstance) {
                 }
             }
         }
+
+        // Invalidate dashboard cache after creating sales
+        await dashboardCache.invalidateTenant(req.tenantId);
+        console.log(`[CACHE INVALIDATE] Dashboard cache cleared for tenant ${req.tenantId} after sales creation`);
 
         return { success: true };
     });

@@ -1,7 +1,7 @@
 import { prisma } from '../src/core/database';
 import bcrypt from 'bcryptjs';
 
-import { DEFAULT_FAMILIES, DEFAULT_SUBFAMILIES } from '../src/core/constants/seed-data';
+import { DEFAULT_FAMILIES, DEFAULT_SUBFAMILIES } from '../src/core/constants/seedData';
 
 const families = DEFAULT_FAMILIES;
 const subfamilies = DEFAULT_SUBFAMILIES;
@@ -20,22 +20,39 @@ async function main() {
         },
     });
 
-    // 2. User (Upsert)
-    await prisma.user.upsert({
-        where: { tenant_id_email: { tenant_id: tenant.id, email: 'owner@demo.com' } },
+    // 2. User (Upsert) - Now uses UserTenant relationship
+    const user = await prisma.user.upsert({
+        where: { email: 'owner@demo.com' },
         update: {},
         create: {
-            tenant_id: tenant.id,
             nome: 'Demo Owner',
             email: 'owner@demo.com',
             password_hash: passwordHash,
+            email_verificado: true,
+        },
+    });
+
+    // 3. Link user to tenant with owner role
+    await prisma.userTenant.upsert({
+        where: {
+            user_id_tenant_id: {
+                user_id: user.id,
+                tenant_id: tenant.id,
+            },
+        },
+        update: {},
+        create: {
+            user_id: user.id,
+            tenant_id: tenant.id,
             role: 'owner',
+            ativo: true,
+            activated_at: new Date(),
         },
     });
 
     console.log(`Seeding families for tenant: ${tenant.nome_restaurante} (${tenant.id})`);
 
-    // 3. Families
+    // 4. Families
     const familyMap = new Map<string, number>();
 
     for (const family of families) {
@@ -71,7 +88,7 @@ async function main() {
         familyMap.set(family.codigo, familyId);
     }
 
-    // 4. Subfamilies
+    // 5. Subfamilies
     console.log('Seeding subfamilies...');
     for (const sub of subfamilies) {
         const familyId = familyMap.get(sub.familia_codigo);

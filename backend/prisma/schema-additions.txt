@@ -1,0 +1,6 @@
+// Add these lines to User model (after line 113, before line 117)
+  convertedLeads      Lead[]          // Leads that converted to this user
+  demoRequests        DemoRequest[]   // Demo requests from this user
+
+// Add this line to Tenant model (after line 73, before line 75)
+  demoRequests        DemoRequest[]   // Demo requests linked to this tenant

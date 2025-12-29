@@ -16,7 +16,19 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply) {
     }
 
     // Skip auth for public routes
-    const publicRoutes = ['/api/auth/login', '/api/auth/register', '/api/auth/verify', '/api/users/accept-invite', '/api/users/validate-invite-token', '/health'];
+    const publicRoutes = [
+        '/api/auth/login',
+        '/api/auth/register',
+        '/api/auth/verify',
+        '/api/auth/forgot-password',
+        '/api/auth/reset-password',
+        '/api/users/accept-invite',
+        '/api/users/validate-invite-token',
+        '/api/health',
+        '/api/public',
+        '/api/internal',
+        '/health'
+    ];
 
     // Check for exact root route match
     if (req.url === '/' || req.url === '') {

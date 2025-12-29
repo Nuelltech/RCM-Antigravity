@@ -284,8 +284,8 @@ export default function ProductsPage() {
                                                             {product.codigo_interno || "-"}
                                                         </td>
                                                         <td className="px-4 py-3 text-sm font-medium">{product.nome}</td>
-                                                        <td className="px-4 py-3 text-sm text-gray-600">{product.subfamilia.familia.nome}</td>
-                                                        <td className="px-4 py-3 text-sm text-gray-600">{product.subfamilia.nome}</td>
+                                                        <td className="px-4 py-3 text-sm text-gray-600">{product.subfamilia?.familia?.nome || '-'}</td>
+                                                        <td className="px-4 py-3 text-sm text-gray-600">{product.subfamilia?.nome || '-'}</td>
                                                         <td className="px-4 py-3 text-sm">
                                                             <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800">
                                                                 {product.unidade_medida}
@@ -362,8 +362,8 @@ export default function ProductsPage() {
 
                                                 {/* Family/Subfamily */}
                                                 <div className="text-sm text-gray-600">
-                                                    <div>{product.subfamilia.familia.nome}</div>
-                                                    <div className="text-xs text-gray-500">{product.subfamilia.nome}</div>
+                                                    <div>{product.subfamilia?.familia?.nome || '-'}</div>
+                                                    <div className="text-xs text-gray-500">{product.subfamilia?.nome || '-'}</div>
                                                 </div>
 
                                                 {/* Unit and Price */}

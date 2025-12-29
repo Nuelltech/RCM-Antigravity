@@ -16,6 +16,12 @@ export async function tenantMiddleware(req: FastifyRequest, reply: FastifyReply)
     const tenantIdHeader = req.headers['x-tenant-id'];
 
     if (!tenantIdHeader) {
+        // Fallback: Check if auth middleware already extracted tenantId from token
+        if ((req as any).user && (req as any).user.tenantId) {
+            req.tenantId = (req as any).user.tenantId;
+            return;
+        }
+
         // For public routes (login, register), we might not need tenant context immediately
         // But for protected routes, it's crucial.
         return;

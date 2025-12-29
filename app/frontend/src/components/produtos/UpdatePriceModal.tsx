@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
+
+const API_URL = typeof window !== 'undefined' && window.location.hostname.includes('app.github.dev')
+    ? window.location.origin.replace('-3000.', '-3001.')
+    : 'http://localhost:3001';
+
+const getAuthHeaders = (): Record<string, string> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return {};
+    return { 'Authorization': `Bearer ${token}` };
+};
 
 interface PriceImpact {
     affected_recipes: number;
@@ -50,6 +60,9 @@ export default function UpdatePriceModal({
     const [loadingImpact, setLoadingImpact] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [jobId, setJobId] = useState<string | null>(null);
+    const [jobStatus, setJobStatus] = useState<string | null>(null);
+    const [jobProgress, setJobProgress] = useState(0);
 
     const novoPrecoNum = parseFloat(novoPreco) || 0;
     const novoPrecoUnitario = novoPrecoNum / variacao.unidades_por_compra;
@@ -65,17 +78,61 @@ export default function UpdatePriceModal({
             setImpact(null);
             setError(null);
             setSuccess(false);
+            setJobId(null);
+            setJobStatus(null);
+            setJobProgress(0);
             loadImpact();
         }
     }, [isOpen]);
+
+    // Poll job status
+    useEffect(() => {
+        if (!jobId) return;
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/products/jobs/${jobId}`,
+                    {
+                        credentials: 'include',
+                        headers: getAuthHeaders()
+                    }
+                );
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setJobStatus(data.status);
+                    setJobProgress(data.progress || 0);
+
+                    if (data.status === 'completed') {
+                        clearInterval(pollInterval);
+                        setSuccess(true);
+                        setTimeout(() => {
+                            onSuccess?.();
+                            onClose();
+                        }, 2000);
+                    } else if (data.status === 'failed') {
+                        clearInterval(pollInterval);
+                        setError(data.error || 'Erro ao processar recálculo');
+                        setLoading(false);
+                    }
+                }
+            } catch (err) {
+                console.error('Error polling job:', err);
+            }
+        }, 2000); // Poll every 2 seconds
+
+        return () => clearInterval(pollInterval);
+    }, [jobId]);
 
     const loadImpact = async () => {
         setLoadingImpact(true);
         try {
             const response = await fetch(
-                `/api/produtos/variations/${variacao.id}/impact`,
+                `${API_URL}/api/products/variations/${variacao.id}/impact`,
                 {
                     credentials: 'include',
+                    headers: getAuthHeaders()
                 }
             );
             if (response.ok) {
@@ -96,11 +153,14 @@ export default function UpdatePriceModal({
 
         try {
             const response = await fetch(
-                `/api/produtos/variations/${variacao.id}/price`,
+                `${API_URL}/api/products/variations/${variacao.id}/price`,
                 {
                     method: 'PUT',
                     credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
                     body: JSON.stringify({
                         preco_compra: novoPrecoNum,
                         origem,
@@ -113,14 +173,24 @@ export default function UpdatePriceModal({
                 throw new Error(data.error || 'Erro ao atualizar preço');
             }
 
-            setSuccess(true);
-            setTimeout(() => {
-                onSuccess?.();
-                onClose();
-            }, 2000);
+            const data = await response.json();
+
+            // Check if it's an async job (202 Accepted)
+            if (response.status === 202 && data.jobId) {
+                setJobId(data.jobId);
+                setJobStatus('queued');
+                // Keep loading true - will be set to false when job completes/fails
+            } else {
+                // Synchronous response (backward compatibility)
+                setSuccess(true);
+                setTimeout(() => {
+                    onSuccess?.();
+                    onClose();
+                }, 2000);
+                setLoading(false);
+            }
         } catch (err: any) {
             setError(err.message);
-        } finally {
             setLoading(false);
         }
     };
@@ -164,7 +234,7 @@ export default function UpdatePriceModal({
                             <div>
                                 <p className="text-xs text-gray-500">Preço de Compra</p>
                                 <p className="text-lg font-bold text-gray-900">
-                                    €{variacao.preco_compra.toFixed(2)}
+                                    €{Number(variacao.preco_compra).toFixed(2)}
                                 </p>
                                 <p className="text-xs text-gray-400">
                                     {variacao.tipo_unidade_compra}
@@ -173,7 +243,7 @@ export default function UpdatePriceModal({
                             <div>
                                 <p className="text-xs text-gray-500">Preço Unitário</p>
                                 <p className="text-lg font-bold text-gray-900">
-                                    €{variacao.preco_unitario.toFixed(4)}
+                                    €{Number(variacao.preco_unitario).toFixed(4)}
                                 </p>
                                 <p className="text-xs text-gray-400">
                                     por unidade base
@@ -207,7 +277,7 @@ export default function UpdatePriceModal({
                     </div>
 
                     {/* Price Change Indicator */}
-                    {novoPrecoNum !== variacao.preco_compra && (
+                    {novoPrecoNum !== Number(variacao.preco_compra) && (
                         <div
                             className={`flex items-center gap-2 p-4 rounded-lg ${percentualMudanca > 0
                                 ? 'bg-red-50 text-red-700'
@@ -226,7 +296,7 @@ export default function UpdatePriceModal({
                                 </p>
                                 <p className="text-sm">
                                     Diferença: €
-                                    {Math.abs(novoPrecoNum - variacao.preco_compra).toFixed(
+                                    {Math.abs(novoPrecoNum - Number(variacao.preco_compra)).toFixed(
                                         2
                                     )}
                                 </p>
@@ -301,6 +371,30 @@ export default function UpdatePriceModal({
                         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">
                             <p className="font-semibold">Erro</p>
                             <p className="text-sm">{error}</p>
+                        </div>
+                    )}
+
+                    {/* Job Processing */}
+                    {jobId && !success && (
+                        <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-4">
+                            <div className="flex items-center gap-3 mb-3">
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                                <div className="flex-1">
+                                    <p className="font-semibold">Processando recálculo...</p>
+                                    <p className="text-sm">
+                                        Status: {jobStatus === 'waiting' ? 'Na fila' : jobStatus === 'active' ? 'A processar' : jobStatus}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="w-full bg-blue-200 rounded-full h-2">
+                                <div
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-500"
+                                    style={{ width: `${jobProgress}%` }}
+                                />
+                            </div>
+                            <p className="text-xs mt-2 text-blue-600">
+                                {jobProgress}% completo
+                            </p>
                         </div>
                     )}
 

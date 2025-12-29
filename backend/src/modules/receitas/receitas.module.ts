@@ -3,6 +3,7 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { TenantDB } from '../../core/database-tenant';
 import { prisma } from '../../core/database';
+import { recipesCache } from '../../core/recipes-cache';
 import { Decimal } from '@prisma/client/runtime/library';
 import { recalculationService } from '../produtos/recalculation.service';
 
@@ -58,6 +59,13 @@ class RecipeService {
         type?: 'Final' | 'Pre-preparo';
         category?: string;
     }) {
+        // Check cache first
+        const cacheOptions = { page: params.page, limit: params.limit, search: params.search };
+        const cached = await recipesCache.get(this.tenantId, cacheOptions);
+        if (cached) {
+            return cached;
+        }
+
         const page = params.page || 1;
         const limit = params.limit || 50;
         const skip = (page - 1) * limit;
@@ -93,14 +101,28 @@ class RecipeService {
             prisma.receita.count({ where }),
             prisma.receita.findMany({
                 where,
-                orderBy,
-                include: {
+                select: {
+                    id: true,
+                    nome: true,
+                    tipo: true,
+                    numero_porcoes: true,
+                    tempo_preparacao: true,
+                    quantidade_total_produzida: true,
+                    unidade_medida: true,
+                    custo_total: true,
+                    custo_por_porcao: true,
+                    categoria: true,
+                    dificuldade: true,
+                    imagem_url: true,
+                    ativa: true,
+                    createdAt: true,
                     _count: {
                         select: {
                             ingredientes: true
                         }
                     }
                 },
+                orderBy,
                 skip,
                 take: limit
             })
@@ -118,7 +140,7 @@ class RecipeService {
                 : null,
         }));
 
-        return {
+        const result = {
             data,
             meta: {
                 total,
@@ -127,6 +149,11 @@ class RecipeService {
                 totalPages: Math.ceil(total / limit)
             }
         };
+
+        // Cache the result
+        await recipesCache.set(this.tenantId, result, cacheOptions);
+
+        return result;
     }
 
     async getById(recipeId: number) {

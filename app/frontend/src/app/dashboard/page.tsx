@@ -15,7 +15,7 @@ interface DashboardStats {
     custoMercadoria: number;
     cmvTeorico: number;
     comprasMes: number;
-    allItems: any[];
+    topItems: any[];
     categories: string[];
     custoEstrutura: {
         valor: number;
@@ -29,7 +29,7 @@ export default function DashboardPage() {
         custoMercadoria: 0,
         cmvTeorico: 0,
         comprasMes: 0,
-        allItems: [],
+        topItems: [],
         categories: [],
         custoEstrutura: { valor: 0, periodo: 'Mês' }
     });
@@ -54,7 +54,7 @@ export default function DashboardPage() {
             custoMercadoria: 0,
             cmvTeorico: 0,
             comprasMes: 0,
-            allItems: [],
+            topItems: [],
             categories: [],
             custoEstrutura: { valor: 0, periodo: 'Mês' }
         });
@@ -144,7 +144,7 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    <TopRecipesGrid items={stats.allItems} categories={stats.categories} />
+                    <TopRecipesGrid items={stats.topItems} categories={stats.categories} />
                 </div>
             </AppLayout>
         </RoleGuard>

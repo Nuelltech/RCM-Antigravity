@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { priceHistoryService } from '../../produtos/price-history.service';
 import { recalculationService } from '../../produtos/recalculation.service';
+import { dashboardCache } from '../../../core/cache.service';
 
 const prisma = new PrismaClient();
 
@@ -112,6 +113,10 @@ export class InvoiceIntegrationService {
 
             // Trigger alert regeneration (async)
             this.regenerateAlertsAsync(tenantId);
+
+            // Invalidate dashboard cache (purchases affect dashboard stats)
+            await dashboardCache.invalidateTenant(tenantId);
+            console.log(`[CACHE INVALIDATE] Dashboard cache cleared for tenant ${tenantId} after invoice approval`);
 
             return {
                 compraId: compraFatura.id,

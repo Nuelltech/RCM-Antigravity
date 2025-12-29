@@ -16,6 +16,7 @@ import { ArrowLeft, Loader2, Plus, Edit, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PurchaseVariationsModal } from "@/components/products/PurchaseVariationsModal";
+import UpdatePriceModal from "@/components/produtos/UpdatePriceModal";
 
 // Schemas
 const productSchema = z.object({
@@ -86,6 +87,7 @@ interface FormatoVenda {
 
 interface VariacaoProduto {
     id: number;
+    produto_id: number;
     tipo_unidade_compra: string;
     unidades_por_compra: number;
     preco_compra: number;
@@ -95,6 +97,10 @@ interface VariacaoProduto {
     data_ultima_compra?: string;
     ativo: boolean;
     updatedAt: string;
+    produto: {
+        nome: string;
+        codigo_interno?: string;
+    };
 }
 
 interface Template {
@@ -124,6 +130,7 @@ export default function EditProductPage() {
     const [isVariationsModalOpen, setIsVariationsModalOpen] = useState(false);
     const [isEditVariationModalOpen, setIsEditVariationModalOpen] = useState(false);
     const [editingVariation, setEditingVariation] = useState<VariacaoProduto | null>(null);
+    const [isPriceUpdateModalOpen, setIsPriceUpdateModalOpen] = useState(false);
 
     // Modal states
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -580,7 +587,7 @@ export default function EditProductPage() {
                         {mainVariation ? (
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                 <div className="flex items-center justify-between">
-                                    <div>
+                                    <div className="flex-1">
                                         <p className="text-sm text-gray-600">Variação Principal (Custo Atual)</p>
                                         <h4 className="font-semibold text-lg">{mainVariation.tipo_unidade_compra}</h4>
                                         <p className="text-sm text-gray-700 mt-1">
@@ -595,6 +602,14 @@ export default function EditProductPage() {
                                             </p>
                                         )}
                                     </div>
+                                    <Button
+                                        type="button"
+                                        onClick={() => setIsPriceUpdateModalOpen(true)}
+                                        className="bg-orange-500 hover:bg-orange-600 text-white gap-2 ml-4"
+                                    >
+                                        <Edit className="h-4 w-4" />
+                                        Atualizar Preço (Async)
+                                    </Button>
                                 </div>
                             </div>
                         ) : (
@@ -851,11 +866,24 @@ export default function EditProductPage() {
                 isOpen={isVariationsModalOpen}
                 onClose={() => setIsVariationsModalOpen(false)}
                 produtoId={productId}
-                produtoUnidade={product?.unidade_medida || "L"}
+                produtoUnidade={product?.unidade_medida || "KG"}
                 variations={purchaseVariations}
                 mainVariation={mainVariation}
                 onRefresh={loadPurchaseVariations}
             />
+
+            {/* Update Price Modal (Async Jobs Test) */}
+            {mainVariation && (
+                <UpdatePriceModal
+                    isOpen={isPriceUpdateModalOpen}
+                    onClose={() => setIsPriceUpdateModalOpen(false)}
+                    variacao={mainVariation}
+                    onSuccess={() => {
+                        loadPurchaseVariations();
+                        setIsPriceUpdateModalOpen(false);
+                    }}
+                />
+            )}
         </AppLayout>
     );
 }

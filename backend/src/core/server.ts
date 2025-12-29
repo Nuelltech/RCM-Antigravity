@@ -31,6 +31,7 @@ import { consumosRoutes } from '../modules/consumos/consumos.module';
 import { invoicesRoutes } from '../modules/invoices/invoices.module';
 import { usersRoutes } from '../modules/users/users.routes';
 import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
+import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
     logger: true,
@@ -84,6 +85,19 @@ async function main() {
     await server.register(swaggerUi, {
         routePrefix: '/documentation',
     });
+
+
+    // Public routes (NO AUTH REQUIRED) - must be registered BEFORE auth middleware
+    server.register(leadsRoutes, { prefix: '/api/public' });
+
+    // Internal auth routes (NO CUSTOMER AUTH REQUIRED)
+    const { internalAuthRoutes } = await import('../modules/internal-auth/internal-auth.routes');
+    server.register(internalAuthRoutes, { prefix: '/api/internal/auth' });
+
+    // Internal leads management routes (REQUIRES INTERNAL AUTH)
+    const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+    server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+
 
     // Global Middleware
     server.addHook('onRequest', async (req, reply) => {
