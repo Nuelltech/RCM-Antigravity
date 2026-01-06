@@ -47,8 +47,10 @@ async function main() {
                 /\.vercel\.app$/,  // Vercel deployments
                 /\.onrender\.com$/, // Render deployments
                 'https://rcm-frontend.vercel.app', // Production frontend
-                'https://rcm.net', // Custom domain
-                'https://www.rcm.net', // Custom domain www
+                'https://rcm-app.com', // Custom domain
+                'https://www.rcm-app.com', // Custom domain www
+                'https://rcm.net', // Old custom domain (keep for backwards compatibility)
+                'https://www.rcm.net', // Old custom domain www
             ]
             : true, // Allow all origins in development
         credentials: true,
