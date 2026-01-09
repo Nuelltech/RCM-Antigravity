@@ -1,6 +1,20 @@
 const getBaseUrl = () => {
-    // Client-side: Always use relative path to route through Next.js proxy (avoids CORS)
+    // Client-side browser
     if (typeof window !== 'undefined') {
+        // In production, use direct backend URL (no proxy on Vercel)
+        // In development/codespaces, use proxy to avoid CORS
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+        if (apiUrl && !apiUrl.includes('localhost')) {
+            // Production: Direct call to backend
+            let url = apiUrl;
+            if (!url.endsWith('/api')) {
+                url = url.replace(/\/$/, '') + '/api';
+            }
+            return url;
+        }
+
+        // Development: Use Next.js proxy
         return '/api';
     }
 
