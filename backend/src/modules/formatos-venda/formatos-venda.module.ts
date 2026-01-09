@@ -25,12 +25,13 @@ export interface UpdateFormatoVendaDto {
     codigo_interno?: string;
     quantidade_vendida?: number;
     unidade_medida?: string;
+    preco_venda?: number; // allow price correction
     variacao_origem_id?: number;
     conversao_necessaria?: boolean;
     disponivel_menu?: boolean;
     ordem_exibicao?: number;
     ativo?: boolean;
-    custo_unitario?: number; // optional manual cost update
+    custo_unitario?: number | null; // optional manual cost update
     margem_percentual?: number; // optional manual margin override
 }
 
@@ -160,11 +161,11 @@ class FormatoVendaService {
 
         // Determine cost: if manual cost provided, use it; otherwise recalculate if needed
         let custo: number;
-        if (dto.custo_unitario !== undefined) {
+        if (dto.custo_unitario !== undefined && dto.custo_unitario !== null) {
             // Manual cost override
             custo = dto.custo_unitario;
-        } else if (dto.quantidade_vendida || dto.variacao_origem_id) {
-            // Recalculate based on quantity or origin change
+        } else if (dto.quantidade_vendida || dto.variacao_origem_id || dto.custo_unitario === null) {
+            // Recalculate based on quantity or origin change, OR if user explicitly cleared cost (sent null)
             custo = await this.calculateCusto(
                 existing.produto_id,
                 dto.quantidade_vendida ?? Number(existing.quantidade_vendida),
@@ -183,9 +184,28 @@ class FormatoVendaService {
         const formato = await prisma.formatoVenda.update({
             where: { id },
             data: {
-                ...dto,
+                // Manually map fields to avoid "Unknown argument" errors with spread
+                nome: dto.nome,
+                descricao: dto.descricao,
+                codigo_interno: dto.codigo_interno,
+                quantidade_vendida: dto.quantidade_vendida,
+                unidade_medida: dto.unidade_medida,
+                preco_venda: dto.preco_venda ? Number(dto.preco_venda) : undefined, // Ensure number
+                conversao_necessaria: dto.conversao_necessaria,
+                disponivel_menu: dto.disponivel_menu,
+                ordem_exibicao: dto.ordem_exibicao,
+                ativo: dto.ativo,
+
+                // Calculated/Manual fields
                 custo_unitario: custo,
                 margem_percentual: margem,
+
+                // Relation update (Prisma sometimes trips on variacao_origem_id scalar update if not unchecked)
+                variacao_origem: dto.variacao_origem_id ? {
+                    connect: { id: dto.variacao_origem_id }
+                } : dto.variacao_origem_id === null ? {
+                    disconnect: true
+                } : undefined,
             },
             include: {
                 produto: true,
@@ -320,6 +340,9 @@ class FormatoVendaService {
     /**
      * Delete format (soft delete)
      */
+    /**
+     * Delete format (Safe Delete)
+     */
     async delete(id: number, tenant_id: number) {
         const existing = await prisma.formatoVenda.findFirst({
             where: { id, tenant_id },
@@ -329,9 +352,98 @@ class FormatoVendaService {
             throw new Error('Formato não encontrado');
         }
 
-        return prisma.formatoVenda.update({
+        // 1. BLOCK: Check if used in Active Menu or Active Combos
+        const activeMenuUsage = await prisma.menuItem.count({
+            where: {
+                formato_venda_id: id,
+                ativo: true,
+                tenant_id
+            }
+        });
+
+        if (activeMenuUsage > 0) {
+            throw new Error('Não é possível apagar: Este formato está em uso no Menu ativo. Remova-o do menu primeiro.');
+        }
+
+        const activeComboUsage = await prisma.comboCategoriaOpcao.count({
+            where: {
+                formato_venda_id: id,
+                categoria: {
+                    combo: {
+                        ativo: true,
+                        tenant_id
+                    }
+                }
+            }
+        });
+
+        if (activeComboUsage > 0) {
+            throw new Error('Não é possível apagar: Este formato está em uso em Combos ativos. Remova-o dos combos primeiro.');
+        }
+
+        // 2. ARCHIVE: Check if has Sales or Historical Usage (Inactive Combo)
+        const hasSales = await prisma.venda.count({
+            where: {
+                menuItem: {
+                    formato_venda_id: id
+                },
+                tenant_id
+            }
+        });
+
+        // Also check if used in ANY combo (even inactive) to preserve history
+        const anyComboUsage = await prisma.comboCategoriaOpcao.count({
+            where: {
+                formato_venda_id: id,
+                categoria: {
+                    combo: {
+                        tenant_id
+                    }
+                }
+            }
+        });
+
+        if (hasSales > 0 || anyComboUsage > 0) {
+            // Soft Delete (Archive)
+            // We also disable it in menu just in case (though we checked active menu above)
+            return prisma.formatoVenda.update({
+                where: { id },
+                data: { ativo: false, disponivel_menu: false },
+            });
+        }
+
+        // 3. HARD DELETE: Clean up and remove
+        // Finds orphan menu items to clean up
+        const orphanMenuItems = await prisma.menuItem.findMany({
+            where: {
+                formato_venda_id: id,
+                tenant_id
+            },
+            select: { id: true }
+        });
+
+        if (orphanMenuItems.length > 0) {
+            const orphanIds = orphanMenuItems.map(m => m.id);
+
+            // Clean up POS mappings for these orphans first
+            await prisma.mapeamentoPos.deleteMany({
+                where: {
+                    menu_item_id: { in: orphanIds },
+                    tenant_id
+                }
+            });
+
+            // Now delete the menu items
+            await prisma.menuItem.deleteMany({
+                where: {
+                    id: { in: orphanIds },
+                    tenant_id
+                }
+            });
+        }
+
+        return prisma.formatoVenda.delete({
             where: { id },
-            data: { ativo: false, disponivel_menu: false },
         });
     }
 }

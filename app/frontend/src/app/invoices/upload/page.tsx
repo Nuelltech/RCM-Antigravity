@@ -1,63 +1,50 @@
 'use client';
 
+import { fetchClient } from '@/lib/api';
+
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useDropzone } from 'react-dropzone';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Upload, FileText, CheckCircle, XCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { Upload, File, AlertCircle, Loader2, CheckCircle, FileText, XCircle, ArrowLeft } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function UploadInvoicePage() {
     const router = useRouter();
+    const { toast } = useToast();
     const [file, setFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
     const [invoiceId, setInvoiceId] = useState<number | null>(null);
-    const [dragActive, setDragActive] = useState(false);
 
-    const handleDrag = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.type === 'dragenter' || e.type === 'dragover') {
-            setDragActive(true);
-        } else if (e.type === 'dragleave') {
-            setDragActive(false);
+    const onDrop = useCallback((acceptedFiles: File[]) => {
+        if (acceptedFiles?.length > 0) {
+            setFile(acceptedFiles[0]);
+            setError(null);
+            setSuccess(false);
+            setProgress(0);
         }
     }, []);
 
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragActive(false);
-
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleFileSelect(e.dataTransfer.files[0]);
-        }
-    }, []);
-
-    const handleFileSelect = (selectedFile: File) => {
-        setError(null);
-        setSuccess(false);
-
-        // Validate file type
-        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-        if (!allowedTypes.includes(selectedFile.type)) {
-            setError('Tipo de ficheiro inválido. Use PDF, JPG, PNG ou WEBP.');
-            return;
-        }
-
-        // Validate file size (10MB)
-        if (selectedFile.size > 10 * 1024 * 1024) {
-            setError('Ficheiro muito grande. Tamanho máximo: 10MB.');
-            return;
-        }
-
-        setFile(selectedFile);
-    };
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        onDrop,
+        accept: {
+            'application/pdf': ['.pdf'],
+            'image/jpeg': ['.jpg', '.jpeg'],
+            'image/png': ['.png']
+        },
+        maxFiles: 1,
+        multiple: false
+    });
 
     const handleUpload = async () => {
         if (!file) return;
@@ -67,8 +54,6 @@ export default function UploadInvoicePage() {
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
             const formData = new FormData();
             formData.append('file', file);
 
@@ -77,24 +62,14 @@ export default function UploadInvoicePage() {
                 setProgress((prev) => Math.min(prev + 10, 90));
             }, 200);
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/invoices/upload`, {
+            const data = await fetchClient('/invoices/upload', {
                 method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
                 body: formData,
             });
 
             clearInterval(progressInterval);
             setProgress(100);
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Erro ao fazer upload');
-            }
-
-            const data = await response.json();
             setInvoiceId(data.id);
             setSuccess(true);
 
@@ -109,6 +84,8 @@ export default function UploadInvoicePage() {
             setUploading(false);
         }
     };
+
+    // ... rest of the component
 
     const resetForm = () => {
         setFile(null);
@@ -149,15 +126,13 @@ export default function UploadInvoicePage() {
                         {/* Drag & Drop Zone */}
                         {!file && !success && (
                             <div
-                                className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${dragActive
+                                {...getRootProps()}
+                                className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${isDragActive
                                     ? 'border-primary bg-primary/5'
                                     : 'border-muted-foreground/25 hover:border-primary/50'
                                     }`}
-                                onDragEnter={handleDrag}
-                                onDragLeave={handleDrag}
-                                onDragOver={handleDrag}
-                                onDrop={handleDrop}
                             >
+                                <input {...getInputProps()} id="file-upload" />
                                 <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                                 <p className="text-lg font-medium mb-2">
                                     Arraste e solte a fatura aqui
@@ -165,20 +140,14 @@ export default function UploadInvoicePage() {
                                 <p className="text-sm text-muted-foreground mb-4">
                                     ou clique para selecionar
                                 </p>
-                                <input
-                                    type="file"
-                                    id="file-upload"
-                                    className="hidden"
-                                    accept=".pdf,.jpg,.jpeg,.png,.webp"
-                                    onChange={(e) => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            handleFileSelect(e.target.files[0]);
-                                        }
-                                    }}
-                                />
                                 <Button
                                     variant="outline"
-                                    onClick={() => document.getElementById('file-upload')?.click()}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const fileInput = document.getElementById('file-upload');
+                                        if (fileInput) fileInput.click();
+                                    }}
                                 >
                                     Selecionar Ficheiro
                                 </Button>

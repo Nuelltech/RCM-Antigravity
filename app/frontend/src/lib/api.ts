@@ -1,15 +1,42 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const getBaseUrl = () => {
+    // Client-side: Always use relative path to route through Next.js proxy (avoids CORS)
+    if (typeof window !== 'undefined') {
+        return '/api';
+    }
+
+    // Server-side: Use environment variable or default to localhost backend
+    let url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+
+    // Ensure URL ends with /api
+    if (!url.endsWith('/api')) {
+        url = url.replace(/\/$/, '') + '/api';
+    }
+    return url;
+};
+
+export const API_URL = getBaseUrl();
+
 
 export async function fetchClient(endpoint: string, options: RequestInit = {}) {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const tenantId = typeof window !== 'undefined' ? localStorage.getItem('tenantId') : null;
 
-    const headers = {
+    const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
-        ...options.headers,
+        ...(options.headers as Record<string, string>),
     };
+
+    // If body is FormData, let the browser set Content-Type header (needed for boundary)
+    if (typeof FormData !== 'undefined' && options.body instanceof FormData) {
+        delete headers['Content-Type'];
+    }
+
+    // If no body is provided, remove Content-Type (prevents "Body cannot be empty" error in Fastify)
+    if (!options.body) {
+        delete headers['Content-Type'];
+    }
 
     const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
@@ -21,5 +48,10 @@ export async function fetchClient(endpoint: string, options: RequestInit = {}) {
         throw new Error(error.error || 'Request failed');
     }
 
-    return response.json();
+    if (response.status === 204) {
+        return null;
+    }
+
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
 }

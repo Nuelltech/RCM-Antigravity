@@ -34,6 +34,15 @@ export async function purchasesDashboardRoutes(app: FastifyInstance) {
         const pageNum = parseInt(page);
         const pageSizeNum = parseInt(pageSize);
 
+        // DEBUG: Log date parameters
+        console.log('🔍 [PURCHASES DEBUG] Query params:', {
+            tenant_id: req.tenantId,
+            startDate: startDate,
+            endDate: endDate,
+            start_iso: start.toISOString(),
+            end_iso: end.toISOString()
+        });
+
         // Calculate previous month for comparison
         const monthDiff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
         const prevStart = new Date(start);
@@ -74,6 +83,14 @@ export async function purchasesDashboardRoutes(app: FastifyInstance) {
                 }
             },
         });
+
+        // DEBUG: Log results
+        console.log('🔍 [PURCHASES DEBUG] Found items:', purchaseItems.length);
+        if (purchaseItems.length > 0) {
+            console.log('🔍 [PURCHASES DEBUG] Sample dates:',
+                purchaseItems.slice(0, 3).map(i => i.compraFatura.data_fatura.toISOString())
+            );
+        }
 
         // Fetch previous period for comparison
         const prevPurchaseItems = await prisma.compraItem.findMany({
@@ -388,8 +405,33 @@ export async function purchasesDashboardRoutes(app: FastifyInstance) {
             };
         }
 
+        // Helper to calculate normalized unit price
+        const getNormalizedPrice = (p: any) => {
+            const total = Number(p.preco_total);
+            const qty = Number(p.quantidade);
+            if (qty === 0) return 0;
+
+            const unitsPerPack = p.variacao?.unidades_por_compra ? Number(p.variacao.unidades_por_compra) : 1;
+            const volPerUnit = p.variacao?.volume_por_unidade ? Number(p.variacao.volume_por_unidade) : 1;
+
+            // Calculate price per pack/purchase unit
+            const pricePerPack = total / qty;
+            // Calculate price per item inside pack
+            const pricePerItem = pricePerPack / unitsPerPack;
+            // Calculate price per base unit (L, Kg)
+            return pricePerItem / volPerUnit;
+        };
+
+        // Helper to calculate total normalized quantity (Base Units)
+        const getNormalizedQuantity = (p: any) => {
+            const qty = Number(p.quantidade);
+            const unitsPerPack = p.variacao?.unidades_por_compra ? Number(p.variacao.unidades_por_compra) : 1;
+            const volPerUnit = p.variacao?.volume_por_unidade ? Number(p.variacao.volume_por_unidade) : 1;
+            return qty * unitsPerPack * volPerUnit;
+        };
+
         // Calculate statistics
-        const prices = allPurchaseItems.map((p) => Number(p.preco_unitario));
+        const prices = allPurchaseItems.map(getNormalizedPrice);
         const avgPrice = prices.reduce((sum: number, p: number) => sum + p, 0) / prices.length;
         const minPrice = Math.min(...prices);
         const maxPrice = Math.max(...prices);
@@ -401,8 +443,8 @@ export async function purchasesDashboardRoutes(app: FastifyInstance) {
         // Price evolution (all purchases for chart)
         const priceEvolution = allPurchaseItems.map((p) => ({
             date: p.compraFatura.data_fatura.toISOString().split('T')[0],
-            price: Number(p.preco_unitario),
-            quantity: Number(p.quantidade),
+            price: getNormalizedPrice(p),
+            quantity: getNormalizedQuantity(p),
             supplier: p.compraFatura.fornecedor_nome,
         }));
 
@@ -430,35 +472,39 @@ export async function purchasesDashboardRoutes(app: FastifyInstance) {
         const purchaseHistory = filteredItems.map((p) => ({
             date: p.compraFatura.data_fatura.toISOString().split('T')[0],
             supplier: p.compraFatura.fornecedor_nome,
-            quantity: Number(p.quantidade),
-            unitPrice: Number(p.preco_unitario),
+            quantity: getNormalizedQuantity(p), // Show total base units
+            unitPrice: getNormalizedPrice(p), // Show normalized price
             total: Number(p.preco_total),
             variation: p.variacao?.tipo_unidade_compra || '',
         }));
 
         // Supplier comparison (from all 6 months data)
-        const supplierMap = new Map<string, { total: number; count: number; avgPrice: number; lastPrice: number }>();
+        const supplierMap = new Map<string, { totalNormalizedPrice: number; count: number; lastPrice: number; totalSpent: number }>();
         allPurchaseItems.forEach((p) => {
             const suppName = p.compraFatura.fornecedor_nome;
+            const normPrice = getNormalizedPrice(p);
+
             const existing = supplierMap.get(suppName) || {
-                total: 0,
+                totalNormalizedPrice: 0,
                 count: 0,
-                avgPrice: 0,
                 lastPrice: 0,
+                totalSpent: 0
             };
-            existing.total += Number(p.preco_total);
+            existing.totalNormalizedPrice += normPrice;
             existing.count += 1;
-            existing.lastPrice = Number(p.preco_unitario); // Will be overwritten, last one wins
+            existing.lastPrice = normPrice; // Will be overwritten, last one wins (sorted by date asc)
+            existing.totalSpent += Number(p.preco_total);
+
             supplierMap.set(suppName, existing);
         });
 
         const supplierComparison = Array.from(supplierMap.entries())
             .map(([name, data]) => ({
                 name,
-                avgPrice: data.total / data.count,
+                avgPrice: data.totalNormalizedPrice / data.count,
                 lastPrice: data.lastPrice,
                 purchaseCount: data.count,
-                totalSpent: data.total,
+                totalSpent: data.totalSpent,
             }))
             .sort((a, b) => a.avgPrice - b.avgPrice); // Best price first
 

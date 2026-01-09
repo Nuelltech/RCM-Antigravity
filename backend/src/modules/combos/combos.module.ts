@@ -714,19 +714,71 @@ class ComboService {
             throw new Error('Combo não encontrado');
         }
 
-        const usedInMenus = await prisma.menuItem.count({
-            where: { combo_id: comboId },
+        // 1. BLOCKERS - Active Configuration
+
+        // Check Active Menu Items
+        const activeMenuUsage = await prisma.menuItem.count({
+            where: { combo_id: comboId, ativo: true },
         });
 
-        if (usedInMenus > 0) {
-            throw new Error(`Este combo é usado em ${usedInMenus} menu(s). Não pode ser eliminado.`);
+        if (activeMenuUsage > 0) {
+            throw new Error(`Este combo está ativo em ${activeMenuUsage} item(ns) de menu. Remova-o do menu antes de apagar.`);
         }
 
-        await prisma.combo.delete({
-            where: { id: comboId },
+        // 2. ARCHIVAL TRIGGERS - Historical Data
+
+        // Check Sales via Menu Items (even inactive ones)
+        // Since Venda links to MenuItem, and MenuItem links to Combo.
+        // If the MenuItem is deleted, the link might be lost unless soft-deleted.
+        // Assuming MenuItems are soft-deleted, we can check sales of any MenuItem that uses this combo.
+        const salesUsage = await prisma.venda.count({
+            where: {
+                menuItem: {
+                    combo_id: comboId // Helper: Find sales where the related menu item points to this combo
+                }
+            }
         });
 
-        return { success: true, message: 'Combo eliminado com sucesso' };
+        if (salesUsage > 0) {
+            // SOFT DELETE (Archive)
+            await prisma.combo.update({
+                where: { id: comboId },
+                data: { ativo: false }
+            });
+
+            return {
+                success: true,
+                message: 'Combo arquivado com sucesso (existem vendas associadas).',
+                action: 'archived'
+            };
+        }
+
+        // 3. HARD DELETE - Clean Slate
+
+        await prisma.$transaction(async (tx) => {
+            // Delete Children first
+            if (combo.tipo === 'Complexo') {
+                await tx.comboItem.deleteMany({ where: { combo_id: comboId } });
+            } else {
+                await tx.comboCategoriaOpcao.deleteMany({
+                    where: {
+                        categoria: { combo_id: comboId }
+                    }
+                });
+                await tx.comboCategoria.deleteMany({ where: { combo_id: comboId } });
+            }
+
+            // Delete Combo
+            await tx.combo.delete({
+                where: { id: comboId },
+            });
+        });
+
+        return {
+            success: true,
+            message: 'Combo eliminado permanentemente.',
+            action: 'deleted'
+        };
     }
 
     async getCostBreakdown(comboId: number) {
@@ -892,7 +944,7 @@ export async function comboRoutes(app: FastifyInstance) {
 
         try {
             const result = await service.delete(comboId);
-            return reply.send(result);
+            return result;
         } catch (error: any) {
             return reply.status(400).send({ error: error.message });
         }

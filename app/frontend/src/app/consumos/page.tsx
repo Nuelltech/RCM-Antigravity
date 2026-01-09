@@ -32,13 +32,23 @@ export default function ConsumosPage() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<ConsumptionData | null>(null);
     const [dateRange, setDateRange] = useState({
-        start: format(startOfMonth(new Date()), "yyyy-MM-dd"),
-        end: format(endOfMonth(new Date()), "yyyy-MM-dd"),
+        start: "",
+        end: "",
     });
     const [searchTerm, setSearchTerm] = useState("");
 
     useEffect(() => {
-        loadData();
+        // Set dates on client only to avoid hydration mismatch
+        setDateRange({
+            start: format(startOfMonth(new Date()), "yyyy-MM-dd"),
+            end: format(endOfMonth(new Date()), "yyyy-MM-dd"),
+        });
+    }, []);
+
+    useEffect(() => {
+        if (dateRange.start && dateRange.end) {
+            loadData();
+        }
     }, [dateRange]);
 
     const loadData = async () => {

@@ -22,12 +22,22 @@ export default function SalesPage() {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any>(null);
     const [dateRange, setDateRange] = useState({
-        start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
-        end: format(new Date(), "yyyy-MM-dd"),
+        start: "",
+        end: "",
     });
 
     useEffect(() => {
-        loadData();
+        // Set dates on client only to avoid hydration mismatch
+        setDateRange({
+            start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+            end: format(new Date(), "yyyy-MM-dd"),
+        });
+    }, []);
+
+    useEffect(() => {
+        if (dateRange.start && dateRange.end) {
+            loadData();
+        }
     }, [dateRange]);
 
     const loadData = async () => {

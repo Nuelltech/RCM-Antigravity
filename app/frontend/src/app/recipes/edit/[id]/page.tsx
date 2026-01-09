@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { useToast } from "@/hooks/use-toast";
 
 interface Product {
     id: number;
@@ -50,6 +51,7 @@ interface StepRow {
 export default function EditRecipePage() {
     const params = useParams();
     const router = useRouter();
+    const { toast } = useToast();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
@@ -320,10 +322,20 @@ export default function EditRecipePage() {
 
         try {
             await fetchClient(`/recipes/${params.id}`, { method: "DELETE" });
-            alert("✅ Receita eliminada com sucesso!");
+            toast({
+                title: "✅ Receita eliminada",
+                description: "A receita foi removida com sucesso.",
+            });
             router.push("/recipes");
         } catch (error: any) {
-            alert(`❌ ${error.message || "Erro ao eliminar receita"}`);
+            console.error("Delete error:", error);
+            // Extrair mensagem de erro do backend
+            const errorMessage = error.error || error.message || "Erro ao eliminar receita";
+            toast({
+                title: "❌ Não foi possível eliminar",
+                description: errorMessage,
+                variant: "destructive",
+            });
         }
     };
 
@@ -779,7 +791,10 @@ export default function EditRecipePage() {
                         ))}
                     </CardContent>
                 </Card>
+
+
             </form>
+
         </AppLayout>
     );
 }

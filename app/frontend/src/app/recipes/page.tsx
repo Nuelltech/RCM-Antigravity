@@ -74,7 +74,7 @@ export default function RecipesPage() {
             if (debouncedSearchTerm) params.append("search", debouncedSearchTerm);
             if (typeFilter !== "all") params.append("type", typeFilter);
 
-            const response = await fetchClient(`/recipes?${params.toString()}`);
+            const response = await fetchClient(`/recipes?${params.toString()}`, { cache: 'no-store' });
             setRecipes(response.data);
             setTotalPages(response.meta.totalPages);
             setTotalItems(response.meta.total);

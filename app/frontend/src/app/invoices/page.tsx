@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Upload, FileText, CheckCircle, XCircle, Clock, AlertCircle, Eye } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { fetchClient } from '@/lib/api';
 
 interface Invoice {
     id: number;
@@ -19,6 +20,7 @@ interface Invoice {
     status: string;
     createdAt: string;
     linhas?: Array<{ id: number; status: string }>;
+    erro_mensagem?: string;
 }
 
 export default function InvoicesPage() {
@@ -33,25 +35,11 @@ export default function InvoicesPage() {
 
     const fetchInvoices = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
             const params = new URLSearchParams();
             if (filter !== 'all') params.append('status', filter);
 
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/invoices?${params}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-tenant-id': tenantId || '',
-                    },
-                }
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                setInvoices(data.invoices);
-            }
+            const data = await fetchClient(`/invoices?${params}`);
+            setInvoices(data.invoices);
         } catch (error) {
             console.error('Error fetching invoices:', error);
         } finally {
@@ -240,7 +228,14 @@ export default function InvoicesPage() {
                                             <TableCell>
                                                 {invoice.linhas?.length || 0} itens
                                             </TableCell>
-                                            <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                                            <TableCell>
+                                                {getStatusBadge(invoice.status)}
+                                                {invoice.status === 'error' && invoice.erro_mensagem && (
+                                                    <div className="text-xs text-red-500 mt-1 max-w-[200px] truncate" title={invoice.erro_mensagem}>
+                                                        {invoice.erro_mensagem}
+                                                    </div>
+                                                )}
+                                            </TableCell>
                                             <TableCell>{formatDate(invoice.createdAt)}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button

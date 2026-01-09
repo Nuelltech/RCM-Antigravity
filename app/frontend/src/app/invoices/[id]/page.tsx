@@ -1,112 +1,125 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { fetchClient } from '@/lib/api';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
-    ArrowLeft,
-    CheckCircle,
-    XCircle,
-    AlertCircle,
-    Search,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import {
     Loader2,
-    FileText,
+    Check,
+    X,
+    AlertTriangle,
+    Search,
+    ChevronDown,
+    Save,
+    RotateCcw,
+    Edit2,
+    Eye,
+    ArrowRight,
     Package,
     Plus,
+    XCircle,
+    CheckCircle,
+    AlertCircle,
+    ArrowLeft
 } from 'lucide-react';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { useToast } from '@/hooks/use-toast';
 import { QuickCreateProduct } from '@/components/invoices/QuickCreateProduct';
 import { QuickCreateVariation } from '@/components/invoices/QuickCreateVariation';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { AppLayout } from '@/components/layout/AppLayout';
 import { SelectVariationModal } from '@/components/invoices/SelectVariationModal';
 
 interface InvoiceLine {
     id: number;
     linha_numero: number;
     descricao_original: string;
-    quantidade?: number;
-    unidade?: string;
-    preco_unitario?: number;
-    preco_total?: number;
-    iva_percentual?: number;    // NEW: IVA percentage
-    iva_valor?: number;         // NEW: IVA amount
-    produto_id?: number;
-    variacao_id?: number;
-    confianca_match?: number;
-    status: string;
+    quantidade: number;
+    unidade: string;
+    preco_unitario: number;
+    iva_percentual: number;
+    preco_total: number;
+    produto_id: number | null;
+    confianca_match: number;
     produto?: {
         id: number;
         nome: string;
-    };
-    variacao?: {
-        id: number;
-        nome: string;
+        codigo_interno: string | null;
+        unidade_medida: string;
     };
 }
 
 interface Invoice {
     id: number;
     ficheiro_nome: string;
-    fornecedor_nome?: string;
-    fornecedor_nif?: string;
-    numero_fatura?: string;
-    data_fatura?: string;
-    total_sem_iva?: number;
-    total_iva?: number;
-    total_com_iva?: number;
+    fornecedor_nome: string;
+    fornecedor_nif: string;
+    numero_fatura: string;
+    data_fatura: string;
+    total_sem_iva: number;
+    total_iva: number;
+    total_com_iva: number;
     status: string;
-    ocr_texto_bruto?: string;
     linhas: InvoiceLine[];
 }
 
 interface ProductSuggestion {
     produtoId: number;
     produtoNome: string;
-    unidadeMedida?: string;  // Unit of measurement (L, KG, UN)
     confianca: number;
     matchReason: string;
-    variations?: Array<{
-        id: number;
-        tipo_unidade_compra: string;
-        unidades_por_compra: number;
-        preco_compra: number;
-        preco_unitario: number;
-    }>;
+    variations?: any[];
+    unidadeMedida?: string;
 }
 
 export default function InvoiceReviewPage() {
     const router = useRouter();
     const params = useParams();
-    const invoiceId = params?.id as string;
+    const invoiceId = params.id as string;
+    const { toast } = useToast();
 
     const [invoice, setInvoice] = useState<Invoice | null>(null);
     const [loading, setLoading] = useState(true);
     const [approving, setApproving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false); // Kept for backward compat if used later
 
-    // Product matching modal
+    // Manual search state
     const [matchingLine, setMatchingLine] = useState<InvoiceLine | null>(null);
-    const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-    const [showQuickCreate, setShowQuickCreate] = useState(false);  // NEW
-    const [showQuickCreateVariation, setShowQuickCreateVariation] = useState(false); // NEW
-    const [selectingVariation, setSelectingVariation] = useState<{
-        lineId: number;
-        produto: ProductSuggestion;
-    } | null>(null);
+    const [isSearching, setIsSearching] = useState(false);
+
+    // Variation selection state
+    const [selectingVariation, setSelectingVariation] = useState<{ lineId: number, produto: ProductSuggestion } | null>(null);
+
+    // Quick create state
+    const [showQuickCreate, setShowQuickCreate] = useState(false);
+    const [showQuickCreateVariation, setShowQuickCreateVariation] = useState(false);
+    const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false); // Alias or separate? Using showQuickCreate mainly.
+    // const [editingLineId, setEditingLineId] = useState<number | null>(null); // Seems replaced by matchingLine
+    const [quickCreateLineId, setQuickCreateLineId] = useState<number | null>(null);
+    const [quickCreateLine, setQuickCreateLine] = useState<InvoiceLine | undefined>(undefined);
+
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         if (invoiceId) {
@@ -127,24 +140,8 @@ export default function InvoiceReviewPage() {
 
     const fetchInvoice = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/invoices/${invoiceId}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-tenant-id': tenantId || '',
-                    },
-                }
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                setInvoice(data);
-            } else {
-                setError('Fatura não encontrada');
-            }
+            const data = await fetchClient(`/invoices/${invoiceId}`);
+            setInvoice(data);
         } catch (err) {
             setError('Erro ao carregar fatura');
         } finally {
@@ -156,24 +153,10 @@ export default function InvoiceReviewPage() {
         setLoadingSuggestions(true);
         setSearchQuery(''); // Reset search when opening modal
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/invoices/${invoiceId}/lines/${lineId}/suggestions`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-tenant-id': tenantId || '',
-                    },
-                }
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                console.log('📥 API Response:', data);
-                console.log('📥 First suggestion variations:', data[0]?.variations);
-                setSuggestions(data);
-            }
+            const data = await fetchClient(`/invoices/${invoiceId}/lines/${lineId}/suggestions`);
+            console.log('📥 API Response:', data);
+            console.log('📥 First suggestion variations:', data[0]?.variations);
+            setSuggestions(data);
         } catch (err) {
             console.error('Error fetching suggestions:', err);
         } finally {
@@ -184,30 +167,17 @@ export default function InvoiceReviewPage() {
     const fetchManualSearch = async (query: string) => {
         setLoadingSuggestions(true);
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/products/search?q=${encodeURIComponent(query)}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-tenant-id': tenantId || '',
-                    },
-                }
-            );
+            const products = await fetchClient(`/products/search?q=${encodeURIComponent(query)}`);
 
-            if (response.ok) {
-                const products = await response.json();
-                // Convert to ProductSuggestion format
-                const searchResults = products.map((p: any) => ({
-                    produtoId: p.id,
-                    produtoNome: p.nome,
-                    confianca: 100, // Manual search = exact match
-                    matchReason: 'Manual search',
-                    variations: p.variations || [] // Use variations from API
-                }));
-                setSuggestions(searchResults);
-            }
+            // Convert to ProductSuggestion format
+            const searchResults = products.map((p: any) => ({
+                produtoId: p.id,
+                produtoNome: p.nome,
+                confianca: 100, // Manual search = exact match
+                matchReason: 'Manual search',
+                variations: p.variations || [] // Use variations from API
+            }));
+            setSuggestions(searchResults);
         } catch (err) {
             console.error('Error searching products:', err);
         } finally {
@@ -239,29 +209,17 @@ export default function InvoiceReviewPage() {
 
     const performMatch = async (lineId: number, produtoId: number, variacaoId?: number) => {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/invoices/${invoiceId}/lines/${lineId}/match`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                        'x-tenant-id': tenantId || '',
-                    },
-                    body: JSON.stringify({
-                        produto_id: produtoId,
-                        variacao_id: variacaoId
-                    }),
-                }
-            );
+            await fetchClient(`/invoices/${invoiceId}/lines/${lineId}/match`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    produto_id: produtoId,
+                    variacao_id: variacaoId
+                }),
+            });
 
-            if (response.ok) {
-                setMatchingLine(null);
-                setSelectingVariation(null);
-                fetchInvoice(); // Refresh
-            }
+            setMatchingLine(null);
+            setSelectingVariation(null);
+            fetchInvoice(); // Refresh
         } catch (err) {
             console.error('Error matching product:', err);
         }
@@ -289,36 +247,22 @@ export default function InvoiceReviewPage() {
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/invoices/${invoiceId}/approve`,
-                {
-                    method: 'POST',
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'x-tenant-id': tenantId || '',
-                    },
-                }
+            const data = await fetchClient(`/invoices/${invoiceId}/approve`, {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
+
+            const statusMessage = data.partial
+                ? `\n\n⚠️ Aprovação PARCIAL: ${unmatchedLines.length} artigo(s) não processado(s)`
+                : '';
+
+            alert(
+                `Fatura aprovada com sucesso!${statusMessage}\n\n` +
+                `Compra #${data.compra_id} criada\n` +
+                `${data.items_created} itens criados\n` +
+                `${data.prices_updated} preços atualizados`
             );
-
-            if (response.ok) {
-                const data = await response.json();
-                const statusMessage = data.partial
-                    ? `\n\n⚠️ Aprovação PARCIAL: ${unmatchedLines.length} artigo(s) não processado(s)`
-                    : '';
-
-                alert(
-                    `Fatura aprovada com sucesso!${statusMessage}\n\n` +
-                    `Compra #${data.compra_id} criada\n` +
-                    `${data.items_created} itens criados\n` +
-                    `${data.prices_updated} preços atualizados`
-                );
-                router.push('/invoices');
-            } else {
-                const errorData = await response.json();
-                setError(errorData.error || 'Erro ao aprovar fatura');
-            }
+            router.push('/invoices');
         } catch (err: any) {
             setError(err.message || 'Erro ao aprovar fatura');
         } finally {
@@ -330,14 +274,8 @@ export default function InvoiceReviewPage() {
         if (!confirm('Tem certeza que deseja rejeitar esta fatura?')) return;
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/invoices/${invoiceId}`, {
+            await fetchClient(`/invoices/${invoiceId}`, {
                 method: 'DELETE',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
             });
             router.push('/invoices');
         } catch (err) {

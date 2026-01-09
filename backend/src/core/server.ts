@@ -42,17 +42,33 @@ server.setSerializerCompiler(serializerCompiler);
 
 async function main() {
     await server.register(cors, {
-        origin: env.NODE_ENV === 'production'
-            ? [
-                /\.vercel\.app$/,  // Vercel deployments
-                /\.onrender\.com$/, // Render deployments
-                'https://rcm-frontend.vercel.app', // Production frontend
-                'https://rcm-app.com', // Custom domain
-                'https://www.rcm-app.com', // Custom domain www
-                'https://rcm.net', // Old custom domain (keep for backwards compatibility)
-                'https://www.rcm.net', // Old custom domain www
-            ]
-            : true, // Allow all origins in development
+        origin: (origin, cb) => {
+            // In production, whitelist specific domains
+            if (env.NODE_ENV === 'production') {
+                const allowedOrigins = [
+                    // Production domains
+                    'https://rcm-app.com',
+                    'https://www.rcm-app.com',
+                    // Vercel preview deployments
+                    /\.vercel\.app$/,
+                    // Render backend
+                    /\.onrender\.com$/,
+                ];
+
+                const isAllowed = allowedOrigins.some(pattern =>
+                    typeof pattern === 'string' ? pattern === origin : pattern.test(origin || '')
+                );
+
+                if (isAllowed) {
+                    cb(null, true);
+                } else {
+                    cb(new Error('Not allowed by CORS'), false);
+                }
+            } else {
+                // In development, allow all origins
+                cb(null, true);
+            }
+        },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization', 'X-Tenant-ID'],
@@ -100,20 +116,11 @@ async function main() {
     // const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
     // server.register(internalLeadsRoutes, { prefix: '/api/internal' });
 
-
-    // Global Middleware
-    server.addHook('onRequest', async (req, reply) => {
-        const { authMiddleware } = await import('./middleware');
-        await authMiddleware(req, reply);
-    });
-    server.addHook('onRequest', tenantMiddleware);
-
-    // Health Check
+    // Health Check & Root Route (NO AUTH REQUIRED - must be BEFORE middleware)
     server.get('/health', async () => {
         return { status: 'ok', timestamp: new Date() };
     });
 
-    // Root Route
     server.get('/', async () => {
         return {
             name: 'RCM API',
@@ -122,6 +129,18 @@ async function main() {
             documentation: '/documentation'
         };
     });
+
+    server.get('/api/health', async () => {
+        return { status: 'ok', timestamp: new Date() };
+    });
+
+
+    // Global Middleware (applies to ALL routes registered AFTER this point)
+    server.addHook('onRequest', async (req, reply) => {
+        const { authMiddleware } = await import('./middleware');
+        await authMiddleware(req, reply);
+    });
+    server.addHook('onRequest', tenantMiddleware);
 
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });

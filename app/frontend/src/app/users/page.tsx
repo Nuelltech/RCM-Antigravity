@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchClient } from '@/lib/api';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Button } from '@/components/ui/button';
@@ -48,21 +49,10 @@ export default function UsersPage() {
 
     async function loadUsers() {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
+            const result = await fetchClient('/users');
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                // API returns { data: [...], meta: {...} }
-                setUsers(result.data || []);
-            }
+            // API returns { data: [...], meta: {...} }
+            setUsers(result.data || []);
         } catch (error) {
             console.error('Error loading users:', error);
         } finally {
@@ -73,28 +63,15 @@ export default function UsersPage() {
     async function handleInviteUser() {
         setInviteLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/invite`, {
+            await fetchClient('/users/invite', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
                 body: JSON.stringify(inviteForm),
             });
 
-            if (response.ok) {
-                alert(`Convite enviado para ${inviteForm.email}`);
-                setInviteModalOpen(false);
-                setInviteForm({ nome: '', email: '', role: 'operador' });
-                loadUsers();
-            } else {
-                const error = await response.json();
-                alert(error.error || 'Erro ao enviar convite');
-            }
+            alert(`Convite enviado para ${inviteForm.email}`);
+            setInviteModalOpen(false);
+            setInviteForm({ nome: '', email: '', role: 'operador' });
+            loadUsers();
         } catch (error) {
             alert('Erro ao enviar convite');
         } finally {
@@ -104,27 +81,14 @@ export default function UsersPage() {
 
     async function handleChangeRole(userId: number, newRole: string) {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}/role`, {
+            await fetchClient(`/users/${userId}/role`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
                 body: JSON.stringify({ role: newRole }),
             });
 
-            if (response.ok) {
-                alert('Role alterado com sucesso');
-                setEditModalOpen(false);
-                loadUsers();
-            } else {
-                const error = await response.json();
-                alert(error.error || 'Erro ao alterar role');
-            }
+            alert('Role alterado com sucesso');
+            setEditModalOpen(false);
+            loadUsers();
         } catch (error) {
             alert('Erro ao alterar role');
         }
@@ -135,25 +99,16 @@ export default function UsersPage() {
         if (!confirm(`Tem certeza que deseja ${action} este utilizador?`)) return;
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
             const url = currentActive
-                ? `${process.env.NEXT_PUBLIC_API_URL}/users/${userId}`
-                : `${process.env.NEXT_PUBLIC_API_URL}/users/${userId}/reactivate`;
+                ? `/users/${userId}`
+                : `/users/${userId}/reactivate`;
 
-            const response = await fetch(url, {
+            await fetchClient(url, {
                 method: currentActive ? 'DELETE' : 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
             });
 
-            if (response.ok) {
-                alert(`Utilizador ${currentActive ? 'desativado' : 'reativado'} com sucesso`);
-                loadUsers();
-            }
+            alert(`Utilizador ${currentActive ? 'desativado' : 'reativado'} com sucesso`);
+            loadUsers();
         } catch (error) {
             alert(`Erro ao ${action} utilizador`);
         }
@@ -161,20 +116,11 @@ export default function UsersPage() {
 
     async function handleResendInvite(userId: number) {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}/resend-invite`, {
+            await fetchClient(`/users/${userId}/resend-invite`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
             });
 
-            if (response.ok) {
-                alert('Convite reenviado com sucesso');
-            }
+            alert('Convite reenviado com sucesso');
         } catch (error) {
             alert('Erro ao reenviar convite');
         }
@@ -186,23 +132,12 @@ export default function UsersPage() {
         }
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}/permanent-delete`, {
+            await fetchClient(`/users/${userId}/permanent-delete`, {
                 method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
             });
 
-            if (response.ok) {
-                alert('Utilizador removido permanentemente');
-                loadUsers();
-            } else {
-                alert('Erro ao remover utilizador');
-            }
+            alert('Utilizador removido permanentemente');
+            loadUsers();
         } catch (error) {
             alert('Erro ao remover utilizador');
         }

@@ -4,8 +4,10 @@
  * Sends a ping to the backend to prevent cold start on login page
  */
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const PING_ENDPOINT = '/health';
+// Client-side: Always use relative path to use proxy
+const BACKEND_URL = '';
+
+const PING_ENDPOINT = '/api/health';
 
 /**
  * Ping the backend to wake it up from hibernation

@@ -1,5 +1,6 @@
-import vision from '@google-cloud/vision';
+import { ImageAnnotatorClient } from '@google-cloud/vision';
 import * as fs from 'fs';
+import * as path from 'path';
 
 export interface OCRResult {
     fullText: string;
@@ -25,7 +26,7 @@ export interface OCRBlock {
 }
 
 export class OCRService {
-    private client: any; // vision.ImageAnnotatorClient - using any to avoid namespace issues
+    private client: ImageAnnotatorClient;
     private isAvailable: boolean = false;
 
     constructor() {
@@ -34,28 +35,33 @@ export class OCRService {
 
         try {
             if (keyPath && fs.existsSync(keyPath)) {
-                this.client = new vision.ImageAnnotatorClient({
+                this.client = new ImageAnnotatorClient({
                     keyFilename: keyPath
                 });
                 this.isAvailable = true;
                 console.log('[OCR] Google Vision initialized with key file.');
             } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-                this.client = new vision.ImageAnnotatorClient();
+                this.client = new ImageAnnotatorClient();
                 this.isAvailable = true;
                 console.log('[OCR] Google Vision initialized with default credentials.');
             } else {
                 console.warn('[OCR] Google Vision API not configured. OCR will not be available.');
                 console.warn('[OCR] Set GOOGLE_VISION_API_KEY_PATH or GOOGLE_APPLICATION_CREDENTIALS to enable OCR.');
+                // @ts-ignore - Valid initialization for optional/conditional client usage but ensures types elsewhere
+                this.client = new ImageAnnotatorClient();
                 this.isAvailable = false;
             }
         } catch (error) {
             console.error('[OCR] Failed to initialize Google Vision:', error);
+            // @ts-ignore
+            this.client = null;
             this.isAvailable = false;
         }
     }
 
     /**
      * Extract text from image or PDF file
+     * For PDFs: tries native text extraction first, falls back to OCR if needed
      */
     async extractText(filepath: string): Promise<OCRResult> {
         // Check if OCR is available
@@ -68,8 +74,35 @@ export class OCRService {
             };
         }
 
+        const isPDF = filepath.toLowerCase().endsWith('.pdf');
+
         try {
-            // Read file
+            // DUAL APPROACH FOR PDFs
+            if (isPDF) {
+                console.log('[OCR] PDF detected, attempting native text extraction first...');
+
+                try {
+                    // Try native PDF text extraction (fast, no OCR needed)
+                    const pdfText = await this.extractPDFTextNative(filepath);
+
+                    // If we got meaningful text (>100 chars), use it!
+                    if (pdfText && pdfText.trim().length > 100) {
+                        console.log(`[OCR] ✅ PDF native text extraction successful (${pdfText.length} chars)`);
+                        return {
+                            fullText: pdfText,
+                            pages: [{ pageNumber: 1, text: pdfText, blocks: [] }],
+                            confidence: 1.0 // Native text = 100% confidence
+                        };
+                    } else {
+                        console.log('[OCR] ⚠️ PDF native text extraction returned little/no text, falling back to OCR...');
+                    }
+                } catch (nativeError) {
+                    console.warn('[OCR] ⚠️ PDF native extraction failed, falling back to OCR:', nativeError);
+                }
+            }
+
+            // STANDARD OCR APPROACH (for images OR PDF fallback)
+            console.log(`[OCR] Running Google Vision OCR on ${isPDF ? 'PDF (fallback)' : 'image'}...`);
             const fileBuffer = fs.readFileSync(filepath);
 
             // Perform OCR
@@ -110,14 +143,38 @@ export class OCRService {
             // Calculate overall confidence
             const confidence = this.calculateOverallConfidence(pages);
 
+            console.log(`[OCR] ✅ OCR completed successfully (${fullText.length} chars, ${pages.length} pages)`);
+
             return {
                 fullText,
                 pages,
                 confidence
             };
         } catch (error: any) {
-            console.error('OCR Error:', error);
+            console.error('[OCR] Error:', error);
             throw new Error(`OCR failed: ${error?.message || 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Extract native text from PDF (no OCR needed)
+     * Uses pdf-parse library for fast text extraction
+     */
+    private async extractPDFTextNative(filepath: string): Promise<string> {
+        try {
+            // Use require for CommonJS module (pdf-parse)
+            const pdfParseModule = require('pdf-parse');
+
+            // The main function is exported as 'PDFParse', not 'default'
+            const pdfParse = pdfParseModule.PDFParse || pdfParseModule.default || pdfParseModule;
+            const dataBuffer = fs.readFileSync(filepath);
+
+            const data = await pdfParse(dataBuffer);
+
+            return data.text;
+        } catch (error: any) {
+            // If pdf-parse is not installed, throw error to trigger fallback
+            throw new Error(`PDF native extraction failed: ${error.message}`);
         }
     }
 

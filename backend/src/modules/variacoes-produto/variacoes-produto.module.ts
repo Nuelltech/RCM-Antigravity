@@ -20,6 +20,7 @@ export interface CreateVariacaoDto {
 export interface UpdateVariacaoDto {
     tipo_unidade_compra?: string;
     unidades_por_compra?: number;
+    volume_por_unidade?: number;  // For packaged products
     preco_compra?: number;
     fornecedor?: string;
     codigo_fornecedor?: string;
@@ -103,16 +104,23 @@ class VariacaoProdutoService {
             throw new Error('Variação não encontrada');
         }
 
-        // Recalculate unit price if purchase price or units changed
+        // Recalculate unit price if purchase price, units, or volume changed
         let preco_unitario = Number(existing.preco_unitario);
         let precoMudou = false;
 
         const newPrecoCompra = dto.preco_compra ?? Number(existing.preco_compra);
         const newUnidades = dto.unidades_por_compra ?? Number(existing.unidades_por_compra);
+        const newVolume = dto.volume_por_unidade ?? (existing.volume_por_unidade ? Number(existing.volume_por_unidade) : undefined);
 
-        if (dto.preco_compra !== undefined || dto.unidades_por_compra !== undefined) {
+        if (dto.preco_compra !== undefined || dto.unidades_por_compra !== undefined || dto.volume_por_unidade !== undefined) {
             const oldPrecoUnitario = Number(existing.preco_unitario);
-            preco_unitario = this.calculatePrecoUnitario(newPrecoCompra, newUnidades);
+
+            // Use same logic as produtos.module.ts:231-234
+            const divisor = newVolume
+                ? newUnidades * newVolume
+                : newUnidades;
+            preco_unitario = newPrecoCompra / divisor;
+
             precoMudou = Math.abs(preco_unitario - oldPrecoUnitario) > 0.0001; // Threshold for change
         }
 

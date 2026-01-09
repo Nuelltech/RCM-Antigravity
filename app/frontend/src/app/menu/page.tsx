@@ -17,15 +17,24 @@ export default function MenuPage() {
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingItem, setEditingItem] = useState<MenuItemWithRecipe | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
     const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
     useEffect(() => {
         loadMenu();
-    }, []);
+    }, [statusFilter]); // Reload when status filter changes
 
     const loadMenu = async () => {
+        setLoading(true);
         try {
-            const data = await fetchClient("/menu");
+            // If we want specific inactive items or all, we request "ativo=false" (which returns ALL) 
+            // and filter client-side if needed, OR we could rely on backend filtering if it supported 'inactive' only.
+            // Current backend: ativo=true -> only active. ativo=false -> ALL.
+            // So: active -> ?ativo=true
+            // inactive -> ?ativo=false (fetch all) -> client filter
+            // all -> ?ativo=false (fetch all)
+            const query = statusFilter === "active" ? "?ativo=true" : "?ativo=false";
+            const data = await fetchClient(`/menu${query}`, { cache: 'no-store' });
             setMenuItems(data);
         } catch (error) {
             console.error("Failed to load menu:", error);
@@ -50,17 +59,33 @@ export default function MenuPage() {
             await fetchClient(`/menu/${itemId}`, { method: "DELETE" });
             loadMenu();
         } catch (error) {
-            console.error("Failed to delete item:", error);
+            if (error instanceof Error) {
+                alert(error.message); // Show backend safe delete message
+            } else {
+                console.error("Failed to delete item:", error);
+            }
+            loadMenu(); // Reload anyway
         }
     };
 
     const filteredItems = menuItems.filter(item => {
         const matchesSearch = item.nome_comercial.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = categoryFilter === "all" || item.categoria_menu === categoryFilter;
-        return matchesSearch && matchesCategory;
+
+        // Status Client Filter
+        // If filter is 'all', we accept everything (backend returned all)
+        // If filter is 'active', we check item.ativo (backend returned only active, but double check doesn't hurt)
+        // If filter is 'inactive', we check !item.ativo
+        let matchesStatus = true;
+        if (statusFilter === "active") matchesStatus = item.ativo;
+        if (statusFilter === "inactive") matchesStatus = !item.ativo;
+
+        return matchesSearch && matchesCategory && matchesStatus;
     });
 
     const categories = Array.from(new Set(menuItems.map(i => i.categoria_menu).filter(Boolean)));
+    // Note: categories list might change based on visible items. Ideally should be unique of ALL items?
+    // Current implementation derives categories from loaded items.
 
     const getCMVColor = (cmv: number) => {
         if (cmv <= 25) return "bg-green-100 text-green-800";
@@ -91,7 +116,11 @@ export default function MenuPage() {
                         const stats = new Map<string, { totalCost: number, totalPvp: number, count: number }>();
 
                         menuItems.forEach(item => {
-                            if (!item.ativo) return; // Only active items for theoretical CMV? Or all? Usually active.
+                            if (!item.ativo && statusFilter === 'active') return;
+                            // If viewing inactive, we show stats for inactive? 
+                            // Usually summary is for "Active Menu". Let's restrict summary to Active items ONLY regardless of view.
+                            if (!item.ativo) return;
+
                             const cat = item.categoria_menu || 'Sem Categoria';
                             const current = stats.get(cat) || { totalCost: 0, totalPvp: 0, count: 0 };
 
@@ -144,6 +173,22 @@ export default function MenuPage() {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
+
+                        {/* Status Filter */}
+                        <div className="flex items-center gap-2">
+                            <ToggleLeft className="h-4 w-4 text-gray-500" />
+                            <select
+                                className="border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value as any)}
+                            >
+                                <option value="active">Ativos</option>
+                                <option value="inactive">Inativos</option>
+                                <option value="all">Todos</option>
+                            </select>
+                        </div>
+
+                        {/* Category Filter */}
                         <div className="flex items-center gap-2">
                             <Filter className="h-4 w-4 text-gray-500" />
                             <select

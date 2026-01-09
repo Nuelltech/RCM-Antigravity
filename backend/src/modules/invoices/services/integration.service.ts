@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { priceHistoryService } from '../../produtos/price-history.service';
 import { recalculationService } from '../../produtos/recalculation.service';
+import { addPriceChangeJob } from '../../../core/queue';
 import { dashboardCache } from '../../../core/cache.service';
 
 const prisma = new PrismaClient();
@@ -90,15 +91,46 @@ export class InvoiceIntegrationService {
                 itemsCreated++;
 
                 // Update product variation price if exists
-                if (linha.variacao_id && linha.preco_unitario) {
-                    const updated = await this.updateVariationPrice(
-                        linha.variacao_id,
-                        linha.preco_unitario.toNumber(),
-                        tenantId
-                    );
-                    if (updated) pricesUpdated++;
+                if (linha.variacao_id) {
+                    // Fetch variation to get configuration
+                    const variacao = await prisma.variacaoProduto.findUnique({
+                        where: { id: linha.variacao_id },
+                        include: { produto: true }
+                    });
+
+                    if (variacao) {
+                        // User approved logic:
+                        // 1. PackPrice = TotalSemIva / QtyBought
+                        // 2. ItemPrice = PackPrice / UnitsPerPack
+                        // 3. NormalizedPrice = ItemPrice / VolumePerItem (or 1)
+
+                        const qtdComprada = linha.quantidade ? Number(linha.quantidade) : 1;
+                        const totalSemIva = linha.preco_total ? Number(linha.preco_total) : 0; // Use Net Total
+
+                        // Prevent division by zero
+                        if (qtdComprada > 0 && totalSemIva > 0) {
+                            const precoCompraPack = totalSemIva / qtdComprada; // Cost of 1 purchase unit (Box/Sack)
+
+                            const unidadesPorCompra = variacao.unidades_por_compra ? Number(variacao.unidades_por_compra) : 1;
+                            const volumePorUnidade = variacao.volume_por_unidade ? Number(variacao.volume_por_unidade) : 1;
+
+                            const precoPorItem = precoCompraPack / unidadesPorCompra;
+                            const normalizedPrice = precoPorItem / volumePorUnidade; // Price per Kg/L/Unit
+
+                            console.log(`[Integration] Calc: Total=${totalSemIva} / Qty=${qtdComprada} => Pack=${precoCompraPack} | / Units=${unidadesPorCompra} => Item=${precoPorItem} | / Vol=${volumePorUnidade} => Norm=${normalizedPrice}`);
+
+                            const updated = await this.updateVariationPrice(
+                                linha.variacao_id,
+                                normalizedPrice,
+                                precoCompraPack,
+                                tenantId,
+                                userId
+                            );
+                            if (updated) pricesUpdated++;
+                        }
+                    }
                 }
-            }
+            } // END LOOP
 
             // Mark invoice status based on partial approval
             await prisma.faturaImportacao.update({
@@ -136,8 +168,10 @@ export class InvoiceIntegrationService {
      */
     private async updateVariationPrice(
         variacaoId: number,
-        newPrice: number,
-        tenantId: number
+        newUnitPrice: number,      // Price per kg/L/UN (Normalized)
+        newPackagePrice: number,   // Total package/box price
+        tenantId: number,
+        userId: number             // Added userId
     ): Promise<boolean> {
         try {
             const variacao = await prisma.variacaoProduto.findUnique({
@@ -147,44 +181,50 @@ export class InvoiceIntegrationService {
 
             if (!variacao) return false;
 
-            const oldPrice = variacao.preco_unitario.toNumber();
-            const newPriceDecimal = new Prisma.Decimal(newPrice);
+            const oldUnitPrice = variacao.preco_unitario.toNumber();
+            const oldPackagePrice = variacao.preco_compra.toNumber();
+            const newUnitPriceDecimal = new Prisma.Decimal(newUnitPrice);
+            const newPackagePriceDecimal = new Prisma.Decimal(newPackagePrice);
 
-            // Only update if price changed
-            if (Math.abs(oldPrice - newPrice) < 0.01) {
+            // Only update if price changed (allow small float diffs)
+            if (Math.abs(oldUnitPrice - newUnitPrice) < 0.0001 && Math.abs(oldPackagePrice - newPackagePrice) < 0.001) {
                 return false;
             }
 
-            // Update variation
+            // Update variation with correct prices
             await prisma.variacaoProduto.update({
                 where: { id: variacaoId },
                 data: {
-                    preco_unitario: newPriceDecimal,
-                    preco_compra: newPriceDecimal
+                    preco_unitario: newUnitPriceDecimal,  // €/kg or €/L or €/UN
+                    preco_compra: newPackagePriceDecimal   // Total package price
                 }
             });
 
-            // Get current effective unit price for recalculation
-            const precoUnitarioAnterior = await recalculationService.getPrecoUnitarioAtual(variacao.produto_id);
+            console.log(`[Integration] Updated variation ${variacaoId}: Pack €${newPackagePrice.toFixed(2)} | Normalized Unit €${newUnitPrice.toFixed(4)}`);
 
-            // Create price history using the service
+            // Create price history
             await priceHistoryService.createPriceHistory({
                 tenantId,
                 variacaoId,
-                precoAnterior: new Prisma.Decimal(oldPrice),
-                precoNovo: newPriceDecimal,
-                precoUnitarioAnterior: new Prisma.Decimal(oldPrice),
-                precoUnitarioNovo: newPriceDecimal,
+                precoAnterior: new Prisma.Decimal(oldPackagePrice),
+                precoNovo: newPackagePriceDecimal,
+                precoUnitarioAnterior: new Prisma.Decimal(oldUnitPrice),
+                precoUnitarioNovo: newUnitPriceDecimal,
                 origem: 'COMPRA',
-                alteradoPor: undefined, // System update
-                receitasAfetadas: 0,
-                menusAfetados: 0
+                alteradoPor: userId,
+                receitasAfetadas: 0, // Will be calculated by worker
+                menusAfetados: 0     // Will be calculated by worker
             });
 
-            // Trigger recalculation asynchronously
-            recalculationService.recalculateAfterPriceChange(variacao.produto_id).catch(err => {
-                console.error('Error in background recalculation:', err);
-            });
+            // Trigger recalculation asynchronously via Queue (Worker)
+            try {
+                await addPriceChangeJob(variacao.produto_id, tenantId, userId);
+                console.log(`[Integration] Queued recalculation for product ${variacao.produto_id}`);
+            } catch (err) {
+                console.error('[Integration] Failed to add job to queue, falling back to sync recalc:', err);
+                // Fallback to sync service if queue fails (safety net)
+                recalculationService.recalculateAfterPriceChange(variacao.produto_id).catch(e => console.error(e));
+            }
 
             return true;
         } catch (error) {

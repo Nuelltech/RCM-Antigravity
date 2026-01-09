@@ -6,10 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchClient } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface MenuItem {
     id: number;
@@ -24,11 +25,12 @@ interface SaleItem {
 
 export default function NewSalePage() {
     const router = useRouter();
+    const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
     // Form State
-    const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
+    const [date, setDate] = useState("");
     const [comment, setComment] = useState("");
     const [type, setType] = useState<"TOTAL" | "ITEM">("ITEM");
     const [amount, setAmount] = useState<number | undefined>();
@@ -36,6 +38,8 @@ export default function NewSalePage() {
 
     useEffect(() => {
         loadMenuItems();
+        // Set date on client only to avoid hydration mismatch
+        setDate(format(new Date(), "yyyy-MM-dd"));
     }, []);
 
     const loadMenuItems = async () => {
@@ -64,6 +68,20 @@ export default function NewSalePage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate items for ITEM type sales
+        if (type === "ITEM") {
+            const validItems = selectedItems.filter(i => i.id !== 0);
+            if (validItems.length === 0) {
+                toast({
+                    title: "Itens Obrigatórios",
+                    description: "Por favor, adicione pelo menos um item à venda.",
+                    variant: "destructive",
+                });
+                return;
+            }
+        }
+
         setLoading(true);
 
         try {
@@ -80,11 +98,18 @@ export default function NewSalePage() {
                 body: JSON.stringify(payload),
             });
 
-            alert("✅ Venda registada com sucesso!");
+            toast({
+                title: "Sucesso",
+                description: "Venda registada com sucesso!",
+            });
             router.push("/sales");
         } catch (error: any) {
             console.error("Error:", error);
-            alert(`❌ Erro: ${error.message || "Erro ao registar venda"}`);
+            toast({
+                title: "Erro",
+                description: error.message || "Erro ao registar venda",
+                variant: "destructive",
+            });
         } finally {
             setLoading(false);
         }

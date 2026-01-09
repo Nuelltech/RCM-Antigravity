@@ -36,7 +36,7 @@ export function QuickCreateVariation({
     const [formData, setFormData] = useState({
         tipo_unidade_compra: lineData?.unidade || '',
         quantidade_embalagem: undefined as number | undefined,
-        unidades_por_compra: lineData?.quantidade || 1,
+        unidades_por_compra: undefined as unknown as number, // Start empty to force user input
         preco_compra: lineData?.preco_total || 0,
         fornecedor: '',
         codigo_fornecedor: '',
@@ -52,9 +52,9 @@ export function QuickCreateVariation({
                 body: JSON.stringify({
                     produto_id: produto.id,
                     tipo_unidade_compra: formData.tipo_unidade_compra,
-                    quantidade_embalagem: formData.quantidade_embalagem ? Number(formData.quantidade_embalagem) : undefined,
-                    unidades_por_compra: Number(formData.unidades_por_compra),
-                    preco_compra: Number(formData.preco_compra),
+                    volume_por_unidade: formData.quantidade_embalagem ? Number(formData.quantidade_embalagem) : undefined,
+                    unidades_por_compra: Number(formData.unidades_por_compra || 0),
+                    preco_compra: 0, // Will be calculated during integration
                     fornecedor: formData.fornecedor || undefined,
                     codigo_fornecedor: formData.codigo_fornecedor || undefined,
                 }),
@@ -102,10 +102,11 @@ export function QuickCreateVariation({
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <Label>Unidades por Compra *</Label>
+                            <Label>Nº de Itens na Embalagem *</Label>
                             <Input
                                 type="number"
                                 step="0.001"
+                                placeholder="Ex: 6, 12, 24..."
                                 value={formData.unidades_por_compra || ''}
                                 onChange={(e) =>
                                     setFormData({
@@ -115,6 +116,9 @@ export function QuickCreateVariation({
                                 }
                                 required
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Quantas unidades individuais vêm? (Ex: <b>6</b> para pack 6uni, <b>12</b> para caixa 12kg)
+                            </p>
                         </div>
 
                         <div className="space-y-2">
@@ -137,20 +141,20 @@ export function QuickCreateVariation({
                         </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <Label>Preço de Compra (€) *</Label>
-                        <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.preco_compra || ''}
-                            onChange={(e) =>
-                                setFormData({
-                                    ...formData,
-                                    preco_compra: parseFloat(e.target.value) || 0,
-                                })
-                            }
-                            required
-                        />
+                    <div className="bg-blue-50 p-4 rounded-md space-y-2 border border-blue-100">
+                        <div className="flex items-start gap-3">
+                            <div className="bg-blue-100 p-1.5 rounded-full mt-0.5">
+                                <span className="text-blue-600 block w-4 h-4 text-center font-bold text-xs">€</span>
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-semibold text-blue-900">Cálculo Automático de Preço</h4>
+                                <p className="text-sm text-blue-700 mt-1 leading-relaxed">
+                                    Não precisa inserir o preço agora. O sistema vai calcular automaticamente
+                                    o <strong>Preço de Compra</strong> e o <strong>Custo Unitário</strong> baseando-se no
+                                    Valor Total da linha da fatura assim que aprovar a importação.
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="space-y-2">
@@ -175,21 +179,6 @@ export function QuickCreateVariation({
                         />
                     </div>
 
-                    <div className="bg-blue-50 p-3 rounded-md space-y-1">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-gray-600">Preço de Compra:</span>
-                            <span className="font-semibold text-gray-900">
-                                €{Number(formData.preco_compra || 0).toFixed(2)}
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm border-t border-blue-200 pt-1">
-                            <span className="text-gray-600">Preço Unitário:</span>
-                            <span className="font-bold text-blue-700">
-                                €{precoUnitario.toFixed(4)}/{produto.unidade_medida || 'un'}
-                            </span>
-                        </div>
-                    </div>
-
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
                             Cancelar
@@ -199,8 +188,7 @@ export function QuickCreateVariation({
                             disabled={
                                 loading ||
                                 !formData.tipo_unidade_compra ||
-                                formData.unidades_por_compra <= 0 ||
-                                formData.preco_compra <= 0
+                                formData.unidades_por_compra <= 0
                             }
                         >
                             {loading ? (

@@ -1,25 +1,40 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { fetchClient } from '@/lib/api';
+
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card } from '@/components/ui/card';
-import { CheckCircle, Lock, AlertCircle, UserCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle, Lock, UserCheck } from 'lucide-react';
+
+interface InviteData {
+    userInfo: {
+        nome: string;
+        email: string;
+    };
+    tenantInfo: {
+        nome_restaurante: string;
+        role: string;
+    };
+    hasPassword?: boolean;
+}
 
 export default function AcceptInvitePage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const token = searchParams.get('token');
 
-    const [validating, setValidating] = useState(true);
-    const [inviteData, setInviteData] = useState<any>(null);
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
+    const [validating, setValidating] = useState(true);
+    const [inviteData, setInviteData] = useState<InviteData | null>(null);
+
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
 
     // Validate token on mount
     useEffect(() => {
@@ -30,19 +45,12 @@ export default function AcceptInvitePage() {
 
         async function validateToken() {
             try {
-                const response = await fetch(
-                    `${process.env.NEXT_PUBLIC_API_URL}/users/validate-invite-token/${token}`
-                );
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setInviteData(data);
-                } else {
-                    const data = await response.json();
-                    setError(data.error || 'Convite inválido ou expirado');
-                }
+                // Should potentially not use auth headers here as user likely not logged in?
+                // But fetchClient doesn't harm if no token in localStorage.
+                const data = await fetchClient(`/users/validate-invite-token/${token}`);
+                setInviteData(data);
             } catch (err) {
-                setError('Erro ao validar convite');
+                setError('Convite inválido ou expirado');
             } finally {
                 setValidating(false);
             }
@@ -82,11 +90,8 @@ export default function AcceptInvitePage() {
         setLoading(true);
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/accept-invite`, {
+            await fetchClient('/users/accept-invite', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({
                     token,
                     // Only send password if provided
@@ -94,17 +99,12 @@ export default function AcceptInvitePage() {
                 }),
             });
 
-            if (response.ok) {
-                setSuccess(true);
-                setTimeout(() => {
-                    router.push('/auth/login');
-                }, 2000);
-            } else {
-                const data = await response.json();
-                setError(data.error || 'Erro ao ativar conta. O convite pode ter expirado.');
-            }
-        } catch (err) {
-            setError('Erro ao conectar com o servidor');
+            setSuccess(true);
+            setTimeout(() => {
+                router.push('/auth/login');
+            }, 2000);
+        } catch (err: any) {
+            setError(err.message || 'Erro ao ativar conta. O convite pode ter expirado.');
         } finally {
             setLoading(false);
         }

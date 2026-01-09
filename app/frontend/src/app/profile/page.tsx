@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchClient } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { User, Mail, Lock, Save, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -45,25 +46,10 @@ export default function ProfilePage() {
         setSuccessMessage('');
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}/profile`, {
+            const data = await fetchClient(`/users/${userId}/profile`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
                 body: JSON.stringify({ nome, email }),
             });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Erro ao atualizar perfil');
-            }
-
-            const data = await response.json();
 
             // Update localStorage
             localStorage.setItem('userName', data.nome);
@@ -99,27 +85,14 @@ export default function ProfilePage() {
         setSuccessMessage('');
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/${userId}/password`, {
+            await fetchClient(`/users/${userId}/password`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
                 body: JSON.stringify({
                     currentPassword,
                     newPassword,
                     confirmPassword,
                 }),
             });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Erro ao alterar password');
-            }
 
             setSuccessMessage('Password alterada com sucesso!');
 

@@ -41,7 +41,7 @@ const createRecipeSchema = z.object({
 });
 
 // Recipe Service
-class RecipeService {
+export class RecipeService {
     private db: TenantDB;
     private tenantId: number;
 
@@ -214,7 +214,7 @@ class RecipeService {
             custo_total: Number(recipe.custo_total),
             custo_por_porcao: Number(recipe.custo_por_porcao),
             quantidade_por_porcao: recipe.quantidade_total_produzida && recipe.numero_porcoes
-                ? Number(recipe.quantidade_total_produzida) / Number(recipe.quantidade_total_produzida)
+                ? Number(recipe.quantidade_total_produzida) / Number(recipe.numero_porcoes)
                 : null,
             ingredientes: recipe.ingredientes.map(ing => ({
                 ...ing,
@@ -570,28 +570,68 @@ class RecipeService {
             throw new Error('Receita não encontrada');
         }
 
-        // 2. Check if recipe is used as ingredient in other recipes
+        // 2. Check usages that BLOCK deletion
+
+        // 2.1 Used as Ingredient in other Recipes
         const usedInRecipes = await prisma.ingredienteReceita.count({
             where: { receita_preparo_id: recipeId }
         });
-
         if (usedInRecipes > 0) {
             throw new Error(`Esta receita é usada como ingrediente em ${usedInRecipes} outra(s) receita(s). Não pode ser eliminada.`);
         }
 
-        // 3. Check if recipe is used in menus
+        // 2.2 Used in Menus
         const usedInMenus = await prisma.menuItem.count({
             where: { receita_id: recipeId }
         });
-
         if (usedInMenus > 0) {
-            throw new Error(`Esta receita é usada em ${usedInMenus} menu(s). Não pode ser eliminada.`);
+            throw new Error(`Esta receita é usada em ${usedInMenus} item(ns) de menu. Não pode ser eliminada.`);
         }
 
-        // 4. Delete recipe (cascade will handle ingredients and steps)
-        await prisma.receita.delete({
-            where: { id: recipeId }
+        // 2.3 Used in Combos (ComboItem or ComboCategoriaOpcao)
+        const usedInComboItems = await prisma.comboItem.count({
+            where: { receita_id: recipeId }
         });
+        if (usedInComboItems > 0) {
+            throw new Error(`Esta receita faz parte de ${usedInComboItems} combo(s). Não pode ser eliminada.`);
+        }
+
+        const usedInComboOptions = await prisma.comboCategoriaOpcao.count({
+            where: { receita_id: recipeId }
+        });
+        if (usedInComboOptions > 0) {
+            throw new Error(`Esta receita é uma opção em ${usedInComboOptions} categoria(s) de combo. Não pode ser eliminada.`);
+        }
+
+        // 3. Manual Cleanup of Child Records (Workaround for missing Cascade)
+        // We delete these manually to ensure the parent can be deleted
+        await prisma.ingredienteReceita.deleteMany({
+            where: { receita_id: recipeId }
+        });
+
+        await prisma.etapaReceita.deleteMany({
+            where: { receita_id: recipeId }
+        });
+
+        // 4. Delete recipe (with error handling for other constraints)
+        try {
+            await prisma.receita.delete({
+                where: { id: recipeId }
+            });
+        } catch (error: any) {
+            console.error('Error deleting recipe:', error);
+            // Handle Prisma Foreign Key Constraint error specifically
+            if (error.code === 'P2003') {
+                // Try to identify the field causing the issue from meta
+                const field = error.meta?.field_name;
+                if (field?.includes('menu')) throw new Error('Esta receita está associada a um Menu e não pode ser eliminada.');
+                if (field?.includes('combo')) throw new Error('Esta receita está associada a um Combo e não pode ser eliminada.');
+                if (field?.includes('ingrediente')) throw new Error('Esta receita é usada como ingrediente noutra receita.');
+
+                throw new Error('Não é possível eliminar a receita porque está a ser usada noutros registos (Menu, Combo ou Receita).');
+            }
+            throw new Error('Erro ao eliminar a receita. Verifique se não está em uso.');
+        }
 
         return { success: true, message: 'Receita eliminada com sucesso' };
     }

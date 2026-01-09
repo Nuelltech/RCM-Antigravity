@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { API_URL } from '@/lib/api';
 
 const getAuthHeaders = (): Record<string, string> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -431,4 +431,3 @@ export default function UpdatePriceModal({
         </div>
     );
 }
-

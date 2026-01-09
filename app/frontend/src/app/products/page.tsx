@@ -6,9 +6,17 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchClient } from "@/lib/api";
-import { Plus, Search, LayoutGrid, LayoutList, Filter, Trash2, Edit } from "lucide-react";
+import { Plus, Search, LayoutGrid, LayoutList, Filter, Trash2, Edit, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AppLayout } from "@/components/layout/AppLayout";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+} from "@/components/ui/dialog";
 
 interface Product {
     id: number;
@@ -47,6 +55,11 @@ export default function ProductsPage() {
     const [selectedSubfamilyId, setSelectedSubfamilyId] = useState<string>("");
     const [vendavelFilter, setVendavelFilter] = useState<string>("all");
     const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+
+    // Delete dialog state
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [productToDelete, setProductToDelete] = useState<{ id: number; name: string } | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Pagination state
     const [page, setPage] = useState(1);
@@ -108,20 +121,32 @@ export default function ProductsPage() {
         }
     };
 
-    const handleDelete = async (productId: number, productName: string) => {
-        if (!confirm(`Tem certeza que deseja apagar o produto "${productName}"?`)) {
-            return;
-        }
+    const handleDelete = (productId: number, productName: string) => {
+        setProductToDelete({ id: productId, name: productName });
+        setDeleteDialogOpen(true);
+    };
 
+    const confirmDelete = async () => {
+        if (!productToDelete) return;
+
+        setIsDeleting(true);
         try {
-            await fetchClient(`/products/${productId}`, {
+            await fetchClient(`/products/${productToDelete.id}`, {
                 method: "DELETE",
             });
-            alert("✅ Produto apagado com sucesso!");
+            setDeleteDialogOpen(false);
+            setProductToDelete(null);
             loadProducts();
         } catch (error: any) {
             alert(`❌ Erro ao apagar produto: ${error.message || "Erro desconhecido"}`);
+        } finally {
+            setIsDeleting(false);
         }
+    };
+
+    const cancelDelete = () => {
+        setDeleteDialogOpen(false);
+        setProductToDelete(null);
     };
 
     const handleEdit = (productId: number) => {
@@ -435,6 +460,62 @@ export default function ProductsPage() {
                     </>
                 )}
             </div>
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                                <AlertTriangle className="h-5 w-5 text-red-600" />
+                            </div>
+                            <div>
+                                <DialogTitle>Confirmar Eliminação</DialogTitle>
+                                <DialogDescription>
+                                    Esta ação não pode ser desfeita.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="py-4">
+                        <p className="text-sm text-gray-700">
+                            Tem certeza que deseja apagar o produto{" "}
+                            <span className="font-semibold">"{productToDelete?.name}"</span>?
+                        </p>
+                        <p className="text-sm text-gray-500 mt-2">
+                            O produto será removido permanentemente do sistema.
+                        </p>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={cancelDelete}
+                            disabled={isDeleting}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={confirmDelete}
+                            disabled={isDeleting}
+                            className="gap-2"
+                        >
+                            {isDeleting ? (
+                                <>
+                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    Apagando...
+                                </>
+                            ) : (
+                                <>
+                                    <Trash2 className="h-4 w-4" />
+                                    Apagar Produto
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

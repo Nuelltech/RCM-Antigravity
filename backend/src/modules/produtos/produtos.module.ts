@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import z from 'zod';
 import { TenantDB } from '../../core/database-tenant';
@@ -57,6 +57,7 @@ const quickCreateProductSchema = z.object({
     variacao_compra: z.object({
         tipo_unidade_compra: z.string(),
         unidades_por_compra: z.number(),
+        volume_por_unidade: z.number().optional(),  // For packaged products (e.g., 0.250 for 250g)
         preco_compra: z.number(),
         fornecedor: z.string().optional(),
     }),
@@ -141,6 +142,7 @@ class ProductService {
                         tipo_unidade_compra: true,
                         preco_compra: true,
                         preco_unitario: true,
+                        volume_por_unidade: true,
                         data_ultima_compra: true,
                     },
                     orderBy: [
@@ -270,6 +272,9 @@ class ProductService {
             });
         }
 
+        // Invalidate cache
+        await productsCache.invalidateTenant(this.tenantId);
+
         return variation;
     }
 
@@ -350,27 +355,75 @@ class ProductService {
             data.codigo_interno = `${familiaCode}-${subfamiliaCode}-${nextSeq.toString().padStart(3, '0')}`;
         }
 
-        return await this.db.update('produto', productId, data);
+        const result = await this.db.update('produto', productId, data);
+
+        // Invalidate cache
+        await productsCache.invalidateTenant(this.tenantId);
+
+        return result;
     }
 
     async delete(productId: number) {
-        // Check if product is used in any recipes
-        const recipeUsage = await prisma.ingredienteReceita.findMany({
-            where: {
-                produto_id: productId,
-                tenant_id: this.tenantId
-            },
-            include: {
-                receita: {
-                    select: { nome: true }
-                }
-            }
-        });
+        // 1. BLOCKERS - Active Configuration
 
+        // Check Recipes
+        const recipeUsage = await prisma.ingredienteReceita.findMany({
+            where: { produto_id: productId },
+            include: { receita: { select: { nome: true } } }
+        });
         if (recipeUsage.length > 0) {
-            const recipeNames = recipeUsage.map(r => r.receita.nome).join(', ');
-            throw new Error(`Este produto está vinculado às seguintes receitas: ${recipeNames}. Não pode ser apagado.`);
+            const names = [...new Set(recipeUsage.map(r => r.receita.nome))].slice(0, 3).join(', ');
+            throw new Error(`Este produto é usado na(s) receita(s): ${names}${recipeUsage.length > 3 ? '...' : ''}. Remova-o antes de apagar.`);
         }
+
+        // Check Combos
+        const comboUsage = await prisma.comboItem.count({ where: { produto_id: productId } });
+        if (comboUsage > 0) {
+            throw new Error(`Este produto faz parte de ${comboUsage} combo(s). Remova-o antes de apagar.`);
+        }
+
+        // Check Sell Formats (Formatos de Venda)
+        // If the product has sell formats that are active, we should probably warn
+        const activeFormats = await prisma.formatoVenda.count({
+            where: { produto_id: productId, ativo: true }
+        });
+        if (activeFormats > 0) {
+            throw new Error(`Este produto tem ${activeFormats} formato(s) de venda ativo(s). Desative-os ou apague-os primeiro.`);
+        }
+
+        // 2. ARCHIVAL TRIGGERS - Historical Data
+
+        // Check Purchases
+        const purchaseUsage = await prisma.compraItem.count({ where: { produto_id: productId } });
+        // Check Inventory
+        const inventoryUsage = await prisma.itemInventario.count({ where: { produto_id: productId } });
+
+        if (purchaseUsage > 0 || inventoryUsage > 0) {
+            // SOFT DELETE (Archive)
+            await prisma.$transaction([
+                prisma.produto.update({
+                    where: { id: productId },
+                    data: { ativo: false }
+                }),
+                prisma.variacaoProduto.updateMany({
+                    where: { produto_id: productId },
+                    data: { ativo: false }
+                }),
+                // Disable formats too
+                prisma.formatoVenda.updateMany({
+                    where: { produto_id: productId },
+                    data: { ativo: false }
+                })
+            ]);
+
+            return {
+                success: true,
+                message: 'Produto arquivado com sucesso (mantido histórico).',
+                action: 'archived'
+            };
+        }
+
+        // 3. HARD DELETE - Clean Slate
 
         // Delete variations first (cascade)
         await prisma.variacaoProduto.deleteMany({
@@ -380,22 +433,37 @@ class ProductService {
             }
         });
 
+        // Delete formats
+        await prisma.formatoVenda.deleteMany({
+            where: { produto_id: productId }
+        });
+
         // Delete product
         await this.db.delete('produto', productId);
+
+        // Invalidate cache
+        await productsCache.invalidateTenant(this.tenantId);
+
+        return {
+            success: true,
+            message: 'Produto eliminado permanentemente.',
+            action: 'deleted'
+        };
     }
 }
 
 // Routes
 export async function productRoutes(app: FastifyInstance) {
-    // Products
+
+    // List Products
     app.withTypeProvider<ZodTypeProvider>().get('/', {
         schema: {
             querystring: z.object({
-                page: z.string().optional(),
-                limit: z.string().optional(),
+                page: z.string().optional().transform(val => val ? parseInt(val) : undefined),
+                limit: z.string().optional().transform(val => val ? parseInt(val) : undefined),
                 search: z.string().optional(),
-                familyId: z.string().optional(),
-                subfamilyId: z.string().optional(),
+                familyId: z.string().optional().transform(val => val ? parseInt(val) : undefined),
+                subfamilyId: z.string().optional().transform(val => val ? parseInt(val) : undefined),
                 vendavel: z.string().optional(),
             }),
             tags: ['Products'],
@@ -404,71 +472,27 @@ export async function productRoutes(app: FastifyInstance) {
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new ProductService(req.tenantId);
-
-        const page = req.query.page ? parseInt(req.query.page) : 1;
-        const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-        const familyId = req.query.familyId ? parseInt(req.query.familyId) : undefined;
-        const subfamilyId = req.query.subfamilyId ? parseInt(req.query.subfamilyId) : undefined;
-
-        return service.list({
-            page,
-            limit,
-            search: req.query.search,
-            familyId,
-            subfamilyId,
-            vendavel: req.query.vendavel
-        });
+        return service.list(req.query);
     });
 
-    // Quick search endpoint for invoice manual matching
-    app.withTypeProvider<ZodTypeProvider>().get('/search', {
+    // Create Product
+    app.withTypeProvider<ZodTypeProvider>().post('/', {
         schema: {
-            querystring: z.object({
-                q: z.string().min(1),
-            }),
+            body: createProductSchema,
             tags: ['Products'],
             security: [{ bearerAuth: [] }],
         },
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new ProductService(req.tenantId);
-        const db = new TenantDB(req.tenantId);
-
-        const results = await service.list({
-            page: 1,
-            limit: 20,
-            search: req.query.q,
-        });
-
-        // Fetch variations for each product
-        const productsWithVariations = await Promise.all(
-            results.data.map(async (p: any) => {
-                // Create db instance inside map to avoid closure issues
-                const productDb = new TenantDB(req.tenantId!);
-                // Use Prisma model name (camelCase), not table name
-                const variations = await productDb.findMany('variacaoProduto', {
-                    where: { produto_id: p.id, ativo: true },
-                    orderBy: { data_ultima_compra: 'desc' },
-                });
-
-                return {
-                    id: p.id,
-                    nome: p.nome,
-                    codigo_interno: p.codigo_interno,
-                    variations: variations.map((v: any) => ({
-                        id: v.id,
-                        tipo_unidade_compra: v.tipo_unidade_compra,
-                        unidades_por_compra: v.unidades_por_compra,
-                        preco_compra: v.preco_compra,
-                        preco_unitario: v.preco_unitario,
-                    })),
-                };
-            })
-        );
-
-        return productsWithVariations;
+        try {
+            return await service.create(req.body);
+        } catch (error: any) {
+            return reply.status(400).send({ error: error.message });
+        }
     });
 
+    // Get Product (Specific ID)
     app.withTypeProvider<ZodTypeProvider>().get('/:id', {
         schema: {
             params: z.object({ id: z.string() }),
@@ -480,6 +504,17 @@ export async function productRoutes(app: FastifyInstance) {
         const service = new ProductService(req.tenantId);
         const productId = parseInt(req.params.id);
 
+        // Fastify routing might catch "families" as :id if defined before specific routes
+        // But since we are inside /:id, we should ensure ID is number.
+        // If :id matches "families", parseInt("families") is NaN.
+        if (isNaN(productId)) {
+            // Pass to next handler? Fastify doesn't easily chain like Express.
+            // We generally rely on Route order. 
+            // IMPORTANT: Put this route AFTER specific routes if they share prefix. 
+            // But here Param is :id vs Static "families". Fastify handles static routes with higher priority if defined properly.
+            return reply.status(404).send();
+        }
+
         try {
             return await service.getById(productId);
         } catch (error: any) {
@@ -487,17 +522,6 @@ export async function productRoutes(app: FastifyInstance) {
         }
     });
 
-    app.withTypeProvider<ZodTypeProvider>().post('/', {
-        schema: {
-            body: createProductSchema,
-            tags: ['Products'],
-            security: [{ bearerAuth: [] }],
-        },
-    }, async (req, reply) => {
-        if (!req.tenantId) return reply.status(401).send();
-        const service = new ProductService(req.tenantId);
-        return service.create(req.body);
-    });
 
     app.withTypeProvider<ZodTypeProvider>().delete('/:id', {
         schema: {
@@ -511,8 +535,8 @@ export async function productRoutes(app: FastifyInstance) {
         const productId = parseInt(req.params.id);
 
         try {
-            await service.delete(productId);
-            return { success: true, message: 'Produto apagado com sucesso' };
+            const result = await service.delete(productId);
+            return result; // Return the specific message from service
         } catch (error: any) {
             return reply.status(400).send({ error: error.message });
         }
@@ -546,7 +570,81 @@ export async function productRoutes(app: FastifyInstance) {
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new ProductService(req.tenantId);
-        return service.createVariation(req.body, (req as any).user?.id);
+        return service.createVariation(req.body, (req as unknown as { user: { id: number } }).user?.id);
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().put('/variations/:id', {
+        schema: {
+            params: z.object({ id: z.string() }),
+            body: createVariationSchema,
+            tags: ['Products'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const variacaoId = parseInt(req.params.id);
+
+        try {
+            // Find existing variation
+            const current = await prisma.variacaoProduto.findUnique({
+                where: { id: variacaoId, tenant_id: req.tenantId }
+            });
+
+            if (!current) return reply.status(404).send({ error: 'Variação não encontrada' });
+
+            // Calculate unit price logic
+            let totalUnits = new Decimal(req.body.unidades_por_compra);
+            if (req.body.volume_por_unidade) {
+                totalUnits = totalUnits.mul(req.body.volume_por_unidade);
+            }
+            const precoUnitario = new Decimal(req.body.preco_compra).dividedBy(totalUnits);
+
+            // Just update fields directly
+            const updated = await prisma.variacaoProduto.update({
+                where: { id: variacaoId },
+                data: {
+                    ...req.body,
+                    preco_unitario: precoUnitario, // Recalculate based on input
+                    updatedAt: new Date()
+                }
+            });
+
+            // Trigger recalculations logic similar to update price
+            try {
+                // background recalc
+                recalculationService.recalculateAfterPriceChange(updated.produto_id).catch(() => { });
+            } catch (e) { }
+
+            // Invalidate cache
+            await productsCache.invalidateTenant(req.tenantId);
+
+            return updated;
+        } catch (error: any) {
+            return reply.status(400).send({ error: error.message });
+        }
+    });
+
+    app.withTypeProvider<ZodTypeProvider>().delete('/variations/:id', {
+        schema: {
+            params: z.object({ id: z.string() }),
+            tags: ['Products'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const variacaoId = parseInt(req.params.id);
+
+        try {
+            await prisma.variacaoProduto.update({
+                where: { id: variacaoId, tenant_id: req.tenantId },
+                data: { ativo: false } // Soft delete
+            });
+            // Invalidate cache
+            await productsCache.invalidateTenant(req.tenantId);
+            return { success: true };
+        } catch (error: any) {
+            return reply.status(400).send({ error: error.message });
+        }
     });
 
     app.withTypeProvider<ZodTypeProvider>().get('/:id/variations', {
@@ -661,7 +759,7 @@ export async function productRoutes(app: FastifyInstance) {
 
             // Try queue-based recalculation (background), fallback to sync if fails
             try {
-                await addPriceChangeJob(variacao.produto_id, req.tenantId, (req as any).user?.id || 0);
+                await addPriceChangeJob(variacao.produto_id, req.tenantId, (req as unknown as { user: { id: number } }).user?.id || 0);
                 console.log(`✅ Price change job queued for product ${variacao.produto_id}`);
             } catch (queueError) {
                 console.warn('⚠️  Queue unavailable, using sync recalculation:', queueError);
@@ -679,7 +777,7 @@ export async function productRoutes(app: FastifyInstance) {
                 precoUnitarioAnterior: variacao.preco_unitario,
                 precoUnitarioNovo: novoPrecoUnitario,
                 origem: req.body.origem,
-                alteradoPor: (req as any).user?.id || undefined,
+                alteradoPor: (req as unknown as { user: { id: number } }).user?.id || undefined,
                 receitasAfetadas: 0, // Async
                 menusAfetados: 0,    // Async
             });
@@ -773,7 +871,11 @@ export async function productRoutes(app: FastifyInstance) {
                 });
 
                 // 3. Create Purchase Variation
-                const precoPorUnidade = variacao_compra.preco_compra / variacao_compra.unidades_por_compra;
+                // Use same logic as createVariation (lines 231-234)
+                const divisor = variacao_compra.volume_por_unidade
+                    ? variacao_compra.unidades_por_compra * variacao_compra.volume_por_unidade
+                    : variacao_compra.unidades_por_compra;
+                const precoPorUnidade = variacao_compra.preco_compra / divisor;
 
                 const variacao = await tx.variacaoProduto.create({
                     data: {
@@ -803,6 +905,9 @@ export async function productRoutes(app: FastifyInstance) {
 
                 return { produto, variacao, linha };
             });
+
+            // Invalidate cache
+            await productsCache.invalidateTenant(req.tenantId);
 
             return {
                 produto: result.produto,

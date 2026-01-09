@@ -37,7 +37,7 @@ const formatoVendaSchema = z.object({
     variacao_origem_id: z.number().optional(),
     disponivel_menu: z.boolean().optional(),
     ordem_exibicao: z.number().optional(),
-    custo_unitario: z.number().optional(),
+    custo_unitario: z.number().nullable().optional(),
 });
 
 type ProductForm = z.infer<typeof productSchema>;
@@ -814,7 +814,9 @@ export default function EditProductPage() {
                                     lang="en"
                                     inputMode="decimal"
                                     placeholder="0.80"
-                                    {...registerFormat("custo_unitario", { valueAsNumber: true })}
+                                    {...registerFormat("custo_unitario", {
+                                        setValueAs: (v) => v === "" ? null : Number(v)
+                                    })}
                                 />
                                 <p className="text-xs text-gray-500">
                                     Se deixar em branco, será calculado automaticamente com base na variação origem

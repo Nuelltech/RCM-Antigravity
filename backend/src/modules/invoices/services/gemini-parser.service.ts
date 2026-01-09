@@ -60,7 +60,7 @@ export class GeminiInvoiceParserService {
     /**
      * Parse invoice text using Gemini AI
      */
-    async parseInvoice(ocrText: string): Promise<ParsedInvoice> {
+    async parseInvoice(ocrText: string, modelName: string = 'gemini-2.5-flash'): Promise<ParsedInvoice> {
         // If Gemini is not initialized, return empty structure
         if (!this.ai) {
             console.warn('[GEMINI] Parser not initialized. Returning empty structure.');
@@ -75,7 +75,7 @@ export class GeminiInvoiceParserService {
 
         try {
             // Get the model
-            const model = this.ai.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const model = this.ai.getGenerativeModel({ model: modelName });
 
             // Generate content
             const result = await model.generateContent(prompt);

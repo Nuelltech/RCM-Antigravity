@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fetchClient } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Plus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
 
 interface QuickCreateProductProps {
     open: boolean;
@@ -42,6 +44,7 @@ interface Subfamilia {
 }
 
 export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: QuickCreateProductProps) {
+    const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [familias, setFamilias] = useState<Familia[]>([]);
@@ -54,7 +57,7 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
 
     // Variation data
     const [tipoUnidadeCompra, setTipoUnidadeCompra] = useState('');
-    const [unidadesPorCompra, setUnidadesPorCompra] = useState(1);
+    const [unidadesPorCompra, setUnidadesPorCompra] = useState<number | undefined>(undefined);
     const [volumePorUnidade, setVolumePorUnidade] = useState<number | undefined>();
     const [precoCompra, setPrecoCompra] = useState(0);
 
@@ -67,8 +70,8 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
             : `${lineData.quantidade} ${lineData.unidade}`;
         setTipoUnidadeCompra(tipo);
 
-        const unidades = lineData.emb_quantidade || lineData.quantidade || 1;
-        setUnidadesPorCompra(unidades);
+        // const unidades = lineData.emb_quantidade || lineData.quantidade || 1;
+        // setUnidadesPorCompra(unidades); // User requested empty start
 
         // Calculate TOTAL purchase price (not unit price!)
         // preco_unitario from invoice is already per kg/liter/unit
@@ -95,20 +98,8 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
 
     const loadFamilias = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/families`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setFamilias(data);
-            }
+            const data = await fetchClient('/products/families');
+            setFamilias(data);
         } catch (err) {
             console.error('Error loading families:', err);
         }
@@ -120,16 +111,8 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
-
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/quick-create`, {
+            await fetchClient('/products/quick-create', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                    'x-tenant-id': tenantId || '',
-                },
                 body: JSON.stringify({
                     nome,
                     familia_id: familiaId,
@@ -140,31 +123,32 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
                         tipo_unidade_compra: tipoUnidadeCompra,
                         unidades_por_compra: Number(unidadesPorCompra),
                         volume_por_unidade: volumePorUnidade ? Number(volumePorUnidade) : undefined,
-                        preco_compra: Number(precoCompra),
+                        preco_compra: 0, // Will be calculated during integration
                     },
                     line_id: lineData.id,
                 }),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                // Display Prisma validation error clearly
-                const errorMessage = errorData.error || errorData.message || 'Erro ao criar produto';
-                throw new Error(errorMessage);
-            }
-
             onSuccess();
             onClose();
         } catch (err: any) {
             console.error('Quick create error:', err);
-            setError(err.message || 'Erro desconhecido ao criar produto');
+            const errorMsg = err.message || 'Erro desconhecido ao criar produto';
+            setError(errorMsg);
+            // Show toast for better visibility
+            toast({
+                variant: "destructive",
+                title: "Erro ao criar produto",
+                description: errorMsg,
+            });
         } finally {
             setLoading(false);
         }
     };
 
     const selectedFamilia = familias.find(f => f.id === familiaId);
-    const precoPorUnidade = unidadesPorCompra > 0 ? precoCompra / unidadesPorCompra : 0;
+    const qtd = unidadesPorCompra || 0;
+    const precoPorUnidade = qtd > 0 ? precoCompra / qtd : 0;
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
@@ -197,7 +181,7 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
 
                         <div>
                             <Label htmlFor="familia">Família</Label>
-                            <Select value={familiaId?.toString()} onValueChange={(v) => setFamiliaId(parseInt(v))}>
+                            <Select value={familiaId?.toString() || ""} onValueChange={(v) => setFamiliaId(parseInt(v))}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Selecionar..." />
                                 </SelectTrigger>
@@ -214,7 +198,7 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
                         <div>
                             <Label htmlFor="subfamilia">Subfamília</Label>
                             <Select
-                                value={subfamiliaId?.toString()}
+                                value={subfamiliaId?.toString() || ""}
                                 onValueChange={(v) => setSubfamiliaId(parseInt(v))}
                                 disabled={!selectedFamilia}
                             >
@@ -262,17 +246,18 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
                             </div>
 
                             <div>
-                                <Label htmlFor="unidades">Unidades por Compra</Label>
+                                <Label htmlFor="unidades">Nº de Itens na Embalagem *</Label>
                                 <Input
                                     id="unidades"
                                     type="number"
                                     step="0.001"
-                                    value={unidadesPorCompra}
+                                    placeholder="Ex: 6, 12, 24..."
+                                    value={unidadesPorCompra || ''}
                                     onChange={(e) => setUnidadesPorCompra(parseFloat(e.target.value))}
                                     required
                                 />
                                 <p className="text-xs text-muted-foreground mt-1">
-                                    Ex: 4 (kg), 0.8 (kg), 20 (un)
+                                    Quantos itens vêm na compra? Ex: <b>6</b> (Pack 6), <b>24</b> (Cx 24), <b>1</b> (Unitário)
                                 </p>
                             </div>
 
@@ -291,46 +276,18 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
                                 </p>
                             </div>
 
-                            <div>
-                                <Label htmlFor="preco">Preço de Compra (c/IVA)</Label>
-                                <Input
-                                    id="preco"
-                                    type="number"
-                                    step="0.01"
-                                    value={precoCompra}
-                                    onChange={(e) => setPrecoCompra(parseFloat(e.target.value))}
-                                    required
-                                />
-                                {lineData.iva_percentual && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        IVA: {lineData.iva_percentual}%
-                                    </p>
-                                )}
-                            </div>
-
-                            <div className="col-span-2 bg-muted p-3 rounded-md space-y-2">
-                                {volumePorUnidade ? (
-                                    <>
-                                        <p className="text-sm font-medium">
-                                            Preço por Unidade Embalagem: {(precoCompra / unidadesPorCompra).toFixed(4)}€/un
+                            <div className="col-span-2 bg-blue-50 p-4 rounded-md space-y-2 border border-blue-100">
+                                <div className="flex items-start gap-3">
+                                    <div className="bg-blue-100 p-1.5 rounded-full mt-0.5">
+                                        <span className="text-blue-600 block w-4 h-4 text-center font-bold text-xs">€</span>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-blue-900">Cálculo Automático de Preço</h4>
+                                        <p className="text-sm text-blue-700 mt-1 leading-relaxed">
+                                            O sistema vai calcular automaticamente o <strong>Preço de Compra</strong> e o <strong>Custo Unitário</strong> baseando-se no Valor Total da linha da fatura assim que aprovar a importação.
                                         </p>
-                                        <p className="text-sm font-medium text-primary">
-                                            Preço Unitário (Produto): {(precoCompra / (unidadesPorCompra * volumePorUnidade)).toFixed(4)}€/{unidadeMedida.toLowerCase()}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            Volume Total: {(unidadesPorCompra * volumePorUnidade).toFixed(3)} {unidadeMedida.toLowerCase()}
-                                        </p>
-                                    </>
-                                ) : (
-                                    <p className="text-sm font-medium">
-                                        Preço Unitário Calculado: {(precoCompra / unidadesPorCompra).toFixed(4)}€/{unidadeMedida.toLowerCase()}
-                                    </p>
-                                )}
-                                {lineData.preco_por_kg && unidadeMedida === 'KG' && (
-                                    <p className="text-xs text-muted-foreground">
-                                        (Sugestão do Gemini: {Number(lineData.preco_por_kg).toFixed(4)}€/kg)
-                                    </p>
-                                )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

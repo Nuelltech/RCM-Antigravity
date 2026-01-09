@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { API_URL } from "@/lib/api";
 
 const PUBLIC_PATHS = ["/", "/auth/login", "/auth/register", "/auth/forgot-password"];
 
@@ -39,7 +40,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
             // Validate token with backend
             try {
-                const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
                 const response = await fetch(`${API_URL}/auth/validate`, {
                     headers: {
                         'Authorization': `Bearer ${token}`,

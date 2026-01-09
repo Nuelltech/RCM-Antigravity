@@ -102,9 +102,20 @@ export function PurchaseVariationsModal({
         if (!editingVariation) return;
 
         try {
+            // Ensure numbers are numbers (handle Prisma Decimal strings) and include required produto_id
+            const payload = {
+                ...formData,
+                produto_id: parseInt(produtoId),
+                unidades_por_compra: Number(formData.unidades_por_compra),
+                preco_compra: Number(formData.preco_compra),
+                volume_por_unidade: formData.volume_por_unidade ? Number(formData.volume_por_unidade) : undefined,
+                fornecedor: formData.fornecedor || undefined,
+                codigo_fornecedor: formData.codigo_fornecedor || undefined,
+            };
+
             await fetchClient(`/products/variations/${editingVariation.id}`, {
                 method: "PUT",
-                body: JSON.stringify(formData),
+                body: JSON.stringify(payload),
             });
 
             alert("✅ Variação atualizada com sucesso!");

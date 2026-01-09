@@ -73,30 +73,52 @@ export class IntelligentParserRouter {
         // Step 3b: Fallback to Gemini with retry logic
         console.log(`[IntelligentRouter] Using Gemini AI`);
 
+        // Step 3b: Fallback to Gemini with retry logic and model fallback
+        console.log(`[IntelligentRouter] Using Gemini AI`);
+
         let geminiResult: ParsedInvoice | null = null;
         let lastError: any = null;
-        const maxRetries = 3;
-        const retryDelays = [2000, 4000, 8000]; // 2s, 4s, 8s
 
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
+        // Strategy: 
+        // Attempt 1: Gemini 2.5 (Primary)
+        // Attempt 2: Gemini 2.5 (Retry after 5s)
+        // Attempt 3: Gemini 1.5 (Backup)
+        // Attempt 4: Gemini 1.5 (Retry after 10s)
+
+        const attempts = [
+            { model: 'gemini-2.5-flash', delayBefore: 0 },
+            { model: 'gemini-2.5-flash', delayBefore: 5000 },
+            { model: 'gemini-1.5-flash', delayBefore: 2000 }, // Switch model
+            { model: 'gemini-1.5-flash', delayBefore: 10000 }
+        ];
+
+        for (let i = 0; i < attempts.length; i++) {
+            const { model, delayBefore } = attempts[i];
+
+            if (delayBefore > 0) {
+                console.log(`[IntelligentRouter] Waiting ${delayBefore}ms before next attempt...`);
+                await new Promise(resolve => setTimeout(resolve, delayBefore));
+            }
+
             try {
-                console.log(`[IntelligentRouter] Gemini attempt ${attempt + 1}/${maxRetries}`);
-                geminiResult = await this.geminiParser.parseInvoice(ocrText);
-                console.log(`[IntelligentRouter] Gemini succeeded on attempt ${attempt + 1}`);
-                break; // Success!
+                console.log(`[IntelligentRouter] Gemini attempt ${i + 1}/${attempts.length} using model: ${model}`);
+                const result = await this.geminiParser.parseInvoice(ocrText, model);
+
+                // Validate result BEFORE accepting it
+                if (this.validateParsedData(result)) {
+                    geminiResult = result;
+                    console.log(`[IntelligentRouter] Gemini succeeded on attempt ${i + 1} with model ${model}`);
+                    break; // Success!
+                } else {
+                    console.log(`[IntelligentRouter] Gemini returned empty/invalid data on attempt ${i + 1}`);
+                    lastError = new Error('Gemini returned invalid data (no line items)');
+                }
             } catch (error: any) {
                 lastError = error;
                 const is503 = error.status === 503 || error.message?.includes('503') || error.message?.includes('overloaded');
+                console.warn(`[IntelligentRouter] Error on attempt ${i + 1} (${model}): ${is503 ? '503 Service Unavailable' : error.message}`);
 
-                if (is503 && attempt < maxRetries - 1) {
-                    const delay = retryDelays[attempt];
-                    console.log(`[IntelligentRouter] Gemini 503 error, retrying in ${delay}ms...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                } else if (attempt < maxRetries - 1) {
-                    console.log(`[IntelligentRouter] Gemini error (not 503), retrying immediately...`);
-                } else {
-                    console.error(`[IntelligentRouter] Gemini failed after ${maxRetries} attempts:`, error.message);
-                }
+                // If 503, we definitely want to proceed to the next attempt (which might be a wait or model switch)
             }
         }
 
@@ -121,7 +143,7 @@ export class IntelligentParserRouter {
             }
 
             // Both failed - throw the last Gemini error
-            throw new Error(`Invoice parsing failed after ${maxRetries} Gemini attempts and template fallback. Last error: ${lastError?.message || 'Unknown error'}`);
+            throw new Error(`Invoice parsing failed after ${attempts.length} Gemini attempts and template fallback. Last error: ${lastError?.message || 'Unknown error'}`);
         }
 
         // Step 4: Learn from Gemini - create or update template

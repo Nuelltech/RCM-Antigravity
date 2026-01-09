@@ -31,12 +31,22 @@ export default function PurchasesPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [dateRange, setDateRange] = useState({
-        start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
-        end: format(new Date(), "yyyy-MM-dd"),
+        start: "",
+        end: "",
     });
 
     useEffect(() => {
-        loadData();
+        // Set dates on client only to avoid hydration mismatch
+        setDateRange({
+            start: format(subDays(new Date(), 30), "yyyy-MM-dd"),
+            end: format(new Date(), "yyyy-MM-dd"),
+        });
+    }, []);
+
+    useEffect(() => {
+        if (dateRange.start && dateRange.end) {
+            loadData();
+        }
     }, [dateRange, currentPage]);
 
     const loadData = async () => {
@@ -310,7 +320,7 @@ export default function PurchasesPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3">
-                                        {data?.topSuppliers?.map((supplier: any, idx: number) => (
+                                        {data?.topSuppliers?.map((supplier: any) => (
                                             <div key={supplier.id} className="border-b pb-2">
                                                 <div className="flex justify-between items-start mb-1">
                                                     <span className="font-medium text-sm truncate flex-1">

@@ -610,7 +610,9 @@ class MenuService {
             throw new Error('Item do menu não encontrado');
         }
 
-        // Check if there are sales for this item
+        // 1. ARCHIVAL TRIGGERS - Historical Data
+
+        // Check Sales History
         const salesCount = await prisma.venda.count({
             where: {
                 menu_item_id: menuItemId,
@@ -621,7 +623,7 @@ class MenuService {
         await menuCache.invalidateTenant(this.tenantId);
 
         if (salesCount > 0) {
-            // Soft delete by setting ativo to false
+            // SOFT DELETE (Archive)
             await prisma.menuItem.update({
                 where: { id: menuItemId },
                 data: { ativo: false },
@@ -629,18 +631,27 @@ class MenuService {
 
             return {
                 success: true,
-                message: `Item desativado (${salesCount} vendas associadas)`,
+                message: `Item arquivado (${salesCount} vendas associadas).`,
+                action: 'archived'
             };
         }
 
-        // Hard delete if no sales
+        // 2. HARD DELETE - Clean Slate
+
+        // Clean up POS mappings first (Safe Clean)
+        await prisma.mapeamentoPos.deleteMany({
+            where: { menu_item_id: menuItemId }
+        });
+
+        // Delete Item
         await prisma.menuItem.delete({
             where: { id: menuItemId },
         });
 
         return {
             success: true,
-            message: 'Item removido do menu',
+            message: 'Item eliminado permanentemente.',
+            action: 'deleted'
         };
     }
 
@@ -913,7 +924,7 @@ export async function menuRoutes(app: FastifyInstance) {
 
         try {
             const result = await service.delete(menuItemId);
-            return reply.send(result);
+            return result;
         } catch (error: any) {
             return reply.status(400).send({ error: error.message });
         }

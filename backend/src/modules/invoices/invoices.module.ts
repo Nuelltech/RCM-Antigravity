@@ -454,6 +454,24 @@ async function processInvoiceAsync(faturaId: number, filepath: string, tenantId:
 
         console.log(`[ProcessInvoice] Invoice ${faturaId} processing completed successfully!`);
 
+        // 🔔 NOTIFICATION: Invoice ready for review
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`📋 FATURA PRONTA PARA REVISÃO`);
+        console.log(`   ID: ${faturaId}`);
+        console.log(`   Fornecedor: ${parsed.header.fornecedorNome || 'N/A'}`);
+        console.log(`   Nº Fatura: ${parsed.header.numeroFatura || 'N/A'}`);
+        console.log(`   Linhas: ${parsed.lineItems.length}`);
+        console.log(`   Total: €${parsed.header.totalComIva || 'N/A'}`);
+        console.log(`${'='.repeat(60)}\n`);
+
+        // TODO: Implement real-time notification (WebSocket/SSE) to frontend
+        // await notificationService.send(tenantId, {
+        //     type: 'INVOICE_READY',
+        //     faturaId,
+        //     title: 'Fatura Pronta',
+        //     message: `Fatura ${parsed.header.numeroFatura} pronta para revisão`
+        // });
+
     } catch (error: any) {
         console.error(`[ProcessInvoice] ERROR for invoice ${faturaId}:`, error);
         console.error(`[ProcessInvoice] Error stack:`, error.stack);
