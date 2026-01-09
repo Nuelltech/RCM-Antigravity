@@ -43,6 +43,12 @@ server.setSerializerCompiler(serializerCompiler);
 async function main() {
     await server.register(cors, {
         origin: (origin, cb) => {
+            // Allow requests without origin header (health checks, same-origin, internal requests)
+            if (!origin) {
+                cb(null, true);
+                return;
+            }
+
             // In production, whitelist specific domains
             if (env.NODE_ENV === 'production') {
                 const allowedOrigins = [
@@ -56,7 +62,7 @@ async function main() {
                 ];
 
                 const isAllowed = allowedOrigins.some(pattern =>
-                    typeof pattern === 'string' ? pattern === origin : pattern.test(origin || '')
+                    typeof pattern === 'string' ? pattern === origin : pattern.test(origin)
                 );
 
                 if (isAllowed) {
