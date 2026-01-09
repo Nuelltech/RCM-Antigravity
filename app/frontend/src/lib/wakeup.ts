@@ -4,10 +4,7 @@
  * Sends a ping to the backend to prevent cold start on login page
  */
 
-// Client-side: Always use relative path to use proxy
-const BACKEND_URL = '';
-
-const PING_ENDPOINT = '/api/health';
+import { API_URL } from './api';
 
 /**
  * Ping the backend to wake it up from hibernation
@@ -19,7 +16,8 @@ export async function wakeUpBackend(): Promise<void> {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
 
-        await fetch(`${BACKEND_URL}${PING_ENDPOINT}`, {
+        // Use API_URL from api.ts to ensure correct URL in both dev and production
+        await fetch(`${API_URL}/health`, {
             method: 'GET',
             signal: controller.signal,
         });
