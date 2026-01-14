@@ -1,24 +1,31 @@
-
-import { View, Text, TextInput, TouchableOpacity } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useState } from 'react';
 import { useAuth } from '../../lib/auth';
+import { router } from 'expo-router';
 import api from '../../lib/api';
+import { TextInput, Button } from '../../components/base';
+import { theme } from '../../ui/theme';
+import { spacing } from '../../ui/spacing';
+import { typography } from '../../ui/typography';
 
 export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
     const { login } = useAuth();
 
     const handleLogin = async () => {
         if (!email || !password) {
-            alert('Please enter email and password');
+            alert('Por favor, insira email e password');
             return;
         }
 
         try {
+            setLoading(true);
             const response = await api.post('/api/auth/login', { email, password });
 
-            // Backend returns { token, user, ... } NOT accessToken
+            // Backend returns { token, user, ... }
             const { token, user } = response.data;
 
             if (!token) {
@@ -26,52 +33,95 @@ export default function LoginScreen() {
             }
 
             await login(token, user);
+
+            // Redirect to dashboard after successful login
+            router.replace('/(tabs)/dashboard');
         } catch (error: any) {
             console.error('Login failed', error);
             const url = api.defaults.baseURL + '/api/auth/login';
-            alert(`Login Failed (404)\nTrying to reach:\n${url}\n\nCheck if Backend URL is correct.`);
+            alert(`Login Failed\nVerifique se o Backend está acessível:\n${url}`);
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <View className="flex-1 justify-center px-8 bg-slate-900">
-            <View className="mb-10">
-                <Text className="text-3xl font-bold text-white text-center">RCM Mobile</Text>
-                <Text className="text-slate-400 text-center mt-2">Login to your workspace</Text>
-            </View>
+        <KeyboardAvoidingView
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+            <View style={styles.content}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Text style={styles.logo}>RCM Mobile</Text>
+                    <Text style={styles.subtitle}>Faça login no seu workspace</Text>
+                </View>
 
-            <View className="space-y-4">
-                <View>
-                    <Text className="text-slate-300 mb-2 font-medium">Email</Text>
+                {/* Form */}
+                <View style={styles.form}>
                     <TextInput
-                        className="w-full bg-slate-800 text-white rounded-lg p-4 border border-slate-700 focus:border-orange-500"
-                        placeholder="admin@example.com"
-                        placeholderTextColor="#64748b"
+                        label="Email"
                         value={email}
                         onChangeText={setEmail}
-                        autoCapitalize="none"
+                        placeholder="admin@example.com"
+                        keyboardType="email-address"
+                        style={styles.input}
                     />
-                </View>
 
-                <View>
-                    <Text className="text-slate-300 mb-2 font-medium">Password</Text>
                     <TextInput
-                        className="w-full bg-slate-800 text-white rounded-lg p-4 border border-slate-700 focus:border-orange-500"
-                        placeholder="••••••••"
-                        placeholderTextColor="#64748b"
+                        label="Password"
                         value={password}
                         onChangeText={setPassword}
+                        placeholder="••••••••"
                         secureTextEntry
+                        style={styles.input}
                     />
-                </View>
 
-                <TouchableOpacity
-                    className="w-full bg-orange-600 p-4 rounded-lg mt-6"
-                    onPress={handleLogin}
-                >
-                    <Text className="text-white text-center font-bold text-lg">Sign In</Text>
-                </TouchableOpacity>
+                    <Button
+                        onPress={handleLogin}
+                        loading={loading}
+                        disabled={loading}
+                        style={styles.loginButton}
+                    >
+                        Entrar
+                    </Button>
+                </View>
             </View>
-        </View>
+        </KeyboardAvoidingView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.backgroundDark,
+    },
+    content: {
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: spacing.xl,
+    },
+    header: {
+        marginBottom: spacing.xxl,
+    },
+    logo: {
+        ...typography.h1,
+        color: theme.colors.textInverse,
+        textAlign: 'center',
+    },
+    subtitle: {
+        color: theme.colors.textLight,
+        textAlign: 'center',
+        marginTop: spacing.sm,
+        fontSize: 14,
+    },
+    form: {
+        gap: spacing.md,
+    },
+    input: {
+        marginBottom: spacing.sm,
+    },
+    loginButton: {
+        marginTop: spacing.lg,
+    },
+});

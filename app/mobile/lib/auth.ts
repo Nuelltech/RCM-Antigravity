@@ -2,6 +2,31 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
+import { Platform } from 'react-native';
+
+// Cross-platform storage wrapper
+const storage = {
+    async getItem(key: string): Promise<string | null> {
+        if (Platform.OS === 'web') {
+            return localStorage.getItem(key);
+        }
+        return await SecureStore.getItemAsync(key);
+    },
+    async setItem(key: string, value: string): Promise<void> {
+        if (Platform.OS === 'web') {
+            localStorage.setItem(key, value);
+        } else {
+            await SecureStore.setItemAsync(key, value);
+        }
+    },
+    async removeItem(key: string): Promise<void> {
+        if (Platform.OS === 'web') {
+            localStorage.removeItem(key);
+        } else {
+            await SecureStore.deleteItemAsync(key);
+        }
+    }
+};
 
 interface AuthState {
     user: any | null;
@@ -15,41 +40,60 @@ interface AuthState {
 export const useAuth = create<AuthState>((set) => ({
     user: null,
     isAuthenticated: false,
-    isLoading: true, // Start in loading state to check storage
+    isLoading: true,
 
     login: async (token, userData) => {
-        console.log('[AuthStore] Login called with token:', typeof token, token?.substring(0, 10) + '...');
-        if (typeof token !== 'string') {
-            console.error('[AuthStore] Token is not a string:', token);
-            token = String(token);
-        }
-        await SecureStore.setItemAsync('accessToken', token);
-        // In a real app, you might also store refresh tokens
+        await storage.setItem('accessToken', token);
         set({ user: userData, isAuthenticated: true });
-        router.replace('/(tabs)/dashboard');
+        // Navigation should be handled manually in the login screen
     },
 
     logout: async () => {
-        await SecureStore.deleteItemAsync('accessToken');
+        await storage.removeItem('accessToken');
         set({ user: null, isAuthenticated: false });
-        router.replace('/(auth)/login');
+        // Navigation should be handled manually
     },
 
     checkSession: async () => {
         try {
             set({ isLoading: true });
-            const token = await SecureStore.getItemAsync('accessToken');
+            const token = await storage.getItem('accessToken');
+
             if (token) {
-                // Validate token with backend or just assume valid for offline-first
-                // For now, assume valid if exists
-                set({ isAuthenticated: true });
-                // Optionally fetch user profile again
+                // Decode JWT to get user data and check expiration
+                try {
+                    const payload = JSON.parse(atob(token.split('.')[1]));
+
+                    // Check if token is expired
+                    const now = Math.floor(Date.now() / 1000);
+                    if (payload.exp && payload.exp < now) {
+                        console.log('[Auth] Token expired, clearing session');
+                        await storage.removeItem('accessToken');
+                        set({ user: null, isAuthenticated: false });
+                        return;
+                    }
+
+                    const userData = {
+                        id: payload.userId || payload.sub,
+                        name: payload.name,
+                        email: payload.email,
+                        tenantName: payload.tenantName || payload.tenant_name,
+                    };
+
+                    console.log('[Auth] Session valid, user:', userData);
+                    set({ user: userData, isAuthenticated: true });
+                } catch (decodeError) {
+                    console.error('[Auth] Failed to decode token, clearing session', decodeError);
+                    await storage.removeItem('accessToken');
+                    set({ user: null, isAuthenticated: false });
+                }
             } else {
-                set({ isAuthenticated: false });
+                console.log('[Auth] No token found');
+                set({ user: null, isAuthenticated: false });
             }
         } catch (e) {
-            console.error('Session check failed', e);
-            set({ isAuthenticated: false });
+            console.error('[Auth] Session check failed', e);
+            set({ user: null, isAuthenticated: false });
         } finally {
             set({ isLoading: false });
         }

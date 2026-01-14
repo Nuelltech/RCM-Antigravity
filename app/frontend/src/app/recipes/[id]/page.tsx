@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { fetchClient } from "@/lib/api";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,15 +10,63 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Edit } from "lucide-react";
 import Link from "next/link";
 
+// Dynamic imports for PDF components
+const ExportButton = dynamic(
+    () => import('@/components/ExportButton').then(mod => ({ default: mod.ExportButton })),
+    { ssr: false }
+);
+// RecipePDF must be imported statically because @react-pdf/renderer cannot process dynamic LoadableComponent wrappers
+import { RecipePDF } from '@/components/pdf/RecipePDF';
+
 export default function ViewRecipePage() {
     const params = useParams();
     const router = useRouter();
     const [recipe, setRecipe] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [restaurantName, setRestaurantName] = useState('');
+    const [userName, setUserName] = useState('');
+    const [pdfImage, setPdfImage] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         loadRecipe();
+        // Get restaurant and user info
+        setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
+        setUserName(localStorage.getItem('userName') || 'Sistema');
     }, [params.id]);
+
+    useEffect(() => {
+        const convertImageToBase64 = async () => {
+            if (recipe?.imagem_url) {
+                try {
+                    // Check if it's already a data URL
+                    if (recipe.imagem_url.startsWith('data:')) {
+                        setPdfImage(recipe.imagem_url);
+                        return;
+                    }
+
+                    // Attempt to fetch via proxy or directly if CORS allows
+                    // Note: Direct fetch might fail if CORS is not enable on the image server.
+                    // We try to fetch the image. If it fails, we fall back to the original URL 
+                    // and hope react-pdf can handle it (or it will just fail to render).
+                    const response = await fetch(recipe.imagem_url);
+                    const blob = await response.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setPdfImage(reader.result as string);
+                    };
+                    reader.readAsDataURL(blob);
+                } catch (error) {
+                    console.warn("Failed to convert image to base64 for PDF:", error);
+                    // Fallback to original URL if fetch fails (e.g. CORS)
+                    setPdfImage(recipe.imagem_url);
+                }
+            } else {
+                setPdfImage(undefined);
+            }
+        };
+
+        convertImageToBase64();
+    }, [recipe?.imagem_url]);
 
     const loadRecipe = async () => {
         try {
@@ -63,12 +112,78 @@ export default function ViewRecipePage() {
                         </Link>
                         <h1 className="text-3xl font-bold">{recipe.nome}</h1>
                     </div>
-                    <Link href={`/recipes/edit/${recipe.id}`}>
-                        <Button>
-                            <Edit className="w-4 h-4 mr-2" />
-                            Editar Receita
-                        </Button>
-                    </Link>
+                    <div className="flex gap-2">
+                        {/* PDF Export Button */}
+                        {ExportButton && RecipePDF && (
+                            <ExportButton
+                                pdfDocument={
+                                    <RecipePDF
+                                        restaurantName={restaurantName}
+                                        recipe={{
+                                            codigo: String(recipe.id || 'N/A'),
+                                            nome: String(recipe.nome || 'Sem Nome'),
+                                            categoria: String(recipe.categoria || 'Geral'),
+                                            porcoes: Number(recipe.numero_porcoes || 1),
+                                            tempo_preparo: recipe.tempo_preparacao ? Number(recipe.tempo_preparacao) : undefined,
+                                            custo_total: Number(recipe.custo_total || 0),
+                                            custo_por_porcao: Number(recipe.custo_por_porcao || 0),
+                                            pvp_sugerido: undefined,
+                                            cmv_percentual: undefined,
+                                            margem: undefined,
+                                            tipo: String(recipe.tipo || 'Final'),
+                                            dificuldade: String(recipe.dificuldade || 'Média'),
+                                            quantidade_produzida: Number(recipe.quantidade || 0),
+                                            unidade_produzida: String(recipe.unidade_medida || 'KG'),
+                                            ingredientes: (recipe.ingredientes || [])
+                                                .filter((i: any) => i && i.produto_id)
+                                                .map((ing: any) => {
+                                                    const qtdBruta = Number(ing.quantidade_bruta || 0);
+                                                    const qtdLiq = Number(ing.quantidade_liquida || 0);
+                                                    const rentabilidade = qtdBruta > 0 ? (qtdLiq / qtdBruta) * 100 : 0;
+                                                    return {
+                                                        produto_codigo: String(ing.produto?.codigo || 'N/A'),
+                                                        produto_nome: String(ing.produto?.nome || 'Item Desconhecido'),
+                                                        quantidade_bruta: qtdBruta,
+                                                        quantidade_liquida: qtdLiq,
+                                                        rentabilidade: rentabilidade,
+                                                        unidade_medida: String(ing.produto?.unidade_medida || 'un'),
+                                                        preco_unitario: Number(ing.produto?.preco_unitario || 0),
+                                                        custo_total: Number(ing.custo_ingrediente || 0),
+                                                        notas: String(ing.notas || '-'),
+                                                    };
+                                                }),
+                                            prePreparos: (recipe.ingredientes || [])
+                                                .filter((i: any) => i && i.receita_preparo_id)
+                                                .map((ing: any) => ({
+                                                    nome: String(ing.receitaPreparo?.nome || ing.receita_preparo?.nome || 'Pré-Preparo Desconhecido'),
+                                                    quantidade: Number(ing.quantidade_bruta || 0),
+                                                    unidade: String(ing.receitaPreparo?.unidade_medida || ing.receita_preparo?.unidade_medida || 'un'),
+                                                    custo_porcao: Number(ing.receitaPreparo?.custo_por_porcao || ing.receita_preparo?.custo_por_porcao || 0),
+                                                    custo_total: Number(ing.custo_ingrediente || 0),
+                                                })),
+                                            modo_preparo: (recipe.etapas || [])
+                                                .map((e: any) => `${e.numero_etapa || '-'}. ${e.descricao || ''}`)
+                                                .join('\n'),
+                                            alergenos: [],
+                                            notas: String(recipe.descricao || ''),
+                                        }}
+                                        generatedBy={userName}
+                                        imageUrl={recipe.imagem_url}
+                                    />
+                                }
+                                fileName={`receita-${recipe.nome?.toLowerCase().replace(/\s+/g, '-')}`}
+                                disabled={loading}
+                            />
+                        )}
+
+                        {/* Edit Button */}
+                        <Link href={`/recipes/edit/${recipe.id}`}>
+                            <Button>
+                                <Edit className="w-4 h-4 mr-2" />
+                                Editar Receita
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 {/* Image and Video Side by Side */}

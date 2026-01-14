@@ -1,4 +1,5 @@
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface KPICardProps {
@@ -10,6 +11,7 @@ interface KPICardProps {
     isCurrency?: boolean;
     icon?: React.ReactNode;
     description?: string;
+    valueClassName?: string;
 }
 
 export function KPICard({
@@ -20,7 +22,8 @@ export function KPICard({
     isPercentage = false,
     isCurrency = false,
     icon,
-    description
+    description,
+    valueClassName
 }: KPICardProps) {
     const displayValue = isPercentage
         ? `${value}%`
@@ -37,7 +40,7 @@ export function KPICard({
                 {icon && <div className="text-gray-400">{icon}</div>}
             </CardHeader>
             <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
+                <div className={`text-2xl font-bold ${valueClassName || 'text-gray-900'}`}>
                     {displayValue}
                 </div>
                 {(change !== undefined && trend) ? (

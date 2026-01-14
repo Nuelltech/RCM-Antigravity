@@ -10,7 +10,7 @@ const CACHE_PREFIX = 'menu:list';
 
 interface MenuCacheOptions {
     categoria?: string;
-    ativo?: boolean;
+    status?: 'active' | 'inactive' | 'all';
 }
 
 function buildCacheKey(tenantId: number, options: MenuCacheOptions): string {
@@ -20,7 +20,7 @@ function buildCacheKey(tenantId: number, options: MenuCacheOptions): string {
         parts.push(`cat:${options.categoria}`);
     }
 
-    parts.push(`active:${options.ativo ?? true}`);
+    parts.push(`status:${options.status ?? 'active'}`);
 
     return parts.join(':');
 }

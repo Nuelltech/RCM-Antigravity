@@ -144,6 +144,12 @@ export async function salesRoutes(app: FastifyInstance) {
             for (const item of items) {
                 const menuItem = menuItems.find((mi: any) => mi.id === item.id);
                 if (menuItem) {
+                    // Calculate cost from MenuItem: custo = pvp - margem_bruta
+                    const pvp = Number(menuItem.pvp || 0);
+                    const margemBruta = Number(menuItem.margem_bruta || 0);
+                    const custoUnitario = pvp - margemBruta;
+                    const custoTotal = custoUnitario * item.qty;
+
                     await db.create('venda', {
                         data_venda: dataVenda,
                         tipo: 'ITEM',
@@ -151,6 +157,7 @@ export async function salesRoutes(app: FastifyInstance) {
                         quantidade: item.qty,
                         pvp_praticado: menuItem.pvp,
                         receita_total: Number(menuItem.pvp) * item.qty,
+                        custo_total: custoTotal, // ✅ Store historical cost
                         metodo_entrada: 'Manual',
                         observacoes: comment,
                     });

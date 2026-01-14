@@ -63,9 +63,9 @@ class MenuService {
         this.tenantId = tenantId;
     }
 
-    async list(categoria?: string, onlyActive: boolean = true) {
+    async list(categoria?: string, status: 'active' | 'inactive' | 'all' = 'active') {
         // Check cache first
-        const cacheOptions = { categoria, ativo: onlyActive };
+        const cacheOptions = { categoria, status };
         const cached = await menuCache.get(this.tenantId, cacheOptions);
         if (cached) {
             return cached;
@@ -75,9 +75,12 @@ class MenuService {
             tenant_id: this.tenantId,
         };
 
-        if (onlyActive) {
+        if (status === 'active') {
             whereClause.ativo = true;
+        } else if (status === 'inactive') {
+            whereClause.ativo = false;
         }
+        // 'all' implies no filter on 'ativo'
 
         if (categoria) {
             whereClause.categoria_menu = categoria;
@@ -773,6 +776,62 @@ class MenuService {
             imagem_url: formato.produto.imagem_url,
         }));
     }
+
+    async getCategoryStats() {
+        // Fetch all active menu items
+        const menuItems = await prisma.menuItem.findMany({
+            where: {
+                tenant_id: this.tenantId,
+                ativo: true,
+            },
+            include: {
+                receita: {
+                    select: { custo_por_porcao: true }
+                },
+                combo: {
+                    select: { custo_total: true }
+                },
+                formatoVenda: {
+                    select: { custo_unitario: true }
+                }
+            }
+        });
+
+        // Group by category and calculate totals
+        const categoryStats: Record<string, { totalInfo: number, totalPrice: number, count: number }> = {};
+
+        menuItems.forEach(item => {
+            const category = item.categoria_menu || 'Sem Categoria';
+            const price = Number(item.pvp) || 0;
+
+            let cost = 0;
+            if (item.receita_id && item.receita) {
+                cost = Number(item.receita.custo_por_porcao);
+            } else if (item.combo_id && item.combo) {
+                cost = Number(item.combo.custo_total);
+            } else if (item.formato_venda_id && item.formatoVenda) {
+                cost = Number(item.formatoVenda.custo_unitario);
+            }
+
+            if (!categoryStats[category]) {
+                categoryStats[category] = { totalInfo: 0, totalPrice: 0, count: 0 };
+            }
+
+            categoryStats[category].totalInfo += cost; // Using totalInfo to mean total Cost temporarily, clarified in return
+            categoryStats[category].totalPrice += price;
+            categoryStats[category].count += 1;
+        });
+
+        // Format results with CMV%
+        return Object.entries(categoryStats).map(([category, stats]) => {
+            const cmv = stats.totalPrice > 0 ? (stats.totalInfo / stats.totalPrice) * 100 : 0;
+            return {
+                category,
+                cmv: Number(cmv.toFixed(1)),
+                count: stats.count
+            };
+        }).sort((a, b) => b.count - a.count); // Sort by most items
+    }
 }
 
 // Routes
@@ -782,7 +841,7 @@ export async function menuRoutes(app: FastifyInstance) {
         schema: {
             querystring: z.object({
                 categoria: z.string().optional(),
-                ativo: z.enum(['true', 'false']).optional(),
+                status: z.enum(['active', 'inactive', 'all']).optional(),
             }),
             tags: ['Menu'],
             security: [{ bearerAuth: [] }],
@@ -790,9 +849,20 @@ export async function menuRoutes(app: FastifyInstance) {
     }, async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();
         const service = new MenuService(req.tenantId);
-        const { categoria, ativo } = req.query;
-        const onlyActive = ativo !== 'false';
-        return service.list(categoria, onlyActive);
+        const { categoria, status } = req.query;
+        return service.list(categoria, status || 'active');
+    });
+
+    // GET /menu/stats - Get menu category statistics
+    app.withTypeProvider<ZodTypeProvider>().get('/stats', {
+        schema: {
+            tags: ['Menu'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const service = new MenuService(req.tenantId);
+        return service.getCategoryStats();
     });
 
     // GET /menu/available-recipes - Get recipes available to add to menu

@@ -212,8 +212,10 @@ export class AuthService {
         const token = this.app.jwt.sign({
             userId: user.id,
             email: user.email,
+            name: user.nome,
             role: defaultTenant.role, // Role from UserTenant
             tenantId: defaultTenant.tenant_id,
+            tenantName: defaultTenant.tenant.nome_restaurante,
         });
 
         return {
@@ -262,7 +264,9 @@ export class AuthService {
         const newToken = this.app.jwt.sign({
             userId: userTenant.user.id,
             email: userTenant.user.email,
+            name: userTenant.user.nome,
             tenantId: targetTenantId,
+            tenantName: userTenant.tenant.nome_restaurante,
             role: userTenant.role, // Role specific to this tenant
         });
 

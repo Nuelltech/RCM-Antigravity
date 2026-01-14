@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { KPICard } from '@/components/dashboard/KPICard';
 import { SalesChart } from '@/components/dashboard/SalesChart';
 import { TopRecipesGrid } from '@/components/dashboard/TopRecipesGrid';
 import { SystemAlerts } from '@/components/dashboard/SystemAlerts';
+import { SkeletonKPICard } from '@/components/dashboard/SkeletonKPICard';
+import { SkeletonChart } from '@/components/dashboard/SkeletonChart';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { fetchClient } from '@/lib/api';
-import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle, Building2 } from 'lucide-react';
+import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle, Building2, FileDown } from 'lucide-react';
+import { format, subDays } from 'date-fns';
+import { DashboardPDF } from '@/components/pdf/DashboardPDF';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ExportPDFModal } from '@/components/dashboard/ExportPDFModal';
 
 interface DashboardStats {
     vendasMes: number;
@@ -21,6 +28,8 @@ interface DashboardStats {
         valor: number;
         periodo: string;
     };
+    taxaOcupacao: number;
+    lucroBruto: number;
 }
 
 export default function DashboardPage() {
@@ -31,15 +40,42 @@ export default function DashboardPage() {
         comprasMes: 0,
         topItems: [],
         categories: [],
-        custoEstrutura: { valor: 0, periodo: 'Mês' }
+        custoEstrutura: { valor: 0, periodo: 'Mês' },
+        taxaOcupacao: 0,
+        lucroBruto: 0
     });
     const [loading, setLoading] = useState(true);
     const [activeAlerts, setActiveAlerts] = useState(0);
+    const [exportModalOpen, setExportModalOpen] = useState(false);
+
+    // Date range for export
+    const [dateRange, setDateRange] = useState({
+        from: '',
+        to: '',
+    });
+
+    // Restaurant info for PDF
+    const [restaurantName, setRestaurantName] = useState('');
+    const [userName, setUserName] = useState('');
+
+    // Data for PDF
+    const [alerts, setAlerts] = useState<any[]>([]);
+    const [salesData, setSalesData] = useState<any[]>([]);
 
     // ✅ FIX: Track tenantId to reload data when it changes
     const [tenantId, setTenantId] = useState<string | null>(null);
 
     useEffect(() => {
+        // Set dates on client only to avoid hydration mismatch
+        setDateRange({
+            from: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+            to: format(new Date(), 'yyyy-MM-dd'),
+        });
+
+        // Get restaurant and user info
+        setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
+        setUserName(localStorage.getItem('userName') || 'Sistema');
+
         // Get current tenantId from localStorage
         const currentTenantId = localStorage.getItem('tenantId');
         setTenantId(currentTenantId);
@@ -48,27 +84,37 @@ export default function DashboardPage() {
     useEffect(() => {
         if (!tenantId) return; // Don't load if no tenant selected
 
-        // ✅ FIX: Reset state before loading new data
-        setStats({
-            vendasMes: 0,
-            custoMercadoria: 0,
-            cmvTeorico: 0,
-            comprasMes: 0,
-            topItems: [],
-            categories: [],
-            custoEstrutura: { valor: 0, periodo: 'Mês' }
-        });
-        setActiveAlerts(0);
+        // Don't reset stats to zero - keep previous values during loading
         setLoading(true);
 
-        loadStats();
-        loadAlerts();
-    }, [tenantId]); // ✅ FIX: Reload when tenant changes
+        // Debounced loading
+        const timeoutId = setTimeout(() => {
+            loadStats();
+            loadAlerts();
+            loadSalesChart();
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [tenantId, dateRange]); // ✅ FIX: Reload when tenant or date changes
 
     async function loadStats() {
+        if (!dateRange.from || !dateRange.to) return;
         try {
-            const response = await fetchClient('/dashboard/stats');
-            setStats(response);
+            const response = await fetchClient(`/dashboard/stats?startDate=${dateRange.from}&endDate=${dateRange.to}`);
+            if (response) {
+                setStats({
+                    vendasMes: Number(response.vendasMes || 0),
+                    custoMercadoria: Number(response.custoMercadoria || 0),
+                    cmvTeorico: Number(response.cmvTeorico || 0),
+                    comprasMes: Number(response.comprasMes || 0),
+                    topItems: response.topItems || [],
+                    // Map objects { category: string, ... } to string[]
+                    categories: (response.topCategories || []).map((c: any) => c.category),
+                    custoEstrutura: response.custoEstrutura || { valor: 0, periodo: 'Mês' },
+                    taxaOcupacao: Number(response.taxaOcupacao || 0),
+                    lucroBruto: Number(response.lucroBruto || 0)
+                });
+            }
         } catch (error) {
             console.error('Erro ao carregar estatísticas:', error);
         } finally {
@@ -78,10 +124,24 @@ export default function DashboardPage() {
 
     async function loadAlerts() {
         try {
-            const alerts = await fetchClient('/alerts');
-            setActiveAlerts(alerts.length);
+            const response = await fetchClient('/alerts');
+            setActiveAlerts(response.length);
+            // Pass all alerts to PDF (PDF component handles sorting/filtering)
+            setAlerts(response);
         } catch (error) {
             console.error('Erro ao carregar alertas:', error);
+        }
+    }
+
+    async function loadSalesChart() {
+        try {
+            // Fetch sales data for the selected date range
+            const response = await fetchClient(`/dashboard/sales-chart?startDate=${dateRange.from}&endDate=${dateRange.to}`);
+            setSalesData(response || []);
+        } catch (error) {
+            console.error('Erro ao carregar dados de vendas:', error);
+            // Fallback to empty array
+            setSalesData([]);
         }
     }
 
@@ -89,55 +149,126 @@ export default function DashboardPage() {
         <RoleGuard allowedRoles={["admin", "manager"]}>
             <AppLayout>
                 <div className="space-y-6 p-8">
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-                        <p className="text-muted-foreground">
-                            Visão geral do desempenho do seu restaurante este mês.
-                        </p>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+                            <p className="text-muted-foreground">
+                                Visão geral do desempenho do seu restaurante.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            {/* Date Range Selector */}
+                            <div className="flex items-center gap-2 bg-white p-2 rounded border">
+                                <input
+                                    type="date"
+                                    value={dateRange.from}
+                                    onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
+                                    className="px-2 py-1 text-sm outline-none"
+                                />
+                                <span className="text-gray-400">-</span>
+                                <input
+                                    type="date"
+                                    value={dateRange.to}
+                                    onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
+                                    className="px-2 py-1 text-sm outline-none"
+                                />
+                            </div>
+
+                            {/* Export PDF Button */}
+                            <Button
+                                onClick={() => setExportModalOpen(true)}
+                                disabled={loading}
+                                className="gap-2"
+                            >
+                                <FileDown className="h-4 w-4" />
+                                Exportar PDF
+                            </Button>
+                        </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                        <KPICard
-                            title="Vendas do Mês"
-                            value={`€ ${stats.vendasMes.toFixed(2)}`}
-                            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-                            description="vs. mês anterior"
-                        />
-                        <KPICard
-                            title="CMV Atual"
-                            value={`€ ${stats.custoMercadoria.toFixed(2)}`}
-                            icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />}
-                            description="Custo total de mercadorias"
-                        />
-                        <KPICard
-                            title="CMV %"
-                            value={`${stats.cmvTeorico.toFixed(1)}%`}
-                            icon={<TrendingDown className="h-4 w-4 text-muted-foreground" />}
-                            description="da receita total"
-                        />
-                        <KPICard
-                            title="Compras do Mês"
-                            value={`€ ${(stats.comprasMes || 0).toFixed(2)}`}
-                            icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />}
-                            description="Total de compras"
-                        />
-                        <KPICard
-                            title="Custo de Estrutura"
-                            value={`€ ${stats.custoEstrutura.valor.toFixed(2)}`}
-                            icon={<Building2 className="h-4 w-4 text-muted-foreground" />}
-                            description={`por ${stats.custoEstrutura.periodo}`}
-                        />
-                        <KPICard
-                            title="Alertas Ativos"
-                            value={activeAlerts.toString()}
-                            icon={<AlertTriangle className="h-4 w-4 text-muted-foreground" />}
-                            description="Requerem atenção"
-                        />
+                    {/* First row: 4 KPI cards */}
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        {loading ? (
+                            <>
+                                <SkeletonKPICard />
+                                <SkeletonKPICard />
+                                <SkeletonKPICard />
+                                <SkeletonKPICard />
+                            </>
+                        ) : (
+                            <>
+                                <KPICard
+                                    title="Vendas"
+                                    value={`€ ${(stats.vendasMes || 0).toFixed(2)}`}
+                                    icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+                                    description="No período selecionado"
+                                />
+                                <KPICard
+                                    title="CMV Atual"
+                                    value={`€ ${(stats.custoMercadoria || 0).toFixed(2)}`}
+                                    icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />}
+                                    description="Custo total de mercadorias"
+                                />
+                                <KPICard
+                                    title="CMV %"
+                                    value={`${(stats.cmvTeorico || 0).toFixed(1)}%`}
+                                    icon={<TrendingDown className="h-4 w-4 text-muted-foreground" />}
+                                    description="da receita total"
+                                />
+                                <KPICard
+                                    title="Compras"
+                                    value={`€ ${(stats.comprasMes || 0).toFixed(2)}`}
+                                    icon={<ShoppingBag className="h-4 w-4 text-muted-foreground" />}
+                                    description="No período selecionado"
+                                />
+                            </>
+                        )}
+                    </div>
+
+                    {/* Second row: 3 KPI cards */}
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {loading ? (
+                            <>
+                                <SkeletonKPICard />
+                                <SkeletonKPICard />
+                                <SkeletonKPICard />
+                            </>
+                        ) : (
+                            <>
+                                <KPICard
+                                    title="Custo de Estrutura"
+                                    value={`€ ${(stats.custoEstrutura?.valor || 0).toFixed(2)}`}
+                                    icon={<Building2 className="h-4 w-4 text-muted-foreground" />}
+                                    description="Proporcional ao período"
+                                />
+                                <KPICard
+                                    title="Taxa de Ocupação"
+                                    value={`${(stats.taxaOcupacao || 0).toFixed(1)}%`}
+                                    icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
+                                    description="Pratos principais vendidos"
+                                />
+                                <KPICard
+                                    title="Lucro Bruto"
+                                    value={`€ ${(stats.lucroBruto || 0).toFixed(2)}`}
+                                    valueClassName={(stats.lucroBruto || 0) >= 0 ? "text-green-600" : "text-red-600"}
+                                    icon={<TrendingDown className="h-4 w-4 text-muted-foreground" />}
+                                    description="Vendas - CMV - Estrutura"
+                                />
+                            </>
+                        )}
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                         <div className="col-span-4">
-                            <SalesChart />
+                            {loading ? (
+                                <SkeletonChart />
+                            ) : (
+                                <SalesChart
+                                    startDate={dateRange.from ? new Date(dateRange.from) : new Date()}
+                                    endDate={dateRange.to ? new Date(dateRange.to) : new Date()}
+                                />
+                            )}
                         </div>
                         <div className="col-span-3">
                             <SystemAlerts />
@@ -145,6 +276,37 @@ export default function DashboardPage() {
                     </div>
 
                     <TopRecipesGrid items={stats.topItems} categories={stats.categories} />
+
+                    {/* Export PDF Modal */}
+                    <ExportPDFModal
+                        open={exportModalOpen}
+                        onOpenChange={setExportModalOpen}
+                        pdfDocument={
+                            <DashboardPDF
+                                restaurantName={restaurantName}
+                                dateRange={{
+                                    from: dateRange.from ? new Date(dateRange.from).toLocaleDateString('pt-PT') : '',
+                                    to: dateRange.to ? new Date(dateRange.to).toLocaleDateString('pt-PT') : '',
+                                }}
+                                stats={stats}
+                                activeAlerts={activeAlerts}
+                                salesData={salesData}
+                                topMenuItems={stats.topItems
+                                    ?.filter((item: any) => (item.vendas > 0 || item.cmv > 0))
+                                    .slice(0, 5)
+                                    .map((item: any) => ({
+                                        nome: item.name,
+                                        vendas: item.vendas || 0,
+                                        quantidade: item.quantity || 0,
+                                        cmv: item.cmv || 0,
+                                    })) || []}
+                                alerts={alerts}
+                                generatedBy={userName}
+                                logoUrl="/logo.png"
+                            />
+                        }
+                        fileName={`dashboard-${dateRange.from}-${dateRange.to}`}
+                    />
                 </div>
             </AppLayout>
         </RoleGuard>

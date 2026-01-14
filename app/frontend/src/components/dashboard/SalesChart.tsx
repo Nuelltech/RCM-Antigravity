@@ -2,31 +2,28 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { fetchClient } from '@/lib/api';
 
 interface SalesTrendData {
     date: string;
-    total: number;
+    vendas: number;
+    custos: number;
 }
 
 type Period = '7d' | '30d' | '3m' | '6m' | '1y';
 
-export function SalesChart() {
-    const [period, setPeriod] = useState<Period>('30d');
+interface SalesChartProps {
+    startDate: Date;
+    endDate: Date;
+}
+
+export function SalesChart({ startDate, endDate }: SalesChartProps) {
     const [data, setData] = useState<SalesTrendData[]>([]);
     const [loading, setLoading] = useState(true);
 
     // ✅ FIX: Track tenantId to reload when it changes
     const [tenantId, setTenantId] = useState<string | null>(null);
-
-    const periodLabels: Record<Period, string> = {
-        '7d': 'Últimos 7 dias',
-        '30d': 'Últimos 30 dias',
-        '3m': 'Últimos 3 meses',
-        '6m': 'Últimos 6 meses',
-        '1y': 'Último ano'
-    };
 
     useEffect(() => {
         const currentTenantId = localStorage.getItem('tenantId');
@@ -34,41 +31,27 @@ export function SalesChart() {
     }, []);
 
     useEffect(() => {
-        if (!tenantId) return;
+        if (!tenantId || !startDate || !endDate) return;
         // ✅ FIX: Reset data before loading
         setData([]);
         setLoading(true);
         loadSalesData();
-    }, [period, tenantId]); // ✅ FIX: Added tenantId dependency
+    }, [startDate, endDate, tenantId]); // ✅ FIX: Added dependencies
 
     async function loadSalesData() {
         setLoading(true);
         try {
-            const now = new Date();
-            let startDate: Date;
-
-            switch (period) {
-                case '7d':
-                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-                    break;
-                case '30d':
-                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-                    break;
-                case '3m':
-                    startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-                    break;
-                case '6m':
-                    startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-                    break;
-                case '1y':
-                    startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-                    break;
-            }
-
             const response = await fetchClient(
-                `/sales/dashboard?startDate=${startDate.toISOString()}&endDate=${now.toISOString()}`
+                `/dashboard/sales-chart?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
             );
-            setData(response.trend || []);
+            // API now returns: [{ date: '...', vendas: 0, custos: 0 }, ... ]
+            const rawData = Array.isArray(response) ? response : [];
+            const mappedData = rawData.map((item: any) => ({
+                date: item.date,
+                vendas: Number(item.vendas || 0),
+                custos: Number(item.custos || 0)
+            }));
+            setData(mappedData);
         } catch (error) {
             console.error('Erro ao carregar dados de vendas:', error);
             setData([]);
@@ -83,29 +66,23 @@ export function SalesChart() {
                 day: '2-digit',
                 month: 'short'
             }),
-            sales: item.total
+            vendas: item.vendas,
+            custos: item.custos
         }));
     }, [data]);
 
     const totalSales = useMemo(() => {
-        return data.reduce((sum, d) => sum + d.total, 0);
+        return data.reduce((sum: number, d: SalesTrendData) => sum + d.vendas, 0);
+    }, [data]);
+
+    const totalCosts = useMemo(() => {
+        return data.reduce((sum: number, d: SalesTrendData) => sum + d.custos, 0);
     }, [data]);
 
     return (
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Vendas do Mês</CardTitle>
-                <select
-                    value={period}
-                    onChange={(e) => setPeriod(e.target.value as Period)}
-                    className="text-sm border rounded-md px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                    {Object.entries(periodLabels).map(([key, label]) => (
-                        <option key={key} value={key}>
-                            {label}
-                        </option>
-                    ))}
-                </select>
+                <CardTitle>Vendas vs Custos</CardTitle>
             </CardHeader>
             <CardContent>
                 {loading ? (
@@ -114,7 +91,7 @@ export function SalesChart() {
                     </div>
                 ) : chartData.length === 0 ? (
                     <div className="h-[300px] flex items-center justify-center text-gray-500">
-                        Sem dados de vendas para o período selecionado
+                        Sem dados para o período selecionado
                     </div>
                 ) : (
                     <>
@@ -124,6 +101,10 @@ export function SalesChart() {
                                     <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
                                         <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                    </linearGradient>
+                                    <linearGradient id="colorCosts" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -146,19 +127,36 @@ export function SalesChart() {
                                         borderRadius: '6px',
                                         padding: '8px 12px'
                                     }}
-                                    formatter={(value: number) => [`€${value.toFixed(2)}`, 'Vendas']}
+                                    formatter={(value: number) => `€${value.toFixed(2)}`}
+                                />
+                                <Legend
+                                    formatter={(value) => {
+                                        if (value === 'vendas') return 'Vendas';
+                                        if (value === 'custos') return 'Custos';
+                                        return value;
+                                    }}
                                 />
                                 <Area
                                     type="monotone"
-                                    dataKey="sales"
+                                    dataKey="vendas"
                                     stroke="#3b82f6"
                                     strokeWidth={2}
                                     fill="url(#colorSales)"
+                                    name="Vendas"
+                                />
+                                <Area
+                                    type="monotone"
+                                    dataKey="custos"
+                                    stroke="#ef4444"
+                                    strokeWidth={2}
+                                    fill="url(#colorCosts)"
+                                    name="Custos"
                                 />
                             </AreaChart>
                         </ResponsiveContainer>
                         <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
-                            <span>Total: € {totalSales.toFixed(2)}</span>
+                            <span>Vendas: € {totalSales.toFixed(2)}</span>
+                            <span>Custos: € {totalCosts.toFixed(2)}</span>
                         </div>
                     </>
                 )}

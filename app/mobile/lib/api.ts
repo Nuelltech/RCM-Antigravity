@@ -1,10 +1,24 @@
 
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-// Replace with your production URL or your local machine's IP for dev
-// const API_URL = 'https://rcm-backend.onrender.com';
-const API_URL = 'https://bug-free-tribble-x54g7r7qv9q92xjv-3001.app.github.dev'; // Codespaces Dev URL
+// Cross-platform storage
+const getToken = async (): Promise<string | null> => {
+    if (Platform.OS === 'web') {
+        return localStorage.getItem('accessToken');
+    }
+    return await SecureStore.getItemAsync('accessToken');
+};
+
+// Get API URL from environment or use default
+// For Codespaces, set EXPO_PUBLIC_API_URL in .env
+const API_URL = Constants.expoConfig?.extra?.apiUrl ||
+    process.env.EXPO_PUBLIC_API_URL ||
+    'http://localhost:3001';
+
+console.log('[API] Using API URL:', API_URL);
 
 const api = axios.create({
     baseURL: API_URL,
@@ -14,7 +28,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-    const token = await SecureStore.getItemAsync('accessToken');
+    const token = await getToken();
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
@@ -34,6 +48,11 @@ export const fetchRecipes = async (params: any = {}) => api.get('/api/recipes', 
 export const fetchCombos = async (params: any = {}) => api.get('/api/combos', { params });
 export const fetchMenu = async (params: any = {}) => api.get('/api/menu', { params });
 export const fetchInvoices = async (params: any = {}) => api.get('/api/invoices', { params });
+export const fetchRecipeById = async (id: number) => api.get(`/api/recipes/${id}`);
+export const fetchComboById = async (id: number) => api.get(`/api/combos/${id}`);
+export const fetchMenuById = async (id: number) => api.get(`/api/menu/${id}`);
+export const fetchMenuStats = async () => api.get('/api/menu/stats');
+export const fetchProductById = async (id: number) => api.get(`/api/products/${id}`);
 export const uploadInvoice = async (formData: FormData) => api.post('/api/invoices/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
 });

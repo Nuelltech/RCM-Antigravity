@@ -305,7 +305,10 @@ class ProductService {
                         familia: true
                     }
                 },
-                variacoes: true
+                variacoes: true,
+                formatosVenda: {
+                    where: { ativo: true }
+                }
             }
         });
 
