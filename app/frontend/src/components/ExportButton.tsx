@@ -5,10 +5,11 @@
 
 'use client';
 
-import { PDFDownloadLink } from '@react-pdf/renderer';
+import { pdf } from '@react-pdf/renderer';
+import { saveAs } from 'file-saver';
 import { Button } from '@/components/ui/button';
-import { Download, Loader2, FileText } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Download, Loader2 } from 'lucide-react';
+import { useState } from 'react';
 
 interface ExportButtonProps {
     pdfDocument: React.ReactElement;
@@ -17,72 +18,37 @@ interface ExportButtonProps {
 }
 
 export function ExportButton({ pdfDocument, fileName, disabled = false }: ExportButtonProps) {
-    const [isClient, setIsClient] = useState(false);
-    const [shouldGenerate, setShouldGenerate] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
-    useEffect(() => {
-        setIsClient(true);
-    }, []);
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const blob = await pdf(pdfDocument).toBlob();
+            saveAs(blob, `${fileName}.pdf`);
+        } catch (error) {
+            console.error('[PDF Export] Error generating PDF:', error);
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
-    if (!isClient) {
-        return (
-            <Button variant="outline" disabled>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Carregando...
-            </Button>
-        );
-    }
-
-    if (!shouldGenerate) {
-        return (
-            <Button
-                variant="outline"
-                onClick={() => setShouldGenerate(true)}
-                disabled={disabled}
-            >
-                <Download className="w-4 h-4 mr-2" />
-                Exportar PDF
-            </Button>
-        );
-    }
-
-    // When shouldGenerate is true, we mount the PDF engine
     return (
-        <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setShouldGenerate(false)}>
-                Cancelar
-            </Button>
-
-            <PDFDownloadLink
-                document={pdfDocument}
-                fileName={`${fileName}.pdf`}
-                className="no-underline"
-            >
-                {({ loading, error }) => {
-                    if (loading) {
-                        return (
-                            <Button variant="default" disabled>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Gerando PDF...
-                            </Button>
-                        );
-                    }
-                    if (error) {
-                        console.error('[PDF Export] Error inside link:', error);
-                        return (
-                            <Button variant="destructive">
-                                Erro ao Gerar
-                            </Button>
-                        );
-                    }
-                    return (
-                        <Button variant="default">
-                            <Download className="w-4 h-4 mr-2" />
-                            Baixar Agora
-                        </Button>
-                    );
-                }}
-            </PDFDownloadLink>
-        </div>
+        <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={disabled || isExporting}
+        >
+            {isExporting ? (
+                <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gerando PDF...
+                </>
+            ) : (
+                <>
+                    <Download className="w-4 h-4 mr-2" />
+                    Exportar PDF
+                </>
+            )}
+        </Button>
     );
 }
