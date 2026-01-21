@@ -4,6 +4,8 @@ import z from 'zod';
 import { TenantDB } from '../../core/database-tenant';
 import { prisma } from '../../core/database';
 import { dashboardCache } from '../../core/cache.service';
+import { addSalesProcessingJob } from '../../queues/sales-processing.queue';
+import { SalesMatchingService } from './services/sales-matching.service';
 
 const createBatchSalesSchema = z.object({
     date: z.string().datetime(),
@@ -266,7 +268,7 @@ export async function salesRoutes(app: FastifyInstance) {
             });
 
             // Queue for processing
-            const { addSalesProcessingJob } = require('../../queues/sales-processing.queue');
+
             await addSalesProcessingJob({
                 salesImportId: salesImport.id,
                 tenantId: req.tenantId,
@@ -367,7 +369,7 @@ export async function salesRoutes(app: FastifyInstance) {
             return reply.status(404).send({ error: 'Line not found' });
         }
 
-        const { SalesMatchingService } = require('./services/sales-matching.service');
+
         const matchingService = new SalesMatchingService();
 
         const suggestions = await matchingService.findMenuItemSuggestions(
@@ -409,7 +411,7 @@ export async function salesRoutes(app: FastifyInstance) {
         });
 
         // Save to history for learning
-        const { SalesMatchingService } = require('./services/sales-matching.service');
+
         const matchingService = new SalesMatchingService();
 
         await matchingService.saveMatchHistory(
