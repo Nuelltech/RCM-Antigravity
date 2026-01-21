@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchClient } from "@/lib/api";
-import { ArrowLeft, Plus, Trash2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, AlertCircle, FileText, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
@@ -93,10 +93,12 @@ export default function NewSalePage() {
                 items: type === "ITEM" ? selectedItems.filter(i => i.id !== 0) : undefined,
             };
 
-            await fetchClient("/sales", {
+
+            await fetchClient("/vendas", {
                 method: "POST",
                 body: JSON.stringify(payload),
             });
+
 
             toast({
                 title: "Sucesso",
@@ -118,14 +120,30 @@ export default function NewSalePage() {
     return (
         <AppLayout>
             <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-6">
-                <div className="flex items-center gap-4">
-                    <Link href="/sales">
-                        <Button type="button" variant="outline" size="sm">
-                            <ArrowLeft className="w-4 h-4 mr-2" />
-                            Voltar
-                        </Button>
-                    </Link>
-                    <h1 className="text-3xl font-bold">Nova Venda</h1>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <Link href="/sales">
+                            <Button type="button" variant="outline" size="sm">
+                                <ArrowLeft className="w-4 h-4 mr-2" />
+                                Voltar
+                            </Button>
+                        </Link>
+                        <h1 className="text-3xl font-bold">Nova Venda</h1>
+                    </div>
+                    <div className="flex gap-2">
+                        <Link href="/sales/import">
+                            <Button type="button" variant="outline" size="sm">
+                                <FileText className="w-4 h-4 mr-2" />
+                                Importar Relatório
+                            </Button>
+                        </Link>
+                        <Link href="/sales/importacoes">
+                            <Button type="button" variant="outline" size="sm">
+                                <BarChart3 className="w-4 h-4 mr-2" />
+                                Ver Importações
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 <Card>

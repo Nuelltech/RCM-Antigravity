@@ -19,7 +19,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export default function UploadInvoicePage() {
     const router = useRouter();
     const { toast } = useToast();
-    const [file, setFile] = useState<File | null>(null);
+    const [files, setFiles] = useState<File[]>([]);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function UploadInvoicePage() {
 
     const onDrop = useCallback((acceptedFiles: File[]) => {
         if (acceptedFiles?.length > 0) {
-            setFile(acceptedFiles[0]);
+            setFiles(acceptedFiles); // Replace current selection
             setError(null);
             setSuccess(false);
             setProgress(0);
@@ -40,14 +40,15 @@ export default function UploadInvoicePage() {
         accept: {
             'application/pdf': ['.pdf'],
             'image/jpeg': ['.jpg', '.jpeg'],
-            'image/png': ['.png']
+            'image/png': ['.png'],
+            'image/webp': ['.webp']
         },
-        maxFiles: 1,
-        multiple: false
+        maxFiles: 10,
+        multiple: true
     });
 
     const handleUpload = async () => {
-        if (!file) return;
+        if (files.length === 0) return;
 
         setUploading(true);
         setProgress(0);
@@ -55,7 +56,11 @@ export default function UploadInvoicePage() {
 
         try {
             const formData = new FormData();
-            formData.append('file', file);
+
+            // Append all files with same field name "file" (or "files", backend accepts array via iteration)
+            files.forEach(file => {
+                formData.append('file', file);
+            });
 
             // Simulate progress
             const progressInterval = setInterval(() => {
@@ -73,11 +78,23 @@ export default function UploadInvoicePage() {
             setInvoiceId(data.id);
             setSuccess(true);
 
+            const msg = files.length > 1
+                ? 'Faturas unificadas e enviadas com sucesso.'
+                : 'Fatura enviada com sucesso.';
+
+            toast({
+                title: "Sucesso",
+                description: msg,
+                variant: "default"
+            });
+
             // Redirect after 2 seconds
             setTimeout(() => {
+                // If backend returns a new ID (merged PDF), go to it
                 router.push(`/invoices/${data.id}`);
             }, 2000);
         } catch (err: any) {
+            console.error(err);
             setError(err.message || 'Erro ao fazer upload da fatura');
             setProgress(0);
         } finally {
@@ -85,10 +102,12 @@ export default function UploadInvoicePage() {
         }
     };
 
-    // ... rest of the component
+    const removeFile = (index: number) => {
+        setFiles(prev => prev.filter((_, i) => i !== index));
+    };
 
     const resetForm = () => {
-        setFile(null);
+        setFiles([]);
         setError(null);
         setSuccess(false);
         setProgress(0);
@@ -110,7 +129,8 @@ export default function UploadInvoicePage() {
                     </Button>
                     <h1 className="text-3xl font-bold">Importar Fatura</h1>
                     <p className="text-muted-foreground">
-                        Faça upload de uma fatura de fornecedor (PDF ou imagem)
+                        Faça upload de uma fatura de fornecedor (PDF ou imagem).
+                        Suporta múltiplas fotos (serão unificadas).
                     </p>
                 </div>
 
@@ -124,7 +144,7 @@ export default function UploadInvoicePage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         {/* Drag & Drop Zone */}
-                        {!file && !success && (
+                        {files.length === 0 && !success && (
                             <div
                                 {...getRootProps()}
                                 className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${isDragActive
@@ -135,10 +155,10 @@ export default function UploadInvoicePage() {
                                 <input {...getInputProps()} id="file-upload" />
                                 <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                                 <p className="text-lg font-medium mb-2">
-                                    Arraste e solte a fatura aqui
+                                    Arraste e solte o(s) ficheiro(s) aqui
                                 </p>
                                 <p className="text-sm text-muted-foreground mb-4">
-                                    ou clique para selecionar
+                                    Pode selecionar várias páginas para uma mesma fatura
                                 </p>
                                 <Button
                                     variant="outline"
@@ -149,29 +169,45 @@ export default function UploadInvoicePage() {
                                         if (fileInput) fileInput.click();
                                     }}
                                 >
-                                    Selecionar Ficheiro
+                                    Selecionar Ficheiro(s)
                                 </Button>
                             </div>
                         )}
 
-                        {/* Selected File */}
-                        {file && !success && (
-                            <div className="border rounded-lg p-4">
-                                <div className="flex items-start justify-between">
-                                    <div className="flex items-start gap-3">
-                                        <FileText className="h-10 w-10 text-primary" />
-                                        <div>
-                                            <p className="font-medium">{file.name}</p>
-                                            <p className="text-sm text-muted-foreground">
-                                                {(file.size / 1024 / 1024).toFixed(2)} MB
-                                            </p>
+                        {/* Selected Files List */}
+                        {files.length > 0 && !success && (
+                            <div className="space-y-3">
+                                {files.map((file, idx) => (
+                                    <div key={idx} className="border rounded-lg p-4 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-primary/10 p-2 rounded">
+                                                <FileText className="h-6 w-6 text-primary" />
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-sm">{file.name}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                                                </p>
+                                            </div>
                                         </div>
+                                        {!uploading && (
+                                            <Button variant="ghost" size="sm" onClick={() => removeFile(idx)}>
+                                                <XCircle className="h-4 w-4 text-red-500" />
+                                            </Button>
+                                        )}
                                     </div>
-                                    {!uploading && (
-                                        <Button variant="ghost" size="sm" onClick={resetForm}>
-                                            <XCircle className="h-4 w-4" />
-                                        </Button>
-                                    )}
+                                ))}
+
+                                {/* Actions */}
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <Button variant="outline" onClick={resetForm} disabled={uploading}>
+                                        Cancelar
+                                    </Button>
+                                    <Button onClick={handleUpload} disabled={uploading}>
+                                        {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        {uploading ? 'A enviar...' : files.length > 1 ? `Importar ${files.length} Páginas` : 'Importar Fatura'}
+                                    </Button>
+
                                 </div>
 
                                 {/* Progress */}
@@ -180,25 +216,14 @@ export default function UploadInvoicePage() {
                                         <Progress value={progress} />
                                         <p className="text-sm text-center text-muted-foreground">
                                             {progress < 100
-                                                ? 'Fazendo upload e processando...'
+                                                ? 'A unificar e enviar ficheiros...'
                                                 : 'Processamento concluído!'}
                                         </p>
                                     </div>
                                 )}
-
-                                {/* Upload Button */}
-                                {!uploading && (
-                                    <Button
-                                        className="w-full mt-4"
-                                        onClick={handleUpload}
-                                        size="lg"
-                                    >
-                                        <Upload className="mr-2 h-4 w-4" />
-                                        Importar Fatura
-                                    </Button>
-                                )}
                             </div>
                         )}
+
 
                         {/* Success Message */}
                         {success && (

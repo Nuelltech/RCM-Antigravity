@@ -5,7 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
-import { Plus, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, FileText } from "lucide-react";
 import Link from "next/link";
 import {
     LineChart,
@@ -44,7 +44,7 @@ export default function SalesPage() {
         try {
             setLoading(true);
             const result = await fetchClient(
-                `/sales/dashboard?startDate=${dateRange.start}&endDate=${dateRange.end}`
+                `/vendas/dashboard?startDate=${dateRange.start}&endDate=${dateRange.end}`
             );
             setData(result);
         } catch (error) {

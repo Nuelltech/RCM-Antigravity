@@ -46,6 +46,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { SelectVariationModal } from '@/components/invoices/SelectVariationModal';
+import { translateInvoiceError, getErrorAlertVariant } from '@/lib/invoice-error-translator';
 
 interface InvoiceLine {
     id: number;
@@ -77,6 +78,7 @@ interface Invoice {
     total_iva: number;
     total_com_iva: number;
     status: string;
+    erro_mensagem: string | null;
     linhas: InvoiceLine[];
 }
 
@@ -396,6 +398,104 @@ export default function InvoiceReviewPage() {
                         <AlertDescription>{error}</AlertDescription>
                     </Alert>
                 )}
+
+                {/* Invoice Processing Error */}
+                {invoice.status === 'error' && (() => {
+                    const errorInfo = translateInvoiceError(invoice.erro_mensagem);
+                    const alertVariant = getErrorAlertVariant(errorInfo.action);
+
+                    return (
+                        <Alert variant={alertVariant}>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle>{errorInfo.title}</AlertTitle>
+                            <AlertDescription className="mt-2 space-y-2">
+                                <p>{errorInfo.message}</p>
+                                <div className="flex gap-2 mt-4">
+                                    {errorInfo.action === 'wait' && (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => router.push('/invoices')}
+                                            >
+                                                <ArrowLeft className="mr-2 h-4 w-4" />
+                                                Voltar à Lista
+                                            </Button>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                onClick={() => window.location.reload()}
+                                            >
+                                                <RotateCcw className="mr-2 h-4 w-4" />
+                                                Verificar Estado
+                                            </Button>
+                                        </>
+                                    )}
+                                    {errorInfo.action === 'delete' && (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => router.push('/invoices')}
+                                            >
+                                                <ArrowLeft className="mr-2 h-4 w-4" />
+                                                Voltar à Lista
+                                            </Button>
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={handleReject}
+                                            >
+                                                <XCircle className="mr-2 h-4 w-4" />
+                                                {errorInfo.actionLabel}
+                                            </Button>
+                                        </>
+                                    )}
+                                    {errorInfo.action === 'retry' && (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => router.push('/invoices')}
+                                            >
+                                                <ArrowLeft className="mr-2 h-4 w-4" />
+                                                Voltar
+                                            </Button>
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={handleReject}
+                                            >
+                                                <RotateCcw className="mr-2 h-4 w-4" />
+                                                Eliminar e Tentar Novamente
+                                            </Button>
+                                        </>
+                                    )}
+                                    {errorInfo.action === 'contact' && (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => router.push('/invoices')}
+                                            >
+                                                <ArrowLeft className="mr-2 h-4 w-4" />
+                                                Voltar à Lista
+                                            </Button>
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={() => window.location.href = 'mailto:suporte@nuelltech.com'}
+                                            >
+                                                <AlertCircle className="mr-2 h-4 w-4" />
+                                                Contactar Suporte
+                                            </Button>
+                                        </>
+                                    )}
+                                </div>
+                            </AlertDescription>
+                        </Alert>
+                    );
+                })()}
 
                 {/* Warning if unmatched lines */}
                 {unmatchedCount > 0 && (

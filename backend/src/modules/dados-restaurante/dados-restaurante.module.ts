@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import z from 'zod';
 import { prisma } from '../../core/database';
+import { dashboardCache } from '../../core/cache.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
 // Zod Schemas
@@ -146,7 +147,8 @@ class DadosRestauranteService {
     }
 
     async createCusto(data: z.infer<typeof createCustoSchema>) {
-        return await prisma.custoEstrutura.create({
+        // 1. Create the Cost Item (Parent)
+        const custo = await prisma.custoEstrutura.create({
             data: {
                 tenant_id: this.tenantId,
                 descricao: data.descricao,
@@ -154,6 +156,23 @@ class DadosRestauranteService {
                 valor_mensal: new Decimal(data.valor_mensal),
             }
         });
+
+
+        // 2. Create the Initial History Record (Child)
+        await prisma.custoEstruturaHistorico.create({
+            data: {
+                tenant_id: this.tenantId,
+                custo_estrutura_id: custo.id,
+                valor: new Decimal(data.valor_mensal),
+                data_inicio: new Date(),
+                motivo_mudanca: 'Criação inicial',
+            }
+        });
+
+        // Invalidate dashboard cache
+        await dashboardCache.invalidate(`*:${this.tenantId}:*`);
+
+        return custo;
     }
 
     async updateCusto(id: number, data: z.infer<typeof updateCustoSchema>) {
@@ -168,13 +187,44 @@ class DadosRestauranteService {
         const updateData: any = {};
         if (data.descricao !== undefined) updateData.descricao = data.descricao;
         if (data.classificacao !== undefined) updateData.classificacao = data.classificacao;
-        if (data.valor_mensal !== undefined) updateData.valor_mensal = new Decimal(data.valor_mensal);
         if (data.ativo !== undefined) updateData.ativo = data.ativo;
 
-        return await prisma.custoEstrutura.update({
+        // Handle Value Change with History
+        if (data.valor_mensal !== undefined && Number(data.valor_mensal) !== Number(custo.valor_mensal)) {
+            updateData.valor_mensal = new Decimal(data.valor_mensal);
+
+            // 1. Close current history record
+            await prisma.custoEstruturaHistorico.updateMany({
+                where: {
+                    custo_estrutura_id: id,
+                    data_fim: null
+                },
+                data: {
+                    data_fim: new Date()
+                }
+            });
+
+            // 2. Create new history record
+            await prisma.custoEstruturaHistorico.create({
+                data: {
+                    tenant_id: this.tenantId,
+                    custo_estrutura_id: id,
+                    valor: new Decimal(data.valor_mensal),
+                    data_inicio: new Date(),
+                    motivo_mudanca: 'Atualização de valor',
+                }
+            });
+        }
+
+        const result = await prisma.custoEstrutura.update({
             where: { id },
             data: updateData
         });
+
+        // Invalidate dashboard cache
+        await dashboardCache.invalidate(`*:${this.tenantId}:*`);
+
+        return result;
     }
 
     async deleteCusto(id: number) {
@@ -186,10 +236,26 @@ class DadosRestauranteService {
             throw new Error('Custo não encontrado');
         }
 
-        return await prisma.custoEstrutura.update({
+        // Close history when disabling/deleting
+        await prisma.custoEstruturaHistorico.updateMany({
+            where: {
+                custo_estrutura_id: id,
+                data_fim: null
+            },
+            data: {
+                data_fim: new Date()
+            }
+        });
+
+        const result = await prisma.custoEstrutura.update({
             where: { id },
             data: { ativo: false }
         });
+
+        // Invalidate dashboard cache
+        await dashboardCache.invalidate(`*:${this.tenantId}:*`);
+
+        return result;
     }
 
     async calculateCustos(periodo: 'mes' | 'semana' | 'dia' | 'hora') {

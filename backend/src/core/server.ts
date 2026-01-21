@@ -31,6 +31,7 @@ import { consumosRoutes } from '../modules/consumos/consumos.module';
 import { invoicesRoutes } from '../modules/invoices/invoices.module';
 import { usersRoutes } from '../modules/users/users.routes';
 import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
+import { menuAnalysisRoutes } from '../modules/menu-analysis/menu-analysis.module';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
@@ -156,7 +157,7 @@ async function main() {
     server.register(purchaseRoutes, { prefix: '/api/purchases' });
     server.register(menuRoutes, { prefix: '/api/menu' });
     server.register(inventoryRoutes, { prefix: '/api/inventory' });
-    server.register(salesRoutes, { prefix: '/api/sales' });
+    server.register(salesRoutes, { prefix: '/api/vendas' });
     server.register(integrationRoutes, { prefix: '/api/integrations' });
     server.register(aiRoutes, { prefix: '/api/ai' });
     server.register(comboRoutes, { prefix: '/api/combos' });
@@ -171,6 +172,7 @@ async function main() {
     server.register(invoicesRoutes, { prefix: '/api/invoices' });
     server.register(usersRoutes, { prefix: '/api/users' });
     server.register(purchasesDashboardRoutes, { prefix: '/api/purchases' });  // Dashboard analytics
+    server.register(menuAnalysisRoutes, { prefix: '/api/menu' });  // Menu Engineering Analysis
 
 
 

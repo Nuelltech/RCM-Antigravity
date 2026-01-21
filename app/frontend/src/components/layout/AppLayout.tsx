@@ -1,6 +1,9 @@
-import { useState } from "react";
+'use client';
+
+import { useState, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { useInvoiceNotifications } from "@/hooks/use-invoice-notifications";
 
 interface AppLayoutProps {
     children: React.ReactNode;
@@ -8,6 +11,12 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const { startPolling } = useInvoiceNotifications();
+
+    // Start global notification polling when app mounts
+    useEffect(() => {
+        startPolling();
+    }, [startPolling]);
 
     return (
         <div className="min-h-screen bg-gray-50">

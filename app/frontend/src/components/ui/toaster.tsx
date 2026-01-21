@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast"
 import { X } from "lucide-react"
 
 export function Toaster() {
-    const { toasts } = useToast()
+    const { toasts, dismiss } = useToast()
 
     return (
         <div className="fixed top-0 right-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]">
@@ -35,7 +35,7 @@ export function Toaster() {
                         </div>
                         {action}
                         <button
-                            onClick={() => props.onOpenChange?.(false)}
+                            onClick={() => dismiss(id)}
                             className="absolute right-2 top-2 rounded-md p-1 text-gray-400 hover:text-gray-900 opacity-0 transition-opacity group-hover:opacity-100"
                         >
                             <X className="h-4 w-4" />

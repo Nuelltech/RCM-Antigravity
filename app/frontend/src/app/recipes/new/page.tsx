@@ -63,6 +63,7 @@ export default function NewRecipePage() {
     const [descricao, setDescricao] = useState("");
     const [imagemUrl, setImagemUrl] = useState("");
     const [videoUrl, setVideoUrl] = useState("");
+    const [quantidadePorPorcao, setQuantidadePorPorcao] = useState<number | undefined>();
 
     // Ingredients and steps
     const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
@@ -83,6 +84,15 @@ export default function NewRecipePage() {
         setTotalCMV(total);
         setCmvPerPortion(numeroPorcoes > 0 ? total / numeroPorcoes : 0);
     }, [ingredients, numeroPorcoes]);
+
+    useEffect(() => {
+        // Calculate quantity per portion
+        if (quantidadeProduzida && numeroPorcoes > 0) {
+            setQuantidadePorPorcao(quantidadeProduzida / numeroPorcoes);
+        } else {
+            setQuantidadePorPorcao(undefined);
+        }
+    }, [quantidadeProduzida, numeroPorcoes]);
 
     const loadProducts = async () => {
         try {
@@ -350,6 +360,18 @@ export default function NewRecipePage() {
                                         onChange={(e) => setQuantidadeProduzida(e.target.value ? Number(e.target.value) : undefined)}
                                     />
                                 </div>
+
+                                {/* Calculated Portion Quantity Indicator */}
+                                {quantidadePorPorcao && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-muted-foreground">
+                                            Quantidade por Porção
+                                        </label>
+                                        <div className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm">
+                                            {quantidadePorPorcao.toFixed(2)} {unidadeMedida}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Unidade de Medida</label>

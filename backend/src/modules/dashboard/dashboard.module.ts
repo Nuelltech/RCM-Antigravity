@@ -157,29 +157,48 @@ export async function dashboardRoutes(app: FastifyInstance) {
             cmvByDate.set(dateStr, currentCmv + custoTotal);
         }
 
-        // Get structural costs
-        const custos = await prisma.custoEstrutura.findMany({
+        // Get ALL historical structural costs for the tenant
+        // We fetch everything and filter in memory to avoid complex date logic in SQL/Prisma for joined ranges
+        const historicoCustos = await prisma.custoEstruturaHistorico.findMany({
             where: {
-                tenant_id: tenantId,
-                ativo: true
+                tenant_id: tenantId
             }
         });
 
-        const totalMensal = custos.reduce((sum, custo) => {
-            return sum + Number(custo.valor_mensal);
-        }, 0);
+        console.log(`[SalesChart] Fetched ${historicoCustos.length} historical cost records`);
 
-        const averageDaysInMonth = 30.44;
-        const custoEstruturaDiario = totalMensal / averageDaysInMonth;
-
-        console.log(`[SalesChart] Query returned ${salesTrend.length} sales rows, ${cmvByDate.size} days with CMV`);
-        console.log(`[SalesChart] Daily structural cost: €${custoEstruturaDiario.toFixed(2)}`);
-
-        // Create map for all dates in range
+        // Create map for all dates in range with PRECISE historical cost
         const dataMap = new Map<string, { vendas: number; custos: number }>();
+        const averageDaysInMonth = 30.44;
+
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             const dateStr = d.toISOString().split('T')[0];
-            dataMap.set(dateStr, { vendas: 0, custos: custoEstruturaDiario });
+            const checkDate = new Date(d);
+            // Normalize check date to start of day (00:00:00)
+            checkDate.setHours(0, 0, 0, 0);
+
+            // Calculate structural cost active ON THIS SPECIFIC DAY
+            const activeCosts = historicoCustos.filter(h => {
+                const startDate = new Date(h.data_inicio);
+                const endDate = h.data_fim ? new Date(h.data_fim) : null;
+
+                // Normalize history dates to start of day
+                startDate.setHours(0, 0, 0, 0);
+                if (endDate) endDate.setHours(0, 0, 0, 0);
+
+                // Active if: started before/on checkDate AND (ended after checkDate OR currently active)
+                // Using non-strict equality for safety with object references, though timestamp comparison is safer
+                return startDate.getTime() <= checkDate.getTime() &&
+                    (!endDate || endDate.getTime() >= checkDate.getTime());
+            });
+
+            // Sum monthly values of active costs for this day
+            const totalMensalDia = activeCosts.reduce((sum, h) => sum + Number(h.valor), 0);
+
+            // Convert to daily cost
+            const custoDiario = totalMensalDia / averageDaysInMonth;
+
+            dataMap.set(dateStr, { vendas: 0, custos: custoDiario });
         }
 
         // Fill in sales data
@@ -195,9 +214,8 @@ export async function dashboardRoutes(app: FastifyInstance) {
         cmvByDate.forEach((cmv, dateStr) => {
             const existing = dataMap.get(dateStr);
             if (existing) {
-                const totalCost = cmv + custoEstruturaDiario;
-                console.log(`[SalesChart] ${dateStr}: CMV=€${cmv.toFixed(2)}, Structure=€${custoEstruturaDiario.toFixed(2)}, Total=€${totalCost.toFixed(2)}`);
-                // Add CMV to the existing structural cost
+                const totalCost = cmv + existing.custos; // existing.custos already has the historical daily structure cost
+                // console.log(`[SalesChart] ${dateStr}: CMV=€${cmv.toFixed(2)}, Structure=€${existing.custos.toFixed(2)}, Total=€${totalCost.toFixed(2)}`);
                 existing.custos = totalCost;
             }
         });
@@ -348,28 +366,51 @@ async function getDashboardStats(tenantId: number, startDate?: string, endDate?:
         .map(([category, stats]) => ({ category, ...stats }))
         .sort((a, b) => b.revenue - a.revenue);
 
-    // Calculate structural costs
-    const custos = await prisma.custoEstrutura.findMany({
+    // Calculate structural costs using HISTORY
+    const historicoCustos = await prisma.custoEstruturaHistorico.findMany({
         where: {
-            tenant_id: tenantId,
-            ativo: true
+            tenant_id: tenantId
         }
     });
 
-    const totalMensal = custos.reduce((sum, custo) => {
-        return sum + Number(custo.valor_mensal);
-    }, 0);
-
-    // Calculate days in period for proportional structure cost
-    const oneDay = 24 * 60 * 60 * 1000;
-    const daysInPeriod = Math.round(Math.abs((endOfMonth.getTime() - startOfMonth.getTime()) / oneDay));
-    // Average days in month (365.25 / 12)
+    // Calculate daily cost accumulation for the period
+    let totalCustoEstruturaPeriodo = 0;
     const averageDaysInMonth = 30.44;
 
-    // Proportional Cost: (Monthly Total / 30.44) * daysInPeriod
-    // Ensure we don't exceed monthly total if period > 30 days (unless intentional? usually dashboards show total for period even if > 1 month)
-    // If period is 2 months, cost should be 2x. So linear scaling is correct.
-    const custoEstruturaPeriodo = (totalMensal / averageDaysInMonth) * (daysInPeriod || 1);
+    // Iterate through each day in the report period
+    const currentDay = new Date(startOfMonth);
+    const endLoop = new Date(endOfMonth);
+
+    // Normalize to start of day for simpler loop logic
+    currentDay.setHours(0, 0, 0, 0);
+    endLoop.setHours(0, 0, 0, 0);
+
+    while (currentDay <= endLoop) {
+        // Find active costs for this specific day
+        const activeCosts = historicoCustos.filter(h => {
+            const startDate = new Date(h.data_inicio);
+            const endDate = h.data_fim ? new Date(h.data_fim) : null;
+
+            // Normalize dates to ignore time component for safer comparison
+            startDate.setHours(0, 0, 0, 0);
+            if (endDate) endDate.setHours(0, 0, 0, 0);
+
+            // Use timestamp comparison for safety
+            return startDate.getTime() <= currentDay.getTime() &&
+                (!endDate || endDate.getTime() >= currentDay.getTime());
+        });
+
+        // Sum monthly value for this day
+        const monthlyTotal = activeCosts.reduce((sum, h) => sum + Number(h.valor), 0);
+
+        // Add daily portion to total
+        totalCustoEstruturaPeriodo += (monthlyTotal / averageDaysInMonth);
+
+        // Next day
+        currentDay.setDate(currentDay.getDate() + 1);
+    }
+
+    const custoEstruturaPeriodo = totalCustoEstruturaPeriodo;
 
     // Calculate monthly purchases
     const comprasFaturas = await prisma.compraFatura.findMany({

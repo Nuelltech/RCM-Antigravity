@@ -18,7 +18,8 @@ import {
     PieChart,
     Calculator,
     FileText,
-    Users
+    Users,
+    TrendingUp
 } from "lucide-react";
 import { Permission, hasPermission, getCurrentUserRole } from "@/lib/permissions";
 
@@ -33,11 +34,13 @@ const menuItems: MenuItem[] = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: "DASHBOARD_STATS" },
     { name: "Alertas", href: "/alerts", icon: Bell, permission: "ALERTS_VIEW" },
     { name: "Vendas", href: "/sales", icon: BarChart3, permission: "SALES_VIEW" },
+    { name: "Importar Vendas", href: "/sales/importacoes", icon: BarChart3, permission: "SALES_VIEW" },
     { name: "Produtos", href: "/products", icon: Package, permission: "PRODUCTS_VIEW" },
     { name: "Receitas", href: "/recipes", icon: ChefHat, permission: "RECIPES_VIEW" },
     { name: "Combos", href: "/combos", icon: Package2, permission: "COMBOS_VIEW" },
     { name: "Formatos de Venda", href: "/template-formatos-venda", icon: PackageOpen, permission: "PRODUCTS_VIEW" },
     { name: "Menu", href: "/menu", icon: MenuSquare, permission: "MENUS_VIEW" },
+    { name: "Menu Engineering", href: "/menu-analysis", icon: TrendingUp, permission: "MENUS_VIEW" },
     { name: "Compras", href: "/purchases", icon: ShoppingCart, permission: "PURCHASES_VIEW" },
     { name: "Calculadora", href: "/purchases/calculator", icon: Calculator, permission: "CALCULATOR_VIEW" },
     { name: "Importar Faturas", href: "/invoices", icon: FileText, permission: "INVOICES_IMPORT" },

@@ -23,6 +23,7 @@ const productSchema = z.object({
     imagem_url: z.string().url("URL inválida").optional().or(z.literal("")),
     tipo_unidade_compra: z.string().min(1, "Formato de compra é obrigatório"),
     unidades_por_compra: z.number().min(0.01, "Quantidade deve ser maior que 0"),
+    volume_por_unidade: z.number().optional(),
     preco_compra: z.number().min(0.01, "Preço deve ser maior que 0"),
     fornecedor: z.string().optional(),
     // Sales Format
@@ -66,6 +67,7 @@ export default function NewProductPage() {
         defaultValues: {
             unidade_medida: "KG",
             unidades_por_compra: 1,
+            volume_por_unidade: undefined,
             preco_compra: 0,
             vendavel: false,
             formato_quantidade: 1,
@@ -151,6 +153,7 @@ export default function NewProductPage() {
                 produto_id: product.id,
                 tipo_unidade_compra: data.tipo_unidade_compra,
                 unidades_por_compra: data.unidades_por_compra,
+                volume_por_unidade: data.volume_por_unidade,
                 preco_compra: data.preco_compra,
                 fornecedor: data.fornecedor,
             };
@@ -384,16 +387,22 @@ export default function NewProductPage() {
                             <CardTitle>Dados de Compra</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Tipo de Unidade de Compra</label>
+                                <Input placeholder="Ex: Pack 6un, Barril 50L, Saco 5kg" {...register("tipo_unidade_compra")} />
+                                {errors.tipo_unidade_compra && <p className="text-xs text-red-500">{errors.tipo_unidade_compra.message}</p>}
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium">Formato de Compra</label>
-                                    <Input placeholder="Ex: Saco 5kg" {...register("tipo_unidade_compra")} />
-                                    {errors.tipo_unidade_compra && <p className="text-xs text-red-500">{errors.tipo_unidade_compra.message}</p>}
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Quantidade</label>
+                                    <label className="text-sm font-medium">Unidades por Compra</label>
                                     <Input type="number" step="0.001" lang="en" inputMode="decimal" {...register("unidades_por_compra", { valueAsNumber: true })} />
                                     {errors.unidades_por_compra && <p className="text-xs text-red-500">{errors.unidades_por_compra.message}</p>}
+                                    <p className="text-xs text-gray-500">Opcional. Para produtos embalados (ex: 24 garrafas × 0.33L)</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Volume/Qtd por Unidade</label>
+                                    <Input type="number" step="0.001" lang="en" inputMode="decimal" placeholder="Ex: 0.33 para 33cl" {...register("volume_por_unidade", { valueAsNumber: true })} />
                                 </div>
                             </div>
 
@@ -408,6 +417,32 @@ export default function NewProductPage() {
                                     <Input placeholder="Nome do fornecedor" {...register("fornecedor")} />
                                 </div>
                             </div>
+
+                            {/* Price Calculation Preview */}
+                            {watch("unidades_por_compra") > 0 && watch("preco_compra") > 0 && (
+                                <div className="bg-blue-50 p-3 rounded text-sm space-y-2">
+                                    {watch("volume_por_unidade") ? (
+                                        <>
+                                            <p className="text-gray-700">
+                                                <strong>Preço por Unidade Embalagem:</strong> €
+                                                {(watch("preco_compra") / watch("unidades_por_compra")).toFixed(4)}/un
+                                            </p>
+                                            <p className="text-gray-700 font-semibold">
+                                                <strong>Preço Unitário (Produto):</strong> €
+                                                {(watch("preco_compra") / (watch("unidades_por_compra") * (watch("volume_por_unidade") || 1))).toFixed(4)}/{watch("unidade_medida")}
+                                            </p>
+                                            <p className="text-xs text-gray-600">
+                                                Volume Total: {(watch("unidades_por_compra") * (watch("volume_por_unidade") || 0)).toFixed(3)} {watch("unidade_medida")}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <p className="text-gray-700">
+                                            <strong>Preço Unitário Calculado:</strong> €
+                                            {(watch("preco_compra") / watch("unidades_por_compra")).toFixed(4)}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 

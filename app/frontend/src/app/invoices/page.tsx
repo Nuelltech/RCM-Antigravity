@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileText, CheckCircle, XCircle, Clock, AlertCircle, Eye } from 'lucide-react';
+import { Upload, FileText, CheckCircle, XCircle, Clock, AlertCircle, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { fetchClient } from '@/lib/api';
 
@@ -23,23 +23,72 @@ interface Invoice {
     erro_mensagem?: string;
 }
 
+interface InvoiceStats {
+    total: number;
+    reviewing: number;
+    approved: number;
+    approved_partial: number;
+    errors: number;
+    pending: number;
+    processing: number;
+}
+
 export default function InvoicesPage() {
     const router = useRouter();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
+    const [stats, setStats] = useState<InvoiceStats>({
+        total: 0,
+        reviewing: 0,
+        approved: 0,
+        approved_partial: 0,
+        errors: 0,
+        pending: 0,
+        processing: 0,
+    });
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<string>('all');
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(20);
+    const [total, setTotal] = useState(0);
+
+    useEffect(() => {
+        setPage(1); // Reset to page 1 when filter changes
+    }, [filter]);
 
     useEffect(() => {
         fetchInvoices();
-    }, [filter]);
+        fetchStats();
+    }, [filter, page, limit]);
+
+    useEffect(() => {
+        // Refresh invoice list and stats every 10 seconds
+        const refreshInterval = setInterval(() => {
+            fetchInvoices();
+            fetchStats();
+        }, 10000);
+
+        return () => clearInterval(refreshInterval);
+    }, [filter, page, limit]);
+
+    const fetchStats = async () => {
+        try {
+            const data = await fetchClient('/invoices/stats');
+            setStats(data);
+        } catch (error) {
+            console.error('Error fetching stats:', error);
+        }
+    };
 
     const fetchInvoices = async () => {
         try {
             const params = new URLSearchParams();
             if (filter !== 'all') params.append('status', filter);
+            params.append('page', page.toString());
+            params.append('limit', limit.toString());
 
             const data = await fetchClient(`/invoices?${params}`);
             setInvoices(data.invoices);
+            setTotal(data.total);
         } catch (error) {
             console.error('Error fetching invoices:', error);
         } finally {
@@ -107,7 +156,7 @@ export default function InvoicesPage() {
                             <FileText className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{invoices.length}</div>
+                            <div className="text-2xl font-bold">{stats.total}</div>
                         </CardContent>
                     </Card>
                     <Card>
@@ -116,9 +165,7 @@ export default function InvoicesPage() {
                             <AlertCircle className="h-4 w-4 text-blue-500" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">
-                                {invoices.filter((i) => i.status === 'reviewing').length}
-                            </div>
+                            <div className="text-2xl font-bold">{stats.reviewing}</div>
                         </CardContent>
                     </Card>
                     <Card>
@@ -128,7 +175,7 @@ export default function InvoicesPage() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">
-                                {invoices.filter((i) => i.status === 'approved').length}
+                                {stats.approved + stats.approved_partial}
                             </div>
                         </CardContent>
                     </Card>
@@ -138,9 +185,7 @@ export default function InvoicesPage() {
                             <XCircle className="h-4 w-4 text-red-500" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">
-                                {invoices.filter((i) => i.status === 'error').length}
-                            </div>
+                            <div className="text-2xl font-bold">{stats.errors}</div>
                         </CardContent>
                     </Card>
                 </div>
@@ -251,6 +296,63 @@ export default function InvoicesPage() {
                                     ))}
                                 </TableBody>
                             </Table>
+                        )}
+
+                        {/* Pagination Controls */}
+                        {!loading && invoices.length > 0 && (
+                            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span>
+                                        Mostrando {((page - 1) * limit) + 1} a {Math.min(page * limit, total)} de {total} faturas
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    {/* Items per page selector */}
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-muted-foreground">Por página:</span>
+                                        <select
+                                            value={limit}
+                                            onChange={(e) => {
+                                                setLimit(Number(e.target.value));
+                                                setPage(1);
+                                            }}
+                                            className="border rounded px-2 py-1 text-sm"
+                                        >
+                                            <option value={20}>20</option>
+                                            <option value={50}>50</option>
+                                            <option value={100}>100</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Page navigation */}
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setPage(page - 1)}
+                                            disabled={page === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4 mr-1" />
+                                            Anterior
+                                        </Button>
+
+                                        <span className="text-sm">
+                                            Página {page} de {Math.ceil(total / limit)}
+                                        </span>
+
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setPage(page + 1)}
+                                            disabled={page >= Math.ceil(total / limit)}
+                                        >
+                                            Próxima
+                                            <ChevronRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </CardContent>
                 </Card>

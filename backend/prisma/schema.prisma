@@ -62,6 +62,7 @@ model Tenant {
   templateVariacoesCompra TemplateVariacaoCompra[]
   dadosRestaurante    DadosRestaurante?
   custosEstrutura     CustoEstrutura[]
+  historicoCustosEstrutura CustoEstruturaHistorico[]
   localizacoes        Localizacao[]
   listasCalculadora   ListaCalculadora[]
   sessoesInventario   SessaoInventario[]
@@ -72,6 +73,11 @@ model Tenant {
   createdTemplates    InvoiceTemplate[]  // Templates created by this tenant
   fornecedores        Fornecedor[]  // Suppliers for this tenant
   demoRequests        DemoRequest[]  // Demo requests linked to this tenant
+  invoiceMetrics      InvoiceProcessingMetrics[]  // Invoice processing metrics
+  vendasImportacao    VendaImportacao[]
+  vendasLinhasImportacao VendaLinhaImportacao[]
+  salesMatchingHistorico SalesMatchingHistorico[]
+  salesProcessingMetrics SalesProcessingMetrics[]
 
   @@map("tenants")
 }
@@ -98,6 +104,7 @@ model User {
   sessions            Session[]
   twoFactorBackupCodes TwoFactorBackupCode[]
   passwordResets      PasswordReset[]
+  invoiceMetrics      InvoiceProcessingMetrics[]  // Invoice processing metrics
   auditLogs           AuditLog[]
   comprasValidadas    Compra[]
   comprasTempCriadas  CompraTemporaria[]
@@ -114,6 +121,8 @@ model User {
   matchingHistorico   MatchingHistorico[]
   convertedLeads      Lead[]          // Leads that converted to this user
   demoRequests        DemoRequest[]   // Demo requests from this user
+  salesMatchingHistorico SalesMatchingHistorico[]
+  salesProcessingMetrics SalesProcessingMetrics[]
 
 
 
@@ -508,7 +517,7 @@ model Fornecedor {
   tenant            Tenant    @relation(fields: [tenant_id], references: [id])
   compras           Compra[]
   faturasImportacao FaturaImportacao[]
-  invoiceTemplate   InvoiceTemplate?  // One template per supplier
+  invoiceTemplates  InvoiceTemplate[]  // Multiple templates for different formats
   
   @@unique([tenant_id, nome_normalize])
   @@index([tenant_id, ativo])
@@ -763,6 +772,8 @@ model MenuItem {
   formatoVenda        FormatoVenda?    @relation(fields: [formato_venda_id], references: [id])
   vendas              Venda[]
   mapeamentosPos      MapeamentoPos[]
+  vendasLinhasImportacao VendaLinhaImportacao[]
+  salesMatchingHistorico SalesMatchingHistorico[]
 
   @@map("menu")
 }
@@ -786,17 +797,19 @@ model Venda {
   receita_total       Decimal  @db.Decimal(10, 2)
   custo_total         Decimal? @db.Decimal(10, 2)
   margem_bruta        Decimal? @db.Decimal(10, 2)
-  metodo_entrada      String   // Manual, POS, API
+  metodo_entrada      String   // Manual, POS, API, PDF
   pos_transacao_id    String?
   mesa                String?
   colaborador         String?
   observacoes         String?
   user_id             Int?
+  venda_importacao_id Int?     // Link to import if created via PDF import
   createdAt           DateTime @default(now())
 
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
   menuItem            MenuItem? @relation(fields: [menu_item_id], references: [id])
   user                User?    @relation(fields: [user_id], references: [id])
+  vendaImportacao     VendaImportacao? @relation(fields: [venda_importacao_id], references: [id])
 
   @@index([tenant_id, data_venda]) // Performance: Consumption reports
   @@map("vendas")
@@ -1122,9 +1135,34 @@ model CustoEstrutura {
   updatedAt           DateTime @updatedAt
   
   tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  historico           CustoEstruturaHistorico[]
   
   @@index([tenant_id, ativo])
   @@map("custos_estrutura")
+}
+
+model CustoEstruturaHistorico {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  custo_estrutura_id  Int
+  
+  valor               Decimal  @db.Decimal(10, 2)
+  
+  // Validity Period
+  data_inicio         DateTime
+  data_fim            DateTime? // Null = Current active value
+  
+  // Metadata
+  motivo_mudanca      String?
+  criado_por          Int?
+  createdAt           DateTime  @default(now())
+
+  tenant              Tenant         @relation(fields: [tenant_id], references: [id])
+  custoEstrutura      CustoEstrutura @relation(fields: [custo_estrutura_id], references: [id], onDelete: Cascade)
+  
+  @@index([custo_estrutura_id, data_inicio])
+  @@index([tenant_id, data_inicio, data_fim])
+  @@map("custos_estrutura_historico")
 }
 
 // -----------------------------------------------------------------------------
@@ -1145,9 +1183,15 @@ model FaturaImportacao {
   data_fatura       DateTime?
   
   // Totals
-  total_sem_iva     Decimal?  @db.Decimal(10, 2)
-  total_iva         Decimal?  @db.Decimal(10, 2)
-  total_com_iva     Decimal?  @db.Decimal(10, 2)
+  total_sem_iva            Decimal?  @db.Decimal(10, 2)
+  total_iva                Decimal?  @db.Decimal(10, 2)
+  total_com_iva            Decimal?  @db.Decimal(10, 2)
+  
+  // Discount breakdown (for debugging/transparency)
+  subtotal_antes_desconto  Decimal?  @db.Decimal(10, 2)  // Subtotal before global discount
+  desconto_global          Decimal?  @db.Decimal(10, 2)  // Global discount value
+  desconto_tipo            String?                        // "percentage" or "fixed"
+  taras                    Decimal?  @db.Decimal(10, 2)  // Container/packaging adjustment
   
   // File & Processing
   ficheiro_nome     String
@@ -1174,6 +1218,7 @@ model FaturaImportacao {
   linhas            FaturaLinhaImportacao[]
   compras           Compra[]
   comprasFaturas    CompraFatura[]
+  processingMetrics InvoiceProcessingMetrics[]  // Processing metrics
   
   @@index([tenant_id, status])
   @@index([fornecedor_id])
@@ -1285,16 +1330,20 @@ model MatchingHistorico {
 
 model InvoiceTemplate {
   id                  Int      @id @default(autoincrement())
-  fornecedor_id       Int      @unique  // One template per supplier
+  fornecedor_id       Int      // Multiple templates per supplier allowed
   uuid                String   @default(uuid())
   
   // Template Info
   template_name       String   // "Makro - Standard Invoice"
   template_version    Int      @default(1)
+  template_format_id  String?  // Unique identifier for this format (e.g., "2025_lisboa", "2026_v2")
   
   // Template Structure (JSON)
   header_config       Json     // { "nif_pattern": "...", "date_pattern": "...", "total_pattern": "..." }
   table_config        Json     // { "columns": [...], "start_marker": "...", "end_marker": "...", "row_pattern": "..." }
+  
+  // Fingerprinting for quick matching
+  fingerprint_config  Json?    // { "required_keywords": [...], "optional_keywords": [...], "structure_markers": {...}, "layout_hints": {...} }
   
   // Learning & Statistics (across ALL tenants using this supplier)
   is_active           Boolean  @default(true)
@@ -1317,8 +1366,56 @@ model InvoiceTemplate {
   
   @@index([fornecedor_id])
   @@index([is_active])
+  @@unique([fornecedor_id, template_format_id])  // Unique format per supplier
   @@map("invoice_templates")
 }
+
+// -----------------------------------------------------------------------------
+// INVOICE PROCESSING METRICS (Audit & Performance)
+// -----------------------------------------------------------------------------
+
+model InvoiceProcessingMetrics {
+  id                      Int       @id @default(autoincrement())
+  tenant_id               Int
+  invoice_id              Int
+  upload_source           String    // 'web', 'api', 'email'
+  user_id                 Int?
+  
+  // Parsing Method
+  parsing_method          String    // 'template', 'gemini', 'vision', 'failed', 'legacy'
+  template_id             Int?
+  template_score          Float?
+  
+  // Duration Metrics (milliseconds)
+  total_duration_ms       Int       // Worker processing time only
+  end_to_end_duration_ms  Int?      // Upload → Reviewing/Error (TOTAL for UX/SLA)
+  ocr_duration_ms         Int?
+  parsing_duration_ms     Int?
+  
+  // Retry & Fallback
+  gemini_attempts         Int       @default(0)
+  gemini_model_used       String?   // 'gemini-2.5-flash', 'gemini-1.5-flash'
+  gemini_fallback_to_vision Boolean @default(false)
+  vision_used             Boolean   @default(false)
+  vision_duration_ms      Int?
+  
+  // Results
+  success                 Boolean
+  line_items_extracted    Int       @default(0)
+  confidence_score        Float?
+  
+  created_at              DateTime  @default(now())
+  
+  tenant                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  invoice                 FaturaImportacao    @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  user                    User?               @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  
+  @@index([tenant_id, created_at])
+  @@index([invoice_id])
+  @@index([parsing_method])
+  @@map("invoice_processing_metrics")
+}
+
 // -----------------------------------------------------------------------------
 // LEADS & DEMO REQUESTS (Pre-tenant, Global)
 // -----------------------------------------------------------------------------
@@ -1448,3 +1545,145 @@ model InternalUser {
   @@map("internal_users")
 }
 
+// -----------------------------------------------------------------------------
+// SALES IMPORT (Similar to Invoice Import)
+// -----------------------------------------------------------------------------
+
+model VendaImportacao {
+  id                Int      @id @default(autoincrement())
+  tenant_id         Int
+  
+  // Report Info (extracted from PDF/Image)
+  data_venda        DateTime? // Report date
+  total_bruto       Decimal?  @db.Decimal(10, 2) // Gross sales
+  total_liquido     Decimal?  @db.Decimal(10, 2) // Net sales
+  
+  // VAT Breakdown (optional)
+  iva_6_base        Decimal?  @db.Decimal(10, 2)
+  iva_6_valor       Decimal?  @db.Decimal(10, 2)
+  iva_13_base       Decimal?  @db.Decimal(10, 2)
+  iva_13_valor      Decimal?  @db.Decimal(10, 2)
+  iva_23_base       Decimal?  @db.Decimal(10, 2)
+  iva_23_valor      Decimal?  @db.Decimal(10, 2)
+  
+  // Payment Methods (optional)
+  pagamento_dinheiro Decimal? @db.Decimal(10, 2)
+  pagamento_cartao   Decimal? @db.Decimal(10, 2)
+  pagamento_outros   Decimal? @db.Decimal(10, 2)
+  
+  // File & Processing
+  ficheiro_nome     String
+  ficheiro_url      String
+  ficheiro_tipo     String    // pdf, jpg, png
+  ocr_texto_bruto   String?   @db.Text
+  
+  // Status
+  status            String    // pending, reviewing, approved, rejected, error
+  erro_mensagem     String?   @db.Text
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  processado_em     DateTime?
+  aprovado_em       DateTime?
+  aprovado_por      Int?
+  
+  // Relations
+  tenant            Tenant    @relation(fields: [tenant_id], references: [id])
+  linhas            VendaLinhaImportacao[]
+  vendas            Venda[]   // Created sales records after approval
+  processingMetrics SalesProcessingMetrics[]
+  
+  @@index([tenant_id, status])
+  @@index([tenant_id, data_venda])
+  @@map("vendas_importacao")
+}
+
+model VendaLinhaImportacao {
+  id                    Int      @id @default(autoincrement())
+  venda_importacao_id   Int
+  tenant_id             Int
+  linha_numero          Int
+  
+  // Extracted Data from OCR/Gemini
+  descricao_original    String
+  descricao_limpa       String?
+  quantidade            Decimal?  @db.Decimal(10, 3)
+  preco_unitario        Decimal?  @db.Decimal(10, 2)
+  preco_total           Decimal   @db.Decimal(10, 2)
+  
+  // MenuItem Matching (sales are linked to menu, not stock)
+  menu_item_id          Int?
+  confianca_match       Decimal?  @db.Decimal(5, 2)  // 0-100%
+  status                String    // pending, matched, manual_review, approved
+  
+  // Metadata
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  vendaImportacao       VendaImportacao @relation(fields: [venda_importacao_id], references: [id], onDelete: Cascade)
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  menuItem              MenuItem? @relation(fields: [menu_item_id], references: [id])
+  
+  @@index([venda_importacao_id])
+  @@index([tenant_id, status])
+  @@index([menu_item_id])
+  @@map("vendas_linhas_importacao")
+}
+
+model SalesMatchingHistorico {
+  id                    Int      @id @default(autoincrement())
+  tenant_id             Int
+  
+  // Original sales description
+  descricao_venda       String
+  
+  // Matched menu item
+  menu_item_id          Int
+  
+  // Confidence & Confirmation
+  confianca_inicial     Decimal?  @db.Decimal(5, 2)
+  confirmado_por        Int       // user_id
+  createdAt             DateTime  @default(now())
+  
+  // Relations
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  menuItem              MenuItem  @relation(fields: [menu_item_id], references: [id])
+  user                  User      @relation(fields: [confirmado_por], references: [id])
+  
+  @@index([tenant_id, descricao_venda])
+  @@index([menu_item_id])
+  @@map("sales_matching_historico")
+}
+
+model SalesProcessingMetrics {
+  id                      Int       @id @default(autoincrement())
+  tenant_id               Int
+  sales_import_id         Int
+  upload_source           String    // 'web', 'api'
+  user_id                 Int?
+  
+  // Parsing Method
+  parsing_method          String    // 'gemini-multimodal', 'failed'
+  
+  // Duration Metrics (milliseconds)
+  total_duration_ms       Int
+  ocr_duration_ms         Int?
+  parsing_duration_ms     Int?
+  
+  // Results
+  success                 Boolean
+  line_items_extracted    Int       @default(0)
+  confidence_score        Float?
+  
+  created_at              DateTime  @default(now())
+  
+  tenant                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  salesImport             VendaImportacao     @relation(fields: [sales_import_id], references: [id], onDelete: Cascade)
+  user                    User?               @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  
+  @@index([tenant_id, created_at])
+  @@index([sales_import_id])
+  @@map("sales_processing_metrics")
+}

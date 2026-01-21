@@ -174,6 +174,18 @@ export default function NewComboPage() {
             return;
         }
 
+        // Validate each category has at least one option
+        if (tipo === "Simples") {
+            const emptyCategories = categorias.filter((cat) => cat.opcoes.length === 0);
+            if (emptyCategories.length > 0) {
+                const categoriasList = emptyCategories.map((cat) => `• ${cat.categoria || '(sem nome)'}`).join("\n");
+                alert(
+                    `⚠️ Atenção!\n\nPrecisa adicionar pelo menos uma opção nas seguintes categorias:\n\n${categoriasList}\n\nClique em "Adicionar Opção" para cada categoria antes de guardar.`
+                );
+                return;
+            }
+        }
+
         setLoading(true);
 
         try {

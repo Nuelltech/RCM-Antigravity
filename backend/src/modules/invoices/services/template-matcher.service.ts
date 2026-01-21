@@ -1,31 +1,114 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { PrismaClient, InvoiceTemplate } from '@prisma/client';
 
 /**
- * Service to match invoices to templates based on supplier identification
+ * Template Matcher Service
+ * 
+ * Responsible for finding templates by supplier and extracting supplier info from OCR
  */
 export class TemplateMatcherService {
+    private prisma: PrismaClient;
+
+    constructor() {
+        this.prisma = new PrismaClient();
+    }
+
     /**
-     * Extract NIF (Portuguese Tax ID) from OCR text
-     * Matches 9-digit patterns with various prefixes
+     * Find ALL templates for a given supplier
+     * (Multiple templates per supplier allowed for different formats)
+     */
+    async findTemplatesBySupplier(
+        nif: string | null,
+        supplierName: string | null
+    ): Promise<InvoiceTemplate[]> {
+        if (!nif && !supplierName) {
+            return [];
+        }
+
+        // Try to find supplier
+        const supplier = await this.prisma.fornecedor.findFirst({
+            where: {
+                OR: [
+                    ...(nif ? [{ nif }] : []),
+                    ...(supplierName ? [{
+                        nome_normalize: this.normalizeName(supplierName)
+                    }] : [])
+                ]
+            }
+        });
+
+        if (!supplier) {
+            return [];
+        }
+
+        // Get ALL active templates for this supplier
+        return await this.prisma.invoiceTemplate.findMany({
+            where: {
+                fornecedor_id: supplier.id,
+                is_active: true
+            },
+            orderBy: {
+                confidence_score: 'desc'  // Best templates first
+            }
+        });
+    }
+
+    /**
+     * Extract NIF from OCR text
      */
     extractNIF(ocrText: string): string | null {
-        // Common NIF patterns in invoices
+        // Search only in header section (first 40% of text) to avoid client NIF
+        const headerSection = ocrText.substring(0, Math.floor(ocrText.length * 0.4));
+
+        // ALL possible NIF patterns (case-insensitive)
         const patterns = [
-            /\bNIF[:\s]+(\d{9})\b/i,
-            /\bNIPC[:\s]+(\d{9})\b/i,
-            /\bCONTRIB[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝ.]*[:\s]+(\d{9})\b/i,
-            /\b(\d{9})\b/ // Fallback: any 9-digit number
+            /NIPC[:\s]*(\d{9})/i,                    // NIPC: 123456789
+            /NIPC\s*n[ºo°]\.?\s*(\d{9})/i,           // NIPC nº 123456789, NIPC no 123456789
+            /NIF[:\s]*(\d{9})/i,                     // NIF: 123456789
+            /NIF\s*n[ºo°]\.?\s*(\d{9})/i,            // NIF nº 123456789
+            /N\.?I\.?F\.?[:\s]*(\d{9})/i,            // N.I.F. or N.I.F: or NIF:
+            /N\.?I\.?P\.?C\.?[:\s]*(\d{9})/i,        // N.I.P.C.
+            /Contribuinte[:\s]*(\d{9})/i,            // Contribuinte: 123456789
+            /N[úu]mero\s+Fiscal[:\s]*(\d{9})/i,      // Número Fiscal or Numero Fiscal
+            /N\.?\s*Fiscal[:\s]*(\d{9})/i,           // N. Fiscal or N.Fiscal
+            /Ident\.?\s+Fiscal[:\s]*(\d{9})/i,       // Ident. Fiscal
+            /ID\s+Fiscal[:\s]*(\d{9})/i              // ID Fiscal
         ];
 
+        // Try each pattern in order
         for (const pattern of patterns) {
-            const match = ocrText.match(pattern);
-            if (match) {
-                const nif = match[1];
-                // Validate NIF format (starts with valid digits)
-                if (/^[1-9]\d{8}$/.test(nif)) {
-                    return nif;
+            const match = headerSection.match(pattern);
+            if (match && match[1]) {
+                console.log(`[Matcher] ✅ Found NIF in header: ${match[1]}`);
+                return match[1];
+            }
+        }
+
+        console.warn('[Matcher] ⚠️  No NIF found in header section with known patterns');
+        return null; // NO blind fallback to first 9-digit number!
+    }
+
+    /**
+     * Extract supplier name from OCR text
+     */
+    extractSupplierName(ocrText: string): string | null {
+        // Get first 500 characters (supplier name usually at top)
+        const topSection = ocrText.substring(0, 500);
+
+        // Look for common patterns
+        const lines = topSection.split('\n').map(line => line.trim());
+
+        // Find first non-empty line that looks like a company name
+        // (usually all caps, > 3 chars, not "FATURA" or similar)
+        const excludeKeywords = ['FATURA', 'INVOICE', 'NOTA', 'TALÃO', 'RECIBO', 'ORIGINAL', 'DUPLICADO'];
+
+        for (const line of lines) {
+            if (line.length > 3 &&
+                line.length < 100 &&
+                !excludeKeywords.some(kw => line.toUpperCase().includes(kw))) {
+
+                // Check if it looks like a company name (has letters)
+                if (/[A-Za-z]{3,}/.test(line)) {
+                    return line;
                 }
             }
         }
@@ -34,121 +117,57 @@ export class TemplateMatcherService {
     }
 
     /**
-     * Extract supplier name from OCR text
-     * Usually appears at the top of the invoice
-     */
-    extractSupplierName(ocrText: string): string | null {
-        // Look for common patterns
-        const lines = ocrText.split('\n').filter(l => l.trim().length > 0);
-
-        // Usually first 5 lines contain supplier info
-        for (let i = 0; i < Math.min(5, lines.length); i++) {
-            const line = lines[i].trim();
-
-            // Skip very short lines
-            if (line.length < 5) continue;
-
-            // Skip lines that are just numbers or dates
-            if (/^\d+$/.test(line) || /^\d{2}[-\/]\d{2}[-\/]\d{4}$/.test(line)) continue;
-
-            // Skip header keywords
-            if (/^(FATURA|INVOICE|RECIBO|RECEIPT|FT|FTV)/i.test(line)) continue;
-
-            // This is likely the supplier name
-            if (line.length > 3 && /[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝ]/.test(line)) {
-                return line;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Find template by supplier NIF
-     * TEMPORARILY DISABLED: InvoiceTemplate feature not yet implemented
-     */
-    async findTemplateByNIF(nif: string): Promise<any | null> {
-        // TODO: Re-enable when InvoiceTemplate is implemented
-        return null;
-
-        /* ORIGINAL CODE - Re-enable later
-        try {
-            const fornecedor = await prisma.fornecedor.findFirst({
-                where: { nif, tenant_id: tenantId },
-                include: { invoiceTemplate: true }
-            });
-            if (!fornecedor?.invoiceTemplate) return null;
-            return fornecedor.invoiceTemplate;
-        } catch (error) {
-            console.error('Error finding template by NIF:', error);
-            return null;
-        }
-        */
-    }
-
-    /**
-     * Find template by supplier name (fuzzy match)
-     * TEMPORARILY DISABLED: InvoiceTemplate feature not yet implemented
-     */
-    async findTemplateBySupplierName(name: string): Promise<any | null> {
-        // TODO: Re-enable when InvoiceTemplate is implemented
-        return null;
-
-        /*ORIGINAL CODE - Re-enable later
-        try {
-            const normalizedName = name.toLowerCase().trim();
-            const fornecedores = await prisma.fornecedor.findMany({
-                where: {
-                    nome_normalize: { contains: normalizedName },
-                    ativo: true
-                },
-                include: { invoiceTemplate: true }
-            });
-            const match = fornecedores.find(f => f.invoiceTemplate !== null);
-            return match?.invoiceTemplate || null;
-        } catch (error) {
-            console.error('Error finding template by name:', error);
-            return null;
-        }
-        */
-    }
-
-    /**
      * Find or create supplier
-     * Multi-tenant version
      */
-    async findOrCreateSupplier(tenantId: number, nif: string | null, nome: string): Promise<any> {
-        const nomeNormalize = nome.toLowerCase().trim();
+    async findOrCreateSupplier(
+        tenantId: number,
+        nif: string | null,
+        supplierName: string | null
+    ): Promise<any> {
+        if (!nif && !supplierName) {
+            throw new Error('Either NIF or supplier name must be provided');
+        }
 
-        // Try to find existing supplier by tenant + normalized name
-        let fornecedor = await prisma.fornecedor.findFirst({
+        // Try to find existing supplier
+        let supplier = await this.prisma.fornecedor.findFirst({
             where: {
                 tenant_id: tenantId,
-                nome_normalize: nomeNormalize
+                OR: [
+                    ...(nif ? [{ nif }] : []),
+                    ...(supplierName ? [{
+                        nome_normalize: this.normalizeName(supplierName)
+                    }] : [])
+                ]
             }
         });
 
-        if (fornecedor) {
-            // Update NIF if we have one and it's different
-            if (nif && fornecedor.nif !== nif) {
-                fornecedor = await prisma.fornecedor.update({
-                    where: { id: fornecedor.id },
-                    data: { nif }
-                });
-            }
-            return fornecedor;
+        // Create if not found
+        if (!supplier && supplierName) {
+            supplier = await this.prisma.fornecedor.create({
+                data: {
+                    tenant_id: tenantId,
+                    nome: supplierName,
+                    nome_normalize: this.normalizeName(supplierName),
+                    nif: nif || undefined,
+                    ativo: true
+                }
+            });
+
+            console.log(`[TemplateMatcher] Created new supplier: ${supplierName} (NIF: ${nif})`);
         }
 
-        // Create new supplier
-        fornecedor = await prisma.fornecedor.create({
-            data: {
-                tenant_id: tenantId,
-                nome,
-                nome_normalize: nomeNormalize,
-                nif
-            }
-        });
+        return supplier;
+    }
 
-        return fornecedor;
+    /**
+     * Normalize name for matching
+     */
+    private normalizeName(name: string): string {
+        return name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')  // Remove accents
+            .replace(/[^a-z0-9\s]/g, '')      // Remove special chars
+            .trim();
     }
 }

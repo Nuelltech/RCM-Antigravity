@@ -276,10 +276,21 @@ export default function ViewRecipePage() {
                                         : "-"}
                                 </p>
                             </div>
-                            <div>
-                                <label className="text-sm font-medium text-gray-500">Dificuldade</label>
-                                <p className="text-lg">{recipe.dificuldade || "-"}</p>
-                            </div>
+                            {/* Calculated Portion Quantity Indicator */}
+                            {recipe.quantidade_total_produzida && recipe.numero_porcoes > 0 && (
+                                <div>
+                                    <label className="text-sm font-medium text-gray-500">Quantidade por Porção</label>
+                                    <p className="text-lg font-semibold text-blue-600">
+                                        {(recipe.quantidade_total_produzida / recipe.numero_porcoes).toFixed(2)} {recipe.unidade_medida || ""}
+                                    </p>
+                                </div>
+                            )}
+                            {!recipe.quantidade_total_produzida && (
+                                <div>
+                                    <label className="text-sm font-medium text-gray-500">Dificuldade</label>
+                                    <p className="text-lg">{recipe.dificuldade || "-"}</p>
+                                </div>
+                            )}
                         </div>
                         {recipe.descricao && (
                             <div className="mt-4">

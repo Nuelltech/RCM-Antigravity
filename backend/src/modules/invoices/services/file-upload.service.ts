@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { pipeline } from 'stream';
+import { PDFDocument } from 'pdf-lib';
 
 const pump = promisify(pipeline);
 
@@ -124,5 +125,60 @@ export class FileUploadService {
             return mimetype.split('/')[1]; // jpg, png, webp
         }
         return 'unknown';
+    }
+
+    /**
+     * Merge multiple image buffers into a single PDF
+     */
+    async mergeImagesToPdf(files: Buffer[], tenantId: number): Promise<UploadedFile> {
+        const pdfDoc = await PDFDocument.create();
+
+        for (const fileBuffer of files) {
+            try {
+                let image;
+                // Try embedJpg first (common for photos)
+                try {
+                    image = await pdfDoc.embedJpg(fileBuffer);
+                } catch {
+                    // Fallback to PNG
+                    try {
+                        image = await pdfDoc.embedPng(fileBuffer);
+                    } catch (e) {
+                        // WEBP not supported by pdf-lib, skip or log
+                        console.warn('[PDFMerge] Skipping unsupported image format (must be JPG/PNG)');
+                        continue;
+                    }
+                }
+
+                if (image) {
+                    // Add page matching image dimensions
+                    const page = pdfDoc.addPage([image.width, image.height]);
+                    page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+                }
+            } catch (e) {
+                console.warn('Failed to embed image in PDF:', e);
+            }
+        }
+
+        if (pdfDoc.getPageCount() === 0) {
+            throw new Error('No valid images (JPG/PNG) to merge.');
+        }
+
+        const pdfBytes = await pdfDoc.save();
+
+        // Save merged file
+        const timestamp = Date.now();
+        const filename = `merged_scan_${timestamp}_${Math.random().toString(36).substring(7)}.pdf`;
+        const tenantDir = this.getTenantDir(tenantId);
+        const filepath = path.join(tenantDir, filename);
+
+        fs.writeFileSync(filepath, pdfBytes);
+
+        return {
+            filename,
+            filepath,
+            mimetype: 'application/pdf',
+            size: pdfBytes.length
+        };
     }
 }

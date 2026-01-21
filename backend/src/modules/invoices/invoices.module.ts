@@ -32,15 +32,47 @@ export async function invoicesRoutes(app: FastifyInstance) {
         }
 
         try {
-            // Get uploaded file
-            const data = await req.file();
+            // Get uploaded files (iterate parts)
+            const parts = req.files();
+            const uploadedBuffers: { buffer: Buffer, mimetype: string, filename: string }[] = [];
 
-            if (!data) {
-                return reply.status(400).send({ error: 'No file uploaded' });
+            for await (const part of parts) {
+                if (part.file) {
+                    const buffer = await part.toBuffer();
+                    uploadedBuffers.push({
+                        buffer,
+                        mimetype: part.mimetype,
+                        filename: part.filename
+                    });
+                }
             }
 
-            // Upload file
-            const uploadedFile = await fileUploadService.uploadFile(data, req.tenantId);
+            if (uploadedBuffers.length === 0) {
+                return reply.status(400).send({ error: 'No files uploaded' });
+            }
+
+            let uploadedFile: any;
+
+            if (uploadedBuffers.length === 1) {
+                // Single file: Reuse existing uploadFile logic by mocking MultipartFile
+                const mockFile = {
+                    filename: uploadedBuffers[0].filename,
+                    mimetype: uploadedBuffers[0].mimetype,
+                    toBuffer: async () => uploadedBuffers[0].buffer,
+                    file: null as any,
+                    fieldname: 'file',
+                    encoding: '7bit',
+                    fields: {}
+                };
+                uploadedFile = await fileUploadService.uploadFile(mockFile as any, req.tenantId);
+            } else {
+                // Multiple files: Merge into PDF
+                console.log(`[Upload] Processing ${uploadedBuffers.length} files (Multi-Photo Scan)`);
+                uploadedFile = await fileUploadService.mergeImagesToPdf(
+                    uploadedBuffers.map(u => u.buffer),
+                    req.tenantId
+                );
+            }
 
             // Create invoice record
             const fatura = await prisma.faturaImportacao.create({
@@ -53,17 +85,46 @@ export async function invoicesRoutes(app: FastifyInstance) {
                 }
             });
 
-            // Process OCR in background
-            console.log(`[Upload] Invoice ${fatura.id} created, starting async processing...`);
-            processInvoiceAsync(fatura.id, uploadedFile.filepath, req.tenantId).catch(err => {
-                console.error(`[Upload] Async processing failed for invoice ${fatura.id}:`, err);
+
+            // Perform OCR (non-blocking - multimodal can work without it)
+            let ocrText = '';
+            try {
+                const ocrResult = await ocrService.extractText(uploadedFile.filepath);
+                ocrText = ocrResult.fullText;
+
+                // Update invoice with OCR text
+                await prisma.faturaImportacao.update({
+                    where: { id: fatura.id },
+                    data: {
+                        ocr_texto_bruto: ocrText
+                    }
+                });
+            } catch (ocrError: any) {
+                console.warn(`[Upload] OCR failed (will use multimodal): ${ocrError.message}`);
+                // Continue - multimodal in worker will handle the file directly
+            }
+
+            // Add to processing queue (async via BullMQ)
+            const { invoiceProcessingQueue } = await import('../../queues/invoice-processing.queue');
+
+            await invoiceProcessingQueue.add('process-invoice', {
+                invoiceId: fatura.id,
+                tenantId: req.tenantId,
+                ocrText: ocrText,  // May be empty if OCR failed
+                filepath: uploadedFile.filepath,
+                uploadSource: 'web',
+                userId: req.userId
             });
 
-            return {
+            console.log(`[Upload] Invoice ${fatura.id} created and queued for processing`);
+
+            // Return 202 Accepted (processing async)
+            return reply.status(202).send({
                 id: fatura.id,
-                status: fatura.status,
+                status: 'pending',
+                message: 'Invoice uploaded successfully. Processing in background.',
                 ficheiro_nome: fatura.ficheiro_nome
-            };
+            });
         } catch (error: any) {
             console.error('Upload error:', error);
             return reply.status(500).send({ error: error?.message || 'Upload failed' });
@@ -128,6 +189,51 @@ export async function invoicesRoutes(app: FastifyInstance) {
             total,
             page: pageNum,
             limit: limitNum
+        };
+    });
+
+    // Get invoice stats (for dashboard KPI cards)
+    app.withTypeProvider<ZodTypeProvider>().get('/stats', {
+        schema: {
+            tags: ['Invoices'],
+            security: [{ bearerAuth: [] }],
+            response: {
+                200: z.object({
+                    total: z.number(),
+                    reviewing: z.number(),
+                    approved: z.number(),
+                    approved_partial: z.number(),
+                    errors: z.number(),
+                    pending: z.number(),
+                    processing: z.number(),
+                })
+            }
+        }
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        const where = {
+            tenant_id: req.tenantId
+        };
+
+        const [total, reviewing, approved, approved_partial, errors, pending, processing] = await Promise.all([
+            prisma.faturaImportacao.count({ where }),
+            prisma.faturaImportacao.count({ where: { ...where, status: 'reviewing' } }),
+            prisma.faturaImportacao.count({ where: { ...where, status: 'approved' } }),
+            prisma.faturaImportacao.count({ where: { ...where, status: 'approved_partial' } }),
+            prisma.faturaImportacao.count({ where: { ...where, status: 'error' } }),
+            prisma.faturaImportacao.count({ where: { ...where, status: 'pending' } }),
+            prisma.faturaImportacao.count({ where: { ...where, status: 'processing' } }),
+        ]);
+
+        return {
+            total,
+            reviewing,
+            approved,
+            approved_partial,
+            errors,
+            pending,
+            processing,
         };
     });
 
@@ -332,6 +438,38 @@ export async function invoicesRoutes(app: FastifyInstance) {
         }
     });
 
+    // Get invoices that recently completed processing (for frontend polling)
+    app.get('/pending-status', async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        const query = req.query as { since?: string };
+        const since = query.since ? new Date(query.since) : new Date(Date.now() - 30000); // Last 30s
+
+        const recentlyCompleted = await prisma.faturaImportacao.findMany({
+            where: {
+                tenant_id: req.tenantId,
+                status: {
+                    in: ['reviewing', 'error']
+                },
+                processado_em: {
+                    gte: since
+                }
+            },
+            select: {
+                id: true,
+                status: true,
+                fornecedor_nome: true,
+                numero_fatura: true,
+                processado_em: true
+            },
+            orderBy: {
+                processado_em: 'desc'
+            }
+        });
+
+        return { invoices: recentlyCompleted };
+    });
+
     // Delete/reject invoice
     app.withTypeProvider<ZodTypeProvider>().delete('/:id', {
         schema: {
@@ -361,6 +499,8 @@ export async function invoicesRoutes(app: FastifyInstance) {
  * Process invoice OCR and parsing in background
  */
 async function processInvoiceAsync(faturaId: number, filepath: string, tenantId: number): Promise<void> {
+    const startTime = Date.now();
+
     try {
         console.log(`[ProcessInvoice] Starting processing for invoice ${faturaId}`);
 
@@ -454,6 +594,24 @@ async function processInvoiceAsync(faturaId: number, filepath: string, tenantId:
 
         console.log(`[ProcessInvoice] Invoice ${faturaId} processing completed successfully!`);
 
+        // ✅ SAVE METRICS TO AUDIT TABLE
+        const duration = Date.now() - startTime;
+        await prisma.invoiceProcessingMetrics.create({
+            data: {
+                tenant_id: tenantId,
+                invoice_id: faturaId,
+                upload_source: 'web',
+                user_id: undefined,
+                parsing_method: parsed.method || 'legacy',
+                total_duration_ms: duration,
+                success: true,
+                line_items_extracted: parsed.lineItems.length,
+                gemini_attempts: 0,
+                created_at: new Date()
+            }
+        });
+        console.log(`[ProcessInvoice] ✅ Metrics saved: method=${parsed.method}, duration=${duration}ms, items=${parsed.lineItems.length}`);
+
         // 🔔 NOTIFICATION: Invoice ready for review
         console.log(`\n${'='.repeat(60)}`);
         console.log(`📋 FATURA PRONTA PARA REVISÃO`);
@@ -473,6 +631,7 @@ async function processInvoiceAsync(faturaId: number, filepath: string, tenantId:
         // });
 
     } catch (error: any) {
+        const duration = Date.now() - startTime;
         console.error(`[ProcessInvoice] ERROR for invoice ${faturaId}:`, error);
         console.error(`[ProcessInvoice] Error stack:`, error.stack);
 
@@ -484,5 +643,22 @@ async function processInvoiceAsync(faturaId: number, filepath: string, tenantId:
                 erro_mensagem: error?.message || 'Processing error'
             }
         });
+
+        // ✅ SAVE ERROR METRICS TO AUDIT TABLE
+        await prisma.invoiceProcessingMetrics.create({
+            data: {
+                tenant_id: tenantId,
+                invoice_id: faturaId,
+                upload_source: 'web',
+                user_id: undefined,
+                parsing_method: 'failed',
+                total_duration_ms: duration,
+                success: false,
+                line_items_extracted: 0,
+                gemini_attempts: 0,
+                created_at: new Date()
+            }
+        });
+        console.log(`[ProcessInvoice] ❌ Error metrics saved: duration=${duration}ms`);
     }
 }
