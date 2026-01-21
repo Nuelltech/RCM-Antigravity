@@ -13,6 +13,7 @@ export interface SalesProcessingJobData {
     salesImportId: number;
     tenantId: number;
     filepath: string;
+    fileContent?: string; // Base64 content for distributed workers
     uploadSource: 'web' | 'api';
     userId?: number;
 }

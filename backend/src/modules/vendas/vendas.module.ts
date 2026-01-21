@@ -268,11 +268,11 @@ export async function salesRoutes(app: FastifyInstance) {
             });
 
             // Queue for processing
-
             await addSalesProcessingJob({
                 salesImportId: salesImport.id,
                 tenantId: req.tenantId,
                 filepath,
+                fileContent: buffer.toString('base64'), // Pass content for workers in separate containers
                 uploadSource: 'web',
                 userId: req.userId
             });

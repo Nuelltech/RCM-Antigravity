@@ -1,6 +1,9 @@
 import { Worker, Job } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { GeminiSalesParserService } from '../modules/vendas/services/gemini-sales-parser.service';
 import { SalesMatchingService } from '../modules/vendas/services/sales-matching.service';
 
@@ -13,6 +16,7 @@ interface SalesProcessingJob {
     salesImportId: number;
     tenantId: number;
     filepath: string;
+    fileContent?: string; // Base64 content for workers in separate containers
     uploadSource: 'web' | 'api';
     userId?: number;
 }
@@ -25,12 +29,36 @@ interface SalesProcessingJob {
 const worker = new Worker<SalesProcessingJob>(
     'sales-processing',
     async (job: Job<SalesProcessingJob>) => {
-        const { salesImportId, tenantId, filepath, uploadSource, userId } = job.data;
+        const { salesImportId, tenantId, filepath, fileContent, uploadSource, userId } = job.data;
         const startTime = Date.now();
+        let processingFilepath = filepath;
+        let tempFilePath: string | null = null;
 
         console.log(`[SALES-WORKER] Processing sales import #${salesImportId} (tenant: ${tenantId})`);
 
         try {
+            // Handle file content transfer (for distributed environments like Render)
+            if (fileContent) {
+                try {
+                    const buffer = Buffer.from(fileContent, 'base64');
+                    const tempDir = os.tmpdir();
+                    const fileName = path.basename(filepath);
+                    tempFilePath = path.join(tempDir, `worker_${Date.now()}_${fileName}`);
+                    fs.writeFileSync(tempFilePath, buffer);
+                    processingFilepath = tempFilePath;
+                    console.log(`[SALES-WORKER] 📥 Recreated file from payload at: ${tempFilePath}`);
+                } catch (err: any) {
+                    console.error('[SALES-WORKER] Failed to create temp file from content:', err);
+                    throw new Error(`Failed to recreate file from payload: ${err.message}`);
+                }
+            } else {
+                // If no content provided, verify file exists at path
+                if (!fs.existsSync(processingFilepath)) {
+                    console.error(`[SALES-WORKER] File not found at path: ${processingFilepath}`);
+                    throw new Error(`File not found at path: ${processingFilepath}. If running in separate containers, ensure fileContent is passed.`);
+                }
+            }
+
             // Update status to processing
             await prisma.vendaImportacao.update({
                 where: { id: salesImportId },
@@ -39,7 +67,8 @@ const worker = new Worker<SalesProcessingJob>(
 
             // Parse sales report using Gemini
             const parser = new GeminiSalesParserService();
-            const result = await parser.parseSalesMultimodal(filepath);
+            // Use the local processing filepath
+            const result = await parser.parseSalesMultimodal(processingFilepath);
 
             const duration = Date.now() - startTime;
 
@@ -57,6 +86,7 @@ const worker = new Worker<SalesProcessingJob>(
                     iva_13_valor: result.header.iva?.iva13?.valor || undefined,
                     iva_23_base: result.header.iva?.iva23?.base || undefined,
                     iva_23_valor: result.header.iva?.iva23?.valor || undefined,
+
                     pagamento_dinheiro: result.header.pagamentos?.dinheiro || undefined,
                     pagamento_cartao: result.header.pagamentos?.cartao || undefined,
                     pagamento_outros: result.header.pagamentos?.outros || undefined,
@@ -147,6 +177,16 @@ const worker = new Worker<SalesProcessingJob>(
             });
 
             throw error; // Re-throw for BullMQ retry logic
+        } finally {
+            // Cleanup temp file
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                try {
+                    fs.unlinkSync(tempFilePath);
+                    console.log(`[SALES-WORKER] 🧹 Cleaned up temp file: ${tempFilePath}`);
+                } catch (cleanupErr) {
+                    console.error('[SALES-WORKER] Failed to cleanup temp file:', cleanupErr);
+                }
+            }
         }
     },
     {
