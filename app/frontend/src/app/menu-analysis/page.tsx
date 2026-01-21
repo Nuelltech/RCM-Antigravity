@@ -95,6 +95,7 @@ export default function MenuAnalysisPage() {
     const [data, setData] = useState<MenuAnalysisResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [detailsModal, setDetailsModal] = useState<Classification | null>(null);
+    const [categoryFilter, setCategoryFilter] = useState<string>('all'); // 'all', 'Bebidas', etc.
 
     // Default to last 30 days
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -142,8 +143,81 @@ export default function MenuAnalysisPage() {
         );
     }
 
+    // Extract unique categories from data for dynamic filter
+    const uniqueCategories = Array.from(
+        new Set(data.items.map(item => item.categoria_menu).filter(cat => cat != null))
+    ).sort();
+
+    // Category icon mapping
+    const getCategoryIcon = (category: string | null) => {
+        if (!category) return '📦';
+        const iconMap: Record<string, string> = {
+            'Bebidas': '🍹',
+            'Principais': '🍽️',
+            'Sobremesas': '🍰',
+            'Combos': '🎁',
+            'Entradas': '🥗',
+            'Sopas': '🍲',
+            'Aperitivos': '🥙',
+            'Petiscos': '🍢'
+        };
+        return iconMap[category] || '📦';
+    };
+
+    // Filter items by category
+    const filteredItems = categoryFilter === 'all'
+        ? data.items
+        : data.items.filter(item => item.categoria_menu === categoryFilter);
+
+    // Recalculate thresholds for filtered items
+    const recalculateThresholds = (items: MenuAnalysisItem[]) => {
+        if (items.length === 0) return { medianMargin: 0, medianVolume: 0 };
+
+        const margins = items.map(i => i.margemContribuicao).sort((a, b) => a - b);
+        const volumes = items.map(i => i.volumeVendas).sort((a, b) => a - b);
+
+        const medianIndex = Math.floor(margins.length / 2);
+        return {
+            medianMargin: margins[medianIndex],
+            medianVolume: volumes[medianIndex]
+        };
+    };
+
+    const thresholds = recalculateThresholds(filteredItems);
+
+    // Reclassify items based on new thresholds
+    const reclassifiedItems = filteredItems.map(item => {
+        const isHighMargin = item.margemContribuicao >= thresholds.medianMargin;
+        const isHighVolume = item.volumeVendas >= thresholds.medianVolume;
+
+        let newClassification: Classification;
+        if (isHighMargin && isHighVolume) newClassification = 'star';
+        else if (isHighMargin && !isHighVolume) newClassification = 'puzzle';
+        else if (!isHighMargin && isHighVolume) newClassification = 'workhorse';
+        else newClassification = 'dog';
+
+        return { ...item, classification: newClassification };
+    });
+
+    // Recalculate summary for filtered data
+    const filteredSummary = {
+        ...data.summary,
+        totalItems: reclassifiedItems.length,
+        totalRevenue: reclassifiedItems.reduce((sum, item) => sum + item.receitaTotal, 0),
+        avgMarginPercent: reclassifiedItems.length > 0
+            ? reclassifiedItems.reduce((sum, item) => sum + item.margemPercentual, 0) / reclassifiedItems.length
+            : 0,
+        categories: {
+            stars: reclassifiedItems.filter(i => i.classification === 'star').length,
+            puzzles: reclassifiedItems.filter(i => i.classification === 'puzzle').length,
+            workhorses: reclassifiedItems.filter(i => i.classification === 'workhorse').length,
+            dogs: reclassifiedItems.filter(i => i.classification === 'dog').length
+        },
+        thresholds
+    };
+
     // Prepare scatter plot data
-    const scatterData = data.items.map(item => ({
+    const scatterData = reclassifiedItems.map(item => ({
         x: item.volumeVendas,
         y: item.margemContribuicao,
         name: item.nome_comercial,
@@ -162,6 +236,21 @@ export default function MenuAnalysisPage() {
                         <p className="text-gray-600 mt-1">Análise de Rentabilidade do Menu</p>
                     </div>
                     <div className="flex items-center gap-4">
+                        {/* Category Filter */}
+                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                            <SelectTrigger className="w-[200px]">
+                                <SelectValue placeholder="Filtrar por categoria" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">📊 Todo o Menu</SelectItem>
+                                {uniqueCategories.map(category => (
+                                    <SelectItem key={category} value={category}>
+                                        {getCategoryIcon(category)} {category}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
                         {/* Date Range Selector - Same as Dashboard */}
                         <div className="flex items-center gap-2 bg-white p-2 rounded border">
                             <input
@@ -186,7 +275,7 @@ export default function MenuAnalysisPage() {
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {Object.entries(data.summary.categories).map(([key, count]) => {
+                    {Object.entries(filteredSummary.categories).map(([key, count]) => {
                         // Map plural keys from backend to singular keys in config
                         const keyMap: Record<string, Classification> = {
                             'stars': 'star',
@@ -261,13 +350,13 @@ export default function MenuAnalysisPage() {
                                 />
                                 {/* Reference lines for median */}
                                 <ReferenceLine
-                                    x={data.summary.thresholds.medianVolume}
+                                    x={thresholds.medianVolume}
                                     stroke="#666"
                                     strokeDasharray="5 5"
                                     label={{ value: 'Mediana Volume', position: 'top' }}
                                 />
                                 <ReferenceLine
-                                    y={data.summary.thresholds.medianMargin}
+                                    y={thresholds.medianMargin}
                                     stroke="#666"
                                     strokeDasharray="5 5"
                                     label={{ value: 'Mediana Margem', position: 'right' }}
@@ -316,7 +405,7 @@ export default function MenuAnalysisPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {data.items
+                                    {reclassifiedItems
                                         .sort((a, b) => b.receitaTotal - a.receitaTotal)
                                         .map((item) => {
                                             const config = classificationConfig[item.classification];
@@ -359,10 +448,10 @@ export default function MenuAnalysisPage() {
                     <CardContent>
                         <div className="grid md:grid-cols-2 gap-4">
                             {/* Stars */}
-                            {data.summary.categories.stars > 0 && (
+                            {filteredSummary.categories.stars > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.star.border} ${classificationConfig.star.bg}`}>
                                     <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
-                                        <span>🌟 Stars ({data.summary.categories.stars})</span>
+                                        <span>🌟 Stars ({filteredSummary.categories.stars})</span>
                                         <Button size="sm" variant="outline" onClick={() => setDetailsModal('star')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
@@ -375,10 +464,10 @@ export default function MenuAnalysisPage() {
                             )}
 
                             {/* Puzzles */}
-                            {data.summary.categories.puzzles > 0 && (
+                            {filteredSummary.categories.puzzles > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.puzzle.border} ${classificationConfig.puzzle.bg}`}>
                                     <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
-                                        <span>❓ Puzzles ({data.summary.categories.puzzles})</span>
+                                        <span>❓ Puzzles ({filteredSummary.categories.puzzles})</span>
                                         <Button size="sm" variant="outline" onClick={() => setDetailsModal('puzzle')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
@@ -391,10 +480,10 @@ export default function MenuAnalysisPage() {
                             )}
 
                             {/* Workhorses */}
-                            {data.summary.categories.workhorses > 0 && (
+                            {filteredSummary.categories.workhorses > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.workhorse.border} ${classificationConfig.workhorse.bg}`}>
                                     <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
-                                        <span>💰 Workhorses ({data.summary.categories.workhorses})</span>
+                                        <span>💰 Workhorses ({filteredSummary.categories.workhorses})</span>
                                         <Button size="sm" variant="outline" onClick={() => setDetailsModal('workhorse')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
@@ -407,10 +496,10 @@ export default function MenuAnalysisPage() {
                             )}
 
                             {/* Dogs */}
-                            {data.summary.categories.dogs > 0 && (
+                            {filteredSummary.categories.dogs > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.dog.border} ${classificationConfig.dog.bg}`}>
                                     <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
-                                        <span>🐕 Dogs ({data.summary.categories.dogs})</span>
+                                        <span>🐕 Dogs ({filteredSummary.categories.dogs})</span>
                                         <Button size="sm" variant="outline" onClick={() => setDetailsModal('dog')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
