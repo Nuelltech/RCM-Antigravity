@@ -32,8 +32,8 @@ export function DialogHeader({ children }: { children: React.ReactNode }) {
     return <div className="mb-4">{children}</div>;
 }
 
-export function DialogTitle({ children }: { children: React.ReactNode }) {
-    return <h2 className="text-xl font-semibold">{children}</h2>;
+export function DialogTitle({ children, className }: { children: React.ReactNode; className?: string }) {
+    return <h2 className={`text-xl font-semibold ${className || ""}`}>{children}</h2>;
 }
 
 export function DialogDescription({ children }: { children: React.ReactNode }) {

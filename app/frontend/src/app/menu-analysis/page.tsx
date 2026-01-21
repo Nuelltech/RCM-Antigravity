@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Star, HelpCircle, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
 import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
@@ -93,6 +94,7 @@ const classificationConfig = {
 export default function MenuAnalysisPage() {
     const [data, setData] = useState<MenuAnalysisResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [detailsModal, setDetailsModal] = useState<Classification | null>(null);
 
     // Default to last 30 days
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
@@ -359,8 +361,9 @@ export default function MenuAnalysisPage() {
                             {/* Stars */}
                             {data.summary.categories.stars > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.star.border} ${classificationConfig.star.bg}`}>
-                                    <h3 className="font-bold mb-2 flex items-center gap-2">
-                                        🌟 Stars ({data.summary.categories.stars})
+                                    <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
+                                        <span>🌟 Stars ({data.summary.categories.stars})</span>
+                                        <Button size="sm" variant="outline" onClick={() => setDetailsModal('star')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
                                         <li>✓ Manter e proteger estes pratos</li>
@@ -374,8 +377,9 @@ export default function MenuAnalysisPage() {
                             {/* Puzzles */}
                             {data.summary.categories.puzzles > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.puzzle.border} ${classificationConfig.puzzle.bg}`}>
-                                    <h3 className="font-bold mb-2 flex items-center gap-2">
-                                        ❓ Puzzles ({data.summary.categories.puzzles})
+                                    <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
+                                        <span>❓ Puzzles ({data.summary.categories.puzzles})</span>
+                                        <Button size="sm" variant="outline" onClick={() => setDetailsModal('puzzle')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
                                         <li>✓ Melhorar visibilidade no menu</li>
@@ -389,8 +393,9 @@ export default function MenuAnalysisPage() {
                             {/* Workhorses */}
                             {data.summary.categories.workhorses > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.workhorse.border} ${classificationConfig.workhorse.bg}`}>
-                                    <h3 className="font-bold mb-2 flex items-center gap-2">
-                                        💰 Workhorses ({data.summary.categories.workhorses})
+                                    <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
+                                        <span>💰 Workhorses ({data.summary.categories.workhorses})</span>
+                                        <Button size="sm" variant="outline" onClick={() => setDetailsModal('workhorse')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
                                         <li>✓ Tentar aumentar preço gradualmente</li>
@@ -404,8 +409,9 @@ export default function MenuAnalysisPage() {
                             {/* Dogs */}
                             {data.summary.categories.dogs > 0 && (
                                 <div className={`p-4 rounded-lg border-2 ${classificationConfig.dog.border} ${classificationConfig.dog.bg}`}>
-                                    <h3 className="font-bold mb-2 flex items-center gap-2">
-                                        🐕 Dogs ({data.summary.categories.dogs})
+                                    <h3 className="font-bold mb-2 flex items-center gap-2 justify-between">
+                                        <span>🐕 Dogs ({data.summary.categories.dogs})</span>
+                                        <Button size="sm" variant="outline" onClick={() => setDetailsModal('dog')}>Saber Mais</Button>
                                     </h3>
                                     <ul className="text-sm space-y-1">
                                         <li>✓ Considerar remover do menu</li>
@@ -419,6 +425,190 @@ export default function MenuAnalysisPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Details Modal */}
+            <Dialog open={!!detailsModal} onOpenChange={() => setDetailsModal(null)}>
+                <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                    {detailsModal === 'star' && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-2xl">
+                                    🌟 Stars - Estrelas do Menu
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Alto Volume + Alta Margem = Popular E Lucrativo
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="font-semibold mb-2">✅ Principais Causas:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Receita perfeita e sabor excecional</li>
+                                        <li>Preço otimizado (valor percebido &gt; custo real)</li>
+                                        <li>Marketing eficaz e destaque no menu</li>
+                                        <li>Eficiência operacional na preparação</li>
+                                        <li>Identidade/prato assinatura do restaurante</li>
+                                        <li>Apresentação visual forte e "Instagramável"</li>
+                                        <li>Taxa de repetição de compra alta (&gt;70%)</li>
+                                        <li>Reviews e testemunhos positivos</li>
+                                        <li>Consistência absoluta na qualidade</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">🎯 Ações Prioritárias:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Proteger qualidade a todo custo</li>
+                                        <li>Destacar no menu com foto e destaque visual</li>
+                                        <li>Treinar staff para recomendar sempre</li>
+                                        <li className="font-medium">Monitorizar margem - se custo subir, aumentar PREÇO (não baixar qualidade)</li>
+                                        <li>Promover nas redes sociais</li>
+                                        <li>Se margem ficar insustentável: Otimizar ingredientes SEM comprometer sabor</li>
+                                        <li className="text-orange-600">Último recurso: Reformular ou remover se impossível manter rentabilidade</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {detailsModal === 'puzzle' && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-2xl">
+                                    ❓ Puzzles - Enigmas
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Alta Margem + Baixo Volume = Lucrativo mas Pouco Popular
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="font-semibold mb-2">✅ Principais Causas:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Posicionamento escondido no menu</li>
+                                        <li>Preço parece alto (falta justificação)</li>
+                                        <li>Descrição inadequada ou nome pouco apelativo</li>
+                                        <li className="font-medium">Qualidade/sabor não agrada ao público-alvo</li>
+                                        <li className="font-medium">Confeção inconsistente (cliente arrisca menos)</li>
+                                        <li>Desconhecimento do cliente (prato novo/exótico)</li>
+                                        <li>Marketing insuficiente</li>
+                                        <li>Staff não recomenda/desconhece</li>
+                                        <li>Concorrência interna (há Stars similares)</li>
+                                        <li>Apresentação visual inferior</li>
+                                        <li>Sazonalidade errada</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">🎯 Ações Prioritárias:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Destacar no menu (foto, posição estratégica)</li>
+                                        <li>Criar promoções temporárias</li>
+                                        <li>Treinar staff para recomendar ativamente</li>
+                                        <li>Melhorar nome e descrição</li>
+                                        <li>Combo com Stars para aumentar vendas</li>
+                                        <li>Sample gratuito para experimentação</li>
+                                        <li className="text-orange-600">Se problema for qualidade: Reformular receita ou remover</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {detailsModal === 'workhorse' && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-2xl">
+                                    💰 Workhorses - Cavalos de Trabalho
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Alto Volume + Baixa Margem = Popular mas Pouco Lucrativo
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="font-semibold mb-2">✅ Principais Causas:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Preço muito baixo (medo de aumentar)</li>
+                                        <li>Custos de ingredientes altos</li>
+                                        <li>Guerra de preços com concorrência</li>
+                                        <li>Ineficiência operacional (desperdício alto)</li>
+                                        <li>Estratégia deliberada (loss leader)</li>
+                                        <li>Má formação de preço inicial</li>
+                                        <li>Porção excessiva</li>
+                                        <li>Custos ocultos (preparação complexa)</li>
+                                        <li>Prato clássico/tradicional do restaurante</li>
+                                        <li>Promoções permanentes</li>
+                                        <li>Erosão de margem (custos subiram, preço não)</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2">🎯 Ações Prioritárias:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Aumentar preço gradualmente (5-10%)</li>
+                                        <li>Reduzir porção ligeiramente</li>
+                                        <li>Otimizar receita (ingredientes mais baratos)</li>
+                                        <li>Reduzir desperdício na preparação</li>
+                                        <li>Criar versão premium (maior margem)</li>
+                                        <li>Oferecer extras pagos</li>
+                                        <li>Usar para upsell de bebidas/sobremesas</li>
+                                    </ul>
+                                    <p className="text-sm italic mt-2 text-gray-600">
+                                        💡 Nota: Workhorses trazem volume e amortizam custos fixos. Ideal ter 30% do menu nesta categoria.
+                                    </p>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {detailsModal === 'dog' && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-2xl">
+                                    🐕 Dogs - Perdedores
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Baixo Volume + Baixa Margem = Não é Popular NEM Lucrativo
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="font-semibold mb-2">✅ Principais Causas:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li>Qualidade fraca ou sabor inadequado</li>
+                                        <li>Reputação negativa (reviews ruins)</li>
+                                        <li>Preço vs valor desalinhado</li>
+                                        <li>Má combinação (caro E custoso)</li>
+                                        <li>Não encaixa no conceito do restaurante</li>
+                                        <li>Prato ultrapassado ou fora de moda</li>
+                                        <li>Ingrediente exótico demais</li>
+                                        <li>Complexidade excessiva na preparação</li>
+                                        <li>Concorrência melhor (interna ou externa)</li>
+                                        <li>Apresentação fraca</li>
+                                        <li>Sazonalidade errada</li>
+                                        <li>Marketing inexistente</li>
+                                        <li>Problemas operacionais graves</li>
+                                        <li>Experiência/fusão falhada</li>
+                                        <li>Custos descontrolados</li>
+                                        <li>Target errado (público não é o esperado)</li>
+                                    </ul>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold mb-2 text-red-600">⚠️ Ação Urgente:</h4>
+                                    <ul className="space-y-1 text-sm list-disc pl-5">
+                                        <li className="font-semibold text-red-600">ELIMINAR do menu (recomendado)</li>
+                                        <li>Reformular completamente a receita</li>
+                                        <li>Substituir por alternativa melhor</li>
+                                        <li>Usar ingredientes em outros pratos</li>
+                                        <li>Simplificar o menu</li>
+                                    </ul>
+                                    <p className="text-sm italic mt-2 text-red-600 font-medium bg-red-50 p-2 rounded">
+                                        💡 Regra: Se tens de FORÇAR vendas, remove! Dogs custam dinheiro, espaço e reputação.
+                                    </p>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }
