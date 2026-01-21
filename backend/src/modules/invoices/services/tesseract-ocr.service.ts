@@ -22,7 +22,7 @@ export class TesseractOCRService {
                 filepath,
                 'por', // Portuguese language
                 {
-                    logger: (m) => {
+                    logger: (m: any) => {
                         // Log progress
                         if (m.status === 'recognizing text') {
                             console.log(`[TesseractOCR] Progress: ${Math.round(m.progress * 100)}%`);
