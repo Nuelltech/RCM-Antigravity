@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { PrismaClient } from '@prisma/client';
+// import { PrismaClient } from '@prisma/client';
+import { prisma } from '../core/database';
 import Redis from 'ioredis';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -7,7 +8,7 @@ import * as os from 'os';
 import { GeminiSalesParserService } from '../modules/vendas/services/gemini-sales-parser.service';
 import { SalesMatchingService } from '../modules/vendas/services/sales-matching.service';
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
 });
@@ -141,6 +142,37 @@ const worker = new Worker<SalesProcessingJob>(
                 `in ${duration}ms (${result.lineItems.length} items)`
             );
 
+            // Phase 4: Generic Worker Metric
+            try {
+                // @ts-ignore - Stale Prisma types legacy workaround
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'sales-processing',
+                        job_name: 'process-sales-import',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'COMPLETED',
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+            } catch (err) { console.error('Failed to log worker metric', err); }
+
+            // Phase 4: Generic Worker Metric
+            try {
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'sales-processing',
+                        job_name: 'process-sales-import',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'COMPLETED',
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+            } catch (err) { console.error('Failed to log worker metric', err); }
+
             return {
                 success: true,
                 salesImportId,
@@ -175,6 +207,33 @@ const worker = new Worker<SalesProcessingJob>(
                     created_at: new Date()
                 }
             });
+
+            // Phase 4: Generic Worker Metric & Error Log
+            try {
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'sales-processing',
+                        job_name: 'process-sales-import',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'FAILED',
+                        error_message: error.message,
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+
+                // @ts-ignore - Stale Prisma types legacy workaround
+                await prisma.errorLog.create({
+                    data: {
+                        level: 'ERROR',
+                        source: 'WORKER',
+                        message: error.message,
+                        stack_trace: error.stack,
+                        metadata: { jobId: job.id, queue: 'sales-processing' }
+                    }
+                });
+            } catch (err) { console.error('Failed to log error metric', err); }
 
             throw error; // Re-throw for BullMQ retry logic
         } finally {

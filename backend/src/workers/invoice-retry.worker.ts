@@ -1,8 +1,9 @@
 import { Worker, Job } from 'bullmq';
-import { PrismaClient } from '@prisma/client';
+// import { PrismaClient } from '@prisma/client';
+import { prisma } from '../core/database';
 import Redis from 'ioredis';
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
 });
@@ -21,6 +22,7 @@ const retryWorker = new Worker<InvoiceRetryJob>(
     'invoice-retry',
     async (job: Job<InvoiceRetryJob>) => {
         const { invoiceId, tenantId, userId } = job.data;
+        const start = Date.now();
 
         console.log(`[RetryWorker] Processing retry for invoice #${invoiceId}`);
 
@@ -58,13 +60,59 @@ const retryWorker = new Worker<InvoiceRetryJob>(
 
             console.log(`[RetryWorker] ✅ Invoice #${invoiceId} re-queued for processing`);
 
+            // Phase 4: Generic Worker Metric
+            const duration = Date.now() - start;
+            try {
+                // @ts-ignore - Stale Prisma types legacy workaround
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'invoice-retry',
+                        job_name: 'requeue-invoice',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'COMPLETED',
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+            } catch (err) { console.error('Failed to log worker metric', err); }
+
             return {
                 success: true,
                 invoiceId
             };
 
         } catch (error: any) {
+            const duration = Date.now() - start;
             console.error(`[RetryWorker] ❌ Error retrying invoice #${invoiceId}:`, error);
+
+            // Phase 4: Generic Worker Metric & Error Log
+            try {
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'invoice-retry',
+                        job_name: 'requeue-invoice',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'FAILED',
+                        error_message: error.message,
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+
+                // @ts-ignore - Stale Prisma types legacy workaround
+                await prisma.errorLog.create({
+                    data: {
+                        level: 'ERROR',
+                        source: 'WORKER',
+                        message: error.message,
+                        stack_trace: error.stack,
+                        metadata: { jobId: job.id, queue: 'invoice-retry' }
+                    }
+                });
+            } catch (err) { console.error('Failed to log error metric', err); }
+
             throw error;
         }
     },

@@ -1,9 +1,10 @@
 import { Worker, Job } from 'bullmq';
-import { PrismaClient } from '@prisma/client';
+// import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
 import { IntelligentParserRouter } from '../modules/invoices/services/intelligent-parser-router.service';
+import { prisma } from '../core/database';
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient();
 const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
 });
@@ -111,6 +112,22 @@ const worker = new Worker<InvoiceProcessingJob>(
 
             console.log(`[Worker] ✅ Invoice #${invoiceId} processed successfully in ${duration}ms (${result.lineItems.length} items, method: ${result.method})`);
 
+            // Phase 4: Generic Worker Metric
+            try {
+                // @ts-ignore - Stale Prisma types legacy workaround
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'invoice-processing',
+                        job_name: 'process-invoice',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'COMPLETED',
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+            } catch (err) { console.error('Failed to log worker metric', err); }
+
             return {
                 success: true,
                 invoiceId,
@@ -145,6 +162,33 @@ const worker = new Worker<InvoiceProcessingJob>(
                         : (error.message || 'Erro desconhecido')
                 }
             });
+
+            // Phase 4: Generic Worker Metric & Error Log
+            try {
+                await prisma.workerMetric.create({
+                    data: {
+                        queue_name: 'invoice-processing',
+                        job_name: 'process-invoice',
+                        job_id: job.id,
+                        duration_ms: duration,
+                        status: 'FAILED',
+                        error_message: error.message,
+                        processed_at: new Date(),
+                        attempts: job.attemptsMade + 1
+                    }
+                });
+
+                // @ts-ignore - Stale Prisma types legacy workaround
+                await prisma.errorLog.create({
+                    data: {
+                        level: 'ERROR',
+                        source: 'WORKER',
+                        message: error.message,
+                        stack_trace: error.stack,
+                        metadata: { jobId: job.id, queue: 'invoice-processing' }
+                    }
+                });
+            } catch (err) { console.error('Failed to log error metric', err); }
 
             // Save error metrics
             await prisma.invoiceProcessingMetrics.create({

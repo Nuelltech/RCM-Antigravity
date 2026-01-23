@@ -1,7 +1,6 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -24,6 +23,17 @@ model Tenant {
   plano               String    @default("trial") // trial, basico, profissional, enterprise
   data_expiracao_plano DateTime?
   ativo               Boolean   @default(true)
+  
+  // Support & Management fields
+  status              String?   @default("active") // active, trial, suspended, cancelled, payment_overdue
+  trial_ends_at       DateTime?
+  suspended_at        DateTime?
+  suspension_reason   String?   @db.Text
+  
+  // Usage limits
+  monthly_limit_invoices Int?  @default(50)
+  monthly_limit_sales    Int?  @default(100)
+  storage_limit_mb       Int?  @default(1000)
   configuracoes       Json?     // targets margem, moeda, timezone
   metadata            Json?
   createdAt           DateTime  @default(now())
@@ -78,6 +88,10 @@ model Tenant {
   vendasLinhasImportacao VendaLinhaImportacao[]
   salesMatchingHistorico SalesMatchingHistorico[]
   salesProcessingMetrics SalesProcessingMetrics[]
+  errorLogs              ErrorLog[]
+  performanceMetrics     PerformanceMetric[]
+  tenantNotes            TenantNote[]
+  tenantEvents           TenantEvent[]
 
   @@map("tenants")
 }
@@ -123,6 +137,8 @@ model User {
   demoRequests        DemoRequest[]   // Demo requests from this user
   salesMatchingHistorico SalesMatchingHistorico[]
   salesProcessingMetrics SalesProcessingMetrics[]
+  errorLogs              ErrorLog[]
+  performanceMetrics     PerformanceMetric[]
 
 
 
@@ -238,7 +254,7 @@ model AuditLog {
 }
 
 // -----------------------------------------------------------------------------
-// PRODUTOS & INVENTÁRIO
+// PRODUTOS & INVENTÃƒÂRIO
 // -----------------------------------------------------------------------------
 
 model Familia {
@@ -584,7 +600,7 @@ model CompraTemporaria {
 }
 
 // -----------------------------------------------------------------------------
-// COMPRAS - Faturação (Invoice-based Purchases)
+// COMPRAS - FaturaÃƒÂ§ÃƒÂ£o (Invoice-based Purchases)
 // -----------------------------------------------------------------------------
 
 model CompraFatura {
@@ -681,7 +697,7 @@ model Receita {
   imagem_url          String?
   video_url           String?
   descricao           String?  @db.Text
-  dificuldade         String?  // Fácil, Média, Difícil
+  dificuldade         String?  // FÃƒÂ¡cil, MÃƒÂ©dia, DifÃƒÂ­cil
   categoria           String?
   ativa               Boolean  @default(true)
   criado_por          Int?
@@ -709,8 +725,8 @@ model IngredienteReceita {
   produto_id          Int?
   receita_preparo_id  Int?
   quantidade_bruta    Decimal  @db.Decimal(10, 4) // Quantidade retirada do armazenamento
-  quantidade_liquida  Decimal? @db.Decimal(10, 4) // Quantidade útil após preparação
-  rentabilidade       Decimal? @db.Decimal(5, 2)  // (Qtd Líquida / Qtd Bruta) * 100 - calculado
+  quantidade_liquida  Decimal? @db.Decimal(10, 4) // Quantidade ÃƒÂºtil apÃƒÂ³s preparaÃƒÂ§ÃƒÂ£o
+  rentabilidade       Decimal? @db.Decimal(5, 2)  // (Qtd LÃƒÂ­quida / Qtd Bruta) * 100 - calculado
   unidade             String
   custo_ingrediente   Decimal  @default(0) @db.Decimal(10, 4)
   ordem               Int      @default(0)
@@ -816,7 +832,7 @@ model Venda {
 }
 
 // -----------------------------------------------------------------------------
-// INVENTÁRIO
+// INVENTÃƒÂRIO
 // -----------------------------------------------------------------------------
 
 model Localizacao {
@@ -921,19 +937,19 @@ model StockTeorico {
 }
 
 // -----------------------------------------------------------------------------
-// AI & INTEGRAÇÕES
+// AI & INTEGRAÃƒâ€¡Ãƒâ€¢ES
 // -----------------------------------------------------------------------------
 
 model AlertaAi {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   uuid                String   @default(uuid())
-  tipo_alerta         String   // Margem Baixa, Preço Subiu...
+  tipo_alerta         String   // Margem Baixa, PreÃƒÂ§o Subiu...
   titulo              String
   mensagem            String   @db.Text
   entidade_tipo       String?
   entidade_id         String?
-  severidade          String   // Info, Atenção, Crítico
+  severidade          String   // Info, AtenÃƒÂ§ÃƒÂ£o, CrÃƒÂ­tico
   acoes_sugeridas     Json?
   dados_contexto      Json?
   lido                Boolean  @default(false)
@@ -1005,7 +1021,7 @@ model MapeamentoPos {
 }
 
 // -----------------------------------------------------------------------------
-// COMBOS - Combinações de Receitas e Produtos
+// COMBOS - CombinaÃƒÂ§ÃƒÂµes de Receitas e Produtos
 // -----------------------------------------------------------------------------
 
 model Combo {
@@ -1054,7 +1070,7 @@ model ComboCategoria {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   combo_id            Int
-  categoria           String   // "Sopa", "Prato Principal", "Sobremesa", "Bebida", "Café"
+  categoria           String   // "Sopa", "Prato Principal", "Sobremesa", "Bebida", "CafÃƒÂ©"
   ordem               Int      @default(0)
   obrigatoria         Boolean  @default(true)
   custo_max_calculado Decimal  @default(0) @db.Decimal(10, 4)
@@ -1074,8 +1090,8 @@ model ComboCategoriaOpcao {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   categoria_id        Int
-  receita_id          Int?     // Opção de receita
-  formato_venda_id    Int?     // Opção de formato de venda (bebida)
+  receita_id          Int?     // OpÃƒÂ§ÃƒÂ£o de receita
+  formato_venda_id    Int?     // OpÃƒÂ§ÃƒÂ£o de formato de venda (bebida)
   custo_unitario      Decimal  @db.Decimal(10, 4)
   ordem               Int      @default(0)
   
@@ -1127,7 +1143,7 @@ model CustoEstrutura {
   uuid                String   @default(uuid())
   
   descricao           String
-  classificacao       String   // Salário, Eletricidade, Água, Marketing, Contabilidade, Sistemas, Internet, Veículos, Renda, Gestão, Outros
+  classificacao       String   // SalÃƒÂ¡rio, Eletricidade, ÃƒÂgua, Marketing, Contabilidade, Sistemas, Internet, VeÃƒÂ­culos, Renda, GestÃƒÂ£o, Outros
   valor_mensal        Decimal  @db.Decimal(10, 2)
   
   ativo               Boolean  @default(true)
@@ -1388,7 +1404,7 @@ model InvoiceProcessingMetrics {
   
   // Duration Metrics (milliseconds)
   total_duration_ms       Int       // Worker processing time only
-  end_to_end_duration_ms  Int?      // Upload → Reviewing/Error (TOTAL for UX/SLA)
+  end_to_end_duration_ms  Int?      // Upload Ã¢â€ â€™ Reviewing/Error (TOTAL for UX/SLA)
   ocr_duration_ms         Int?
   parsing_duration_ms     Int?
   
@@ -1686,4 +1702,115 @@ model SalesProcessingMetrics {
   @@index([tenant_id, created_at])
   @@index([sales_import_id])
   @@map("sales_processing_metrics")
+}
+
+// -----------------------------------------------------------------------------
+// MONITORING & DIAGNOSTICS (PHASE 4)
+// -----------------------------------------------------------------------------
+
+model ErrorLog {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  level         String   // ERROR, WARN, INFO, CRITICAL
+  source        String   // API, WORKER, DATABASE, CLIENT
+  message       String   @db.Text
+  stack_trace   String?  @db.Text
+  tenant_id     Int?
+  user_id       Int?
+  endpoint      String?
+  method        String?
+  status_code   Int?
+  metadata      Json?
+  resolved      Boolean  @default(false)
+  resolved_at   DateTime?
+  resolved_by   Int?
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp, level])
+  @@index([tenant_id])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
+model PerformanceMetric {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  type          String   // API_REQUEST, DB_QUERY, WORKER_JOB
+  name          String   // "GET /api/v1/users", "CalculoCustos"
+  duration_ms   Int
+  status        String   // SUCCESS, ERROR
+  status_code   Int?
+  tenant_id     Int?
+  user_id       Int?
+  metadata      Json?    // { queryParams, workerJobId }
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp])
+  @@index([type, name])
+  @@map("performance_metrics")
+}
+
+model WorkerMetric {
+  id            BigInt   @id @default(autoincrement())
+  queue_name    String
+  job_name      String
+  job_id        String?
+  duration_ms   Int
+  status        String   // COMPLETED, FAILED
+  error_message String?  @db.Text
+  processed_at  DateTime @default(now())
+  attempts      Int      @default(1)
+  
+  @@index([queue_name, processed_at])
+  @@map("worker_metrics")
+}
+
+// -----------------------------------------------------------------------------
+// INTERNAL SUPPORT: Tenant Notes & Events
+// -----------------------------------------------------------------------------
+
+model TenantNote {
+  id                BigInt   @id @default(autoincrement())
+  tenant_id         Int
+  internal_user_id  String   // ID do utilizador interno (InternalUser)
+  content           String   @db.Text
+  created_at        DateTime @default(now())
+  
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id])
+  @@index([created_at])
+  @@map("tenant_notes")
+}
+
+model TenantEvent {
+  id            BigInt   @id @default(autoincrement())
+  tenant_id     Int
+  event_type    String   // account_created, first_invoice, first_error, plan_changed, suspended, reactivated
+  description   String
+  metadata_json String?  @db.Text
+  created_at    DateTime @default(now())
+  
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id, created_at])
+  @@index([event_type])
+  @@map("tenant_events")
+}
+
+
+model SystemHealth {
+  id            Int      @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  service       String   // DATABASE, REDIS, WORKERS, API, AI
+  status        String   // UP, DOWN, DEGRADED
+  response_ms   Int?
+  details       Json?
+  
+  @@index([timestamp, service])
+  @@map("system_health")
 }

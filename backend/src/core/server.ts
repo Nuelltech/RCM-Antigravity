@@ -120,8 +120,23 @@ async function main() {
     server.register(internalAuthRoutes, { prefix: '/api/internal/auth' });
 
     // Internal leads management routes (REQUIRES INTERNAL AUTH)
+    // TODO: Fix leads service schema fields before uncommenting
     // const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
     // server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+
+    // Internal dashboard stats (REQUIRES INTERNAL AUTH)
+    const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
+    server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
+
+
+    // Internal system health (REQUIRES INTERNAL AUTH)
+    const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
+    server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
+
+    // Internal tenants management (REQUIRES INTERNAL AUTH)
+    const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
+    server.register(internalTenantsModule);
+
 
     // Health Check & Root Route (NO AUTH REQUIRED - must be BEFORE middleware)
     server.get('/health', async () => {
@@ -143,11 +158,24 @@ async function main() {
 
 
     // Global Middleware (applies to ALL routes registered AFTER this point)
+
+    // Performance Tracker (Phase 4)
+    server.addHook('onRequest', async (req, reply) => {
+        const { performanceTracker } = await import('./middleware/performance-tracker');
+        await performanceTracker(req, reply);
+    });
+
     server.addHook('onRequest', async (req, reply) => {
         const { authMiddleware } = await import('./middleware');
         await authMiddleware(req, reply);
     });
     server.addHook('onRequest', tenantMiddleware);
+
+    // Global Error Logger (Phase 4)
+    server.setErrorHandler(async (error, req, reply) => {
+        const { errorLogger } = await import('./middleware/error-logger');
+        await errorLogger(error, req, reply);
+    });
 
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });
