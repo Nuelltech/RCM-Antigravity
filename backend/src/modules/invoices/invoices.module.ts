@@ -17,6 +17,25 @@ const parserRouter = new IntelligentParserRouter(); // Intelligent routing: Temp
 const matcherService = new ProductMatcherService();
 const integrationService = new InvoiceIntegrationService();
 
+// Helper to convert internal file path to public URL
+function toPublicUrl(filepath: string | null): string | null {
+    if (!filepath) return null;
+    if (filepath.startsWith('http') || filepath.startsWith('/uploads')) return filepath;
+
+    // Normalize slashes
+    const normalized = filepath.replace(/\\/g, '/');
+    const uploadsIndex = normalized.indexOf('/uploads/');
+
+    // DEBUG LOG
+    console.log(`[URL Transform] Original: ${filepath} -> Normalized: ${normalized} (Index: ${uploadsIndex})`);
+
+    if (uploadsIndex !== -1) {
+        return normalized.substring(uploadsIndex);
+    }
+
+    return filepath;
+}
+
 export async function invoicesRoutes(app: FastifyInstance) {
     // Register multipart support
     await app.register(require('@fastify/multipart'), {
@@ -184,8 +203,14 @@ export async function invoicesRoutes(app: FastifyInstance) {
             prisma.faturaImportacao.count({ where })
         ]);
 
+        // Transform file URLs
+        const transformedInvoices = invoices.map(inv => ({
+            ...inv,
+            ficheiro_url: toPublicUrl(inv.ficheiro_url)
+        }));
+
         return {
-            invoices,
+            invoices: transformedInvoices,
             total,
             page: pageNum,
             limit: limitNum
@@ -274,7 +299,10 @@ export async function invoicesRoutes(app: FastifyInstance) {
             return reply.status(404).send({ error: 'Invoice not found' });
         }
 
-        return fatura;
+        return {
+            ...fatura,
+            ficheiro_url: toPublicUrl(fatura.ficheiro_url)
+        };
     });
 
     // Match line item to product

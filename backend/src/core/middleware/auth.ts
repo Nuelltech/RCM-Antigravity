@@ -26,8 +26,12 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply) {
         '/api/users/validate-invite-token',
         '/api/health',
         '/api/public',
-        '/api/internal',
-        '/health'
+
+        '/health',
+        '/favicon.ico',
+        '/fonts',
+        '/uploads',
+        '/documentation'
     ];
 
     // Check for exact root route match
@@ -68,7 +72,8 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply) {
             id: decoded.id || decoded.userId,
             role: decoded.role,
             email: decoded.email,
-            tenantId: decoded.tenantId
+            tenantId: decoded.tenantId,
+            permissions: decoded.permissions || []
         };
 
         req.log.info(`[AUTH] User object set: id=${(req as any).user.id}, role=${(req as any).user.role}`);

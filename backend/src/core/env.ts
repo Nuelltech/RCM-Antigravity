@@ -10,7 +10,7 @@ const trimmedEnv = Object.fromEntries(
 
 const envSchema = z.object({
     PORT: z.string().default('3001'),
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    NODE_ENV: z.enum(['development', 'production', 'test', 'staging']).default('development'),
     DATABASE_URL: z.string(),
     REDIS_URL: z.string().default('redis://localhost:6379'),
     JWT_SECRET: z.string(),

@@ -224,6 +224,25 @@ export async function salesRoutes(app: FastifyInstance) {
         };
     });
 
+
+    // Helper to convert internal file path to public URL
+    function toPublicUrl(filepath: string | null): string | null {
+        if (!filepath) return null;
+        if (filepath.startsWith('http') || filepath.startsWith('/uploads')) return filepath;
+
+        // Normalize slashes
+        const normalized = filepath.replace(/\\/g, '/');
+        const uploadsIndex = normalized.indexOf('/uploads/');
+
+        console.log(`[Sales URL] Orig: ${filepath} -> Norm: ${normalized} (Idx: ${uploadsIndex})`);
+
+        if (uploadsIndex !== -1) {
+            return normalized.substring(uploadsIndex); // Returns /uploads/...
+        }
+
+        return filepath;
+    }
+
     // =========================================================================
     // SALES IMPORT ROUTES (PDF Upload & Processing)
     // =========================================================================
@@ -301,6 +320,7 @@ export async function salesRoutes(app: FastifyInstance) {
             select: {
                 id: true,
                 ficheiro_nome: true,
+                ficheiro_url: true, // ADDED
                 data_venda: true,
                 total_bruto: true,
                 total_liquido: true,
@@ -312,7 +332,11 @@ export async function salesRoutes(app: FastifyInstance) {
             }
         });
 
-        return imports;
+        // Transform URLs
+        return imports.map(imp => ({
+            ...imp,
+            ficheiro_url: toPublicUrl(imp.ficheiro_url)
+        }));
     });
 
     /**
@@ -347,7 +371,10 @@ export async function salesRoutes(app: FastifyInstance) {
             return reply.status(404).send({ error: 'Sales import not found' });
         }
 
-        return salesImport;
+        return {
+            ...salesImport,
+            ficheiro_url: toPublicUrl(salesImport.ficheiro_url)
+        };
     });
 
     /**

@@ -1,0 +1,82 @@
+// -----------------------------------------------------------------------------
+// SYSTEM MONITORING & HEALTH
+// -----------------------------------------------------------------------------
+
+// Error Tracking
+model ErrorLog {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  level         String   // ERROR, WARN, INFO, CRITICAL
+  source        String   // API, WORKER, DATABASE, REDIS
+  message       String   @db.Text
+  stack_trace   String?  @db.Text
+  tenant_id     Int?
+  user_id       Int?
+  endpoint      String?
+  method        String?
+  status_code   Int?
+  metadata      Json?
+  resolved      Boolean  @default(false)
+  resolved_at   DateTime?
+  resolved_by   Int?
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  resolver      InternalUser? @relation("ErrorResolver", fields: [resolved_by], references: [id])
+  
+  @@index([timestamp, level])
+  @@index([tenant_id])
+  @@index([resolved])
+  @@index([source])
+  @@map("error_logs")
+}
+
+// Performance Metrics
+model PerformanceMetric {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  endpoint      String
+  method        String   // GET, POST, etc
+  response_time Int      // milliseconds
+  status_code   Int
+  tenant_id     Int?
+  user_id       Int?
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp])
+  @@index([endpoint])
+  @@index([response_time])
+  @@map("performance_metrics")
+}
+
+// System Health Status
+model SystemHealth {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  service       String   // DATABASE, REDIS, WORKERS, API
+  status        String   // UP, DOWN, DEGRADED
+  response_ms   Int?
+  details       Json?
+  
+  @@index([timestamp, service])
+  @@index([service, status])
+  @@map("system_health")
+}
+
+// Database Backups
+model DatabaseBackup {
+  id                BigInt   @id @default(autoincrement())
+  created_at        DateTime @default(now())
+  filename          String
+  size_mb           Float
+  status            String   // SUCCESS, FAILED, IN_PROGRESS
+  backup_type       String   @default("FULL") // FULL, INCREMENTAL
+  error_message     String?  @db.Text
+  duration_seconds  Int?
+  
+  @@index([created_at])
+  @@index([status])
+  @@map("database_backups")
+}

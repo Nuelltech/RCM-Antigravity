@@ -18,7 +18,8 @@
         "src/core/**/*",
         "src/modules/**/*",
         "src/workers/**/*",
-        "src/email-templates/**/*"
+        "src/email-templates/**/*",
+        "src/queues/**/*"
     ],
     "exclude": [
         "node_modules",
