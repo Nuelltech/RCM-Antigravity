@@ -42,6 +42,7 @@
     "@fastify/swagger-ui": "^3.0.0",
     "@google-cloud/vision": "^4.0.2",
     "@google/generative-ai": "^0.21.0",
+    "basic-ftp": "^5.0.5",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "@prisma/client": "5.10.2",
@@ -64,9 +65,11 @@
     "@types/nodemailer": "^6.4.14",
     "react": "^18.2.0",
     "@types/react": "^18.2.48",
-    "tesseract.js": "^5.0.5"
+    "tesseract.js": "^5.0.5",
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.5",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.7.0",
     "eslint": "^8.57.0"

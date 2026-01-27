@@ -91,17 +91,20 @@ export class FileUploadService {
             throw new Error(`File too large. Max size: 10MB`);
         }
 
-        // Generate filename and path
+        // Generate filename
         const filename = this.generateFilename(file.filename);
-        const tenantDir = this.getTenantDir(tenantId);
-        const filepath = path.join(tenantDir, filename);
 
-        // Save file
-        fs.writeFileSync(filepath, buffer);
+        // Upload to FTP (or local fallback if not configured)
+        const { ftpStorageService } = await import('../../../services/ftp-storage.service');
+        const result = await ftpStorageService.uploadFile(
+            buffer,
+            filename,
+            `invoices/tenant_${tenantId}`
+        );
 
         return {
             filename,
-            filepath,
+            filepath: result.url, // Public URL
             mimetype: file.mimetype,
             size: buffer.length
         };
@@ -166,17 +169,20 @@ export class FileUploadService {
 
         const pdfBytes = await pdfDoc.save();
 
-        // Save merged file
+        // Upload merged PDF to FTP
         const timestamp = Date.now();
         const filename = `merged_scan_${timestamp}_${Math.random().toString(36).substring(7)}.pdf`;
-        const tenantDir = this.getTenantDir(tenantId);
-        const filepath = path.join(tenantDir, filename);
 
-        fs.writeFileSync(filepath, pdfBytes);
+        const { ftpStorageService } = await import('../../../services/ftp-storage.service');
+        const result = await ftpStorageService.uploadFile(
+            Buffer.from(pdfBytes),
+            filename,
+            `invoices/tenant_${tenantId}`
+        );
 
         return {
             filename,
-            filepath,
+            filepath: result.url, // Public URL
             mimetype: 'application/pdf',
             size: pdfBytes.length
         };
