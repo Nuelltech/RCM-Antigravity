@@ -141,6 +141,7 @@ export async function invoicesRoutes(app: FastifyInstance) {
             }
 
             const fileContentBase64 = finalBuffer.toString('base64');
+            // [PROD-FIX] Base64 file transfer enabled for worker compatibility
             // ------------------------------------------------------------------
 
             // Add to processing queue (async via BullMQ)

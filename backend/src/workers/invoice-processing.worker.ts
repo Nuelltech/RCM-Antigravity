@@ -146,7 +146,8 @@ const worker = new Worker<InvoiceProcessingJob>(
 
             console.log(`[Worker] ✅ Invoice #${invoiceId} processed successfully in ${duration}ms (${result.lineItems.length} items, method: ${result.method})`);
 
-            // Phase 4: Generic Worker Metric
+            // Phase 4: Generic Worker Metric - SKIPPED FOR PROD HOTFIX
+            /*
             try {
                 // @ts-ignore - Stale Prisma types legacy workaround
                 await prisma.workerMetric.create({
@@ -161,6 +162,7 @@ const worker = new Worker<InvoiceProcessingJob>(
                     }
                 });
             } catch (err) { console.error('Failed to log worker metric', err); }
+            */
 
             return {
                 success: true,
@@ -197,32 +199,23 @@ const worker = new Worker<InvoiceProcessingJob>(
                 }
             });
 
-            // Phase 4: Generic Worker Metric & Error Log
+            // Phase 4: Generic Worker Metric - SKIPPED FOR PROD HOTFIX
+            /*
             try {
+                // @ts-ignore - Stale Prisma types legacy workaround
                 await prisma.workerMetric.create({
                     data: {
                         queue_name: 'invoice-processing',
                         job_name: 'process-invoice',
                         job_id: job.id,
                         duration_ms: duration,
-                        status: 'FAILED',
-                        error_message: error.message,
+                        status: 'COMPLETED',
                         processed_at: new Date(),
                         attempts: job.attemptsMade + 1
                     }
                 });
-
-                // @ts-ignore - Stale Prisma types legacy workaround
-                await prisma.errorLog.create({
-                    data: {
-                        level: 'ERROR',
-                        source: 'WORKER',
-                        message: error.message,
-                        stack_trace: error.stack,
-                        metadata: { jobId: job.id, queue: 'invoice-processing' }
-                    }
-                });
-            } catch (err) { console.error('Failed to log error metric', err); }
+            } catch (err) { console.error('Failed to log worker metric', err); }
+            */
 
             // Save error metrics
             await prisma.invoiceProcessingMetrics.create({
