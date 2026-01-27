@@ -103,7 +103,27 @@ export class OCRService {
 
             // STANDARD OCR APPROACH (for images OR PDF fallback)
             console.log(`[OCR] Running Google Vision OCR on ${isPDF ? 'PDF (fallback)' : 'image'}...`);
-            const fileBuffer = fs.readFileSync(filepath);
+
+            // Check if filepath is a URL
+            let fileBuffer: Buffer;
+            if (filepath.startsWith('http://') || filepath.startsWith('https://')) {
+                console.log(`[OCR] Detected HTTPS URL, downloading file first: ${filepath}`);
+
+                try {
+                    const response = await fetch(filepath);
+                    if (!response.ok) {
+                        throw new Error(`Failed to download: ${response.status} ${response.statusText}`);
+                    }
+                    const arrayBuffer = await response.arrayBuffer();
+                    fileBuffer = Buffer.from(arrayBuffer);
+                    console.log(`[OCR] ✅ Downloaded file from URL (${fileBuffer.length} bytes)`);
+                } catch (downloadError: any) {
+                    throw new Error(`Failed to download file from URL: ${downloadError.message}`);
+                }
+            } else {
+                // Local file path
+                fileBuffer = fs.readFileSync(filepath);
+            }
 
             // Perform OCR
             const [result] = await this.client.documentTextDetection({
