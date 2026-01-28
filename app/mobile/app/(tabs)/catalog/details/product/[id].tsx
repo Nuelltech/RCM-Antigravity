@@ -24,7 +24,7 @@ export default function ProductDetailScreen() {
     const loadProduct = async (productId: number) => {
         try {
             // Using direct api call since we don't have a dedicated method in ApiService for this yet
-            const response = await ApiService.get(`/api/products/${productId}`);
+            const response = await api.get(`/api/products/${productId}`);
             setProduct(response.data);
         } catch (error) {
             console.error('Failed to load product:', error);

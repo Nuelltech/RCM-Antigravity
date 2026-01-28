@@ -2,6 +2,7 @@ import { View, Text, ScrollView, ActivityIndicator, Image, TouchableOpacity, Fla
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useState, useEffect } from 'react';
 
+// @ts-ignore
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 // Icon wrappers to match previous usage
@@ -211,7 +212,7 @@ export default function RecipeDetailScreen() {
                         {/* Scrollable Columns */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                             <View>
-                                <View style={styles.headerRow}>
+                                <View style={styles.tableHeaderRow}>
                                     <View style={[styles.cell, styles.headerCell, { width: 80 }]}>
                                         <Text style={styles.headerText}>Qtd Bruta</Text>
                                     </View>
@@ -509,7 +510,7 @@ const styles = StyleSheet.create({
         borderRightColor: '#334155',
         zIndex: 10,
     },
-    headerRow: {
+    tableHeaderRow: {
         flexDirection: 'row',
         backgroundColor: '#1e293b',
         borderBottomWidth: 1,

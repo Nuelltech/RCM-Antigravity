@@ -34,7 +34,6 @@ export const Card: React.FC<CardProps> & {
 }) => {
         return (
             <PaperCard
-                elevation={elevation}
                 style={[{ backgroundColor: theme.colors.surface }, style]}
                 onPress={onPress}
             >

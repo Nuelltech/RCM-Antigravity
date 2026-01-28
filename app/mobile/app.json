@@ -46,8 +46,7 @@
             "backgroundColor": "#000000"
           }
         }
-      ],
-      "expo-font"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -56,14 +55,6 @@
     "updates": {
       "enabled": false,
       "fallbackToCacheTimeout": 0
-    },
-    "extra": {
-      "router": {
-        "origin": false
-      },
-      "eas": {
-        "projectId": "122eb13e-cf3d-429e-8f74-58ea47235a8b"
-      }
     }
   }
 }

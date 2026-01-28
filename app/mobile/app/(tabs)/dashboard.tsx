@@ -1,4 +1,4 @@
-import { View, ScrollView, StyleSheet, Platform, Image } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Image, Platform, RefreshControl } from 'react-native';
 import { Text, Card, Chip, ActivityIndicator } from 'react-native-paper';
 import { useAuth } from '../../lib/auth';
 import { useState, useEffect, useCallback } from 'react';
@@ -168,8 +168,10 @@ export default function DashboardScreen() {
         <ScrollView
             style={styles.container}
             contentContainerStyle={styles.content}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+            refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+
         >
             {/* Header */}
             <View style={styles.header}>

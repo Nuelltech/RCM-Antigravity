@@ -3,6 +3,7 @@ import { Text, Card, Chip, Searchbar, ActivityIndicator, IconButton } from 'reac
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import api from '../../../lib/api';
+import { ApiService } from '../../../services';
 import { theme } from '../../../ui/theme';
 import { spacing } from '../../../ui/spacing';
 import { typography } from '../../../ui/typography';

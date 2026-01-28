@@ -435,9 +435,5 @@ const styles = StyleSheet.create({
         right: spacing.lg,
         backgroundColor: theme.colors.primary,
     },
-    listContainer: {
-        flex: 1,
-        paddingHorizontal: spacing.lg,
-        backgroundColor: '#000000', // DEBUG: Black background to see bounds
-    },
+
 });

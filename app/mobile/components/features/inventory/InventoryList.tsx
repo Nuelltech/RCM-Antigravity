@@ -65,6 +65,7 @@ export const InventoryList: React.FC<InventoryListProps> = ({
                             label="Qtd"
                             value={currentValue}
                             onChangeText={(text) => handleQuantityChange(item.id, text)}
+                            // @ts-ignore
                             onBlur={() => handleQuantityBlur(item.id)}
                             keyboardType="numeric"
                             style={styles.input}

@@ -63,7 +63,7 @@ export class NotificationService {
                 body,
                 data: data || {},
             },
-            trigger: triggerDate,
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: triggerDate },
         });
     }
 

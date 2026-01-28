@@ -2,9 +2,9 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } fr
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Invoice, InvoiceLine, InvoiceStatus } from '../../../../types/invoice';
-import InvoiceLineItem from '../../../../components/invoices/InvoiceLineItem';
 import InvoiceStatusBadge from '../../../../components/invoices/InvoiceStatusBadge';
 import { ApiService } from '../../../../services';
+import api from '../../../../lib/api';
 import { theme } from '../../../../ui/theme';
 
 export default function InvoiceDetailsScreen() {
