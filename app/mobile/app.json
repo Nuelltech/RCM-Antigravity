@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "RCM",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -16,6 +16,7 @@
       }
     },
     "android": {
+      "package": "com.nuelltech.rcm",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -26,9 +27,7 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      }
     },
     "web": {
       "output": "static",
@@ -47,7 +46,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -56,6 +56,14 @@
     "updates": {
       "enabled": false,
       "fallbackToCacheTimeout": 0
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "122eb13e-cf3d-429e-8f74-58ea47235a8b"
+      }
     }
   }
 }
