@@ -60,6 +60,15 @@ async function main() {
                     /\.vercel\.app$/,
                     // Render backend
                     /\.onrender\.com$/,
+                    // GitHub Codespaces (Broad Allow)
+                    /app\.github\.dev/,
+                    /github\.dev/,
+                    // Mobile App & Localhost
+                    'null',
+                    'file://',
+                    'http://localhost',
+                    'http://10.0.2.2', // Android Emulator
+                    'http://localhost:8081'
                 ];
 
                 const isAllowed = allowedOrigins.some(pattern =>
@@ -111,6 +120,17 @@ async function main() {
         routePrefix: '/documentation',
     });
 
+    // Register static file serving
+    // Served at /uploads/* -> maps to ../../uploads/* (root/backend/uploads)
+    const { default: fastifyStatic } = await import('@fastify/static');
+    const path = await import('path');
+
+    server.register(fastifyStatic, {
+        root: path.join(__dirname, '../../uploads'),
+        prefix: '/uploads/',
+        decorateReply: false // Avoid conflict if multiple static registers
+    });
+
 
     // Public routes (NO AUTH REQUIRED) - must be registered BEFORE auth middleware
     // server.register(leadsRoutes, { prefix: '/api/public' });
@@ -119,13 +139,41 @@ async function main() {
     const { internalAuthRoutes } = await import('../modules/internal-auth/internal-auth.routes');
     server.register(internalAuthRoutes, { prefix: '/api/internal/auth' });
 
+    // Internal users management (REQUIRES INTERNAL AUTH - ADMIN)
+    const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
+    server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
+
+    // Internal roles management (REQUIRES INTERNAL AUTH - ADMIN)
+    const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
+    server.register(internalRolesRoutes, { prefix: '/api/internal/roles' });
+
     // Internal leads management routes (REQUIRES INTERNAL AUTH)
-    // const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
-    // server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+    // Fixed leads service schema fields 
+    const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+    server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+
+    // Internal dashboard stats (REQUIRES INTERNAL AUTH)
+    const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
+    server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
+
+
+    // Internal system health (REQUIRES INTERNAL AUTH)
+    const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
+    server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
+
+    // Internal tenants management (REQUIRES INTERNAL AUTH)
+    const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
+    server.register(internalTenantsModule);
+
 
     // Health Check & Root Route (NO AUTH REQUIRED - must be BEFORE middleware)
     server.get('/health', async () => {
         return { status: 'ok', timestamp: new Date() };
+    });
+
+    // Silently handle favicon requests to prevent 404 errors
+    server.get('/favicon.ico', async (req, reply) => {
+        reply.code(204).send();
     });
 
     server.get('/', async () => {
@@ -143,11 +191,24 @@ async function main() {
 
 
     // Global Middleware (applies to ALL routes registered AFTER this point)
+
+    // Performance Tracker (Phase 4)
+    server.addHook('onRequest', async (req, reply) => {
+        const { performanceTracker } = await import('./middleware/performance-tracker');
+        await performanceTracker(req, reply);
+    });
+
     server.addHook('onRequest', async (req, reply) => {
         const { authMiddleware } = await import('./middleware');
         await authMiddleware(req, reply);
     });
     server.addHook('onRequest', tenantMiddleware);
+
+    // Global Error Logger (Phase 4)
+    server.setErrorHandler(async (error, req, reply) => {
+        const { errorLogger } = await import('./middleware/error-logger');
+        await errorLogger(error, req, reply);
+    });
 
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });
