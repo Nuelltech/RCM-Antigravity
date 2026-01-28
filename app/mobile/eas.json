@@ -1,6 +1,7 @@
 {
     "cli": {
-        "version": ">= 12.5.0"
+        "version": ">= 5.9.0",
+        "appVersionSource": "remote"
     },
     "build": {
         "development": {
@@ -11,9 +12,15 @@
             "distribution": "internal",
             "android": {
                 "buildType": "apk"
+            },
+            "env": {
+                "EAS_SKIP_AUTO_FINGERPRINT": "1",
+                "EXPO_PUBLIC_API_URL": "https://rcm-nuelltech.onrender.com"
             }
         },
-        "production": {}
+        "production": {
+            "autoIncrement": true
+        }
     },
     "submit": {
         "production": {}
