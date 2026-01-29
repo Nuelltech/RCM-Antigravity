@@ -38,29 +38,35 @@ const worker = new Worker<InvoiceProcessingJob>(
 
         try {
             // ------------------------------------------------------------------
-            // FIX: Recreate file from Base64 if provided (for distributed workers)
+            // Download file from Hostinger if it's a public URL
             // ------------------------------------------------------------------
-            if (fileContent) {
+            if (filepath && filepath.startsWith('http')) {
                 try {
-                    console.log(`[Worker] 📥 Base64 content found. Recreating file locally...`);
-                    const buffer = Buffer.from(fileContent, 'base64');
+                    console.log(`[Worker] 📥 Downloading file from: ${filepath}`);
+
+                    // Download file via HTTPS
+                    const response = await fetch(filepath);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const arrayBuffer = await response.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
 
                     // Create temp path
                     const tempDir = os.tmpdir();
-                    const ext = mimetype === 'application/pdf' ? '.pdf' : '.jpg'; // simple ext detection
+                    const ext = mimetype === 'application/pdf' ? '.pdf' : path.extname(filepath) || '.jpg';
                     const tempFilename = `invoice_${invoiceId}_${Date.now()}${ext}`;
                     const tempFilePath = path.join(tempDir, tempFilename);
 
                     await fs.writeFile(tempFilePath, buffer);
 
-                    console.log(`[Worker] ✅ File recreated at: ${tempFilePath}`);
+                    console.log(`[Worker] ✅ File downloaded to: ${tempFilePath}`);
                     filepath = tempFilePath; // Override filepath to use local temp file
                     tempFileCreated = true;
                 } catch (err: any) {
-                    console.error('[Worker] Failed to recreate file from Base64:', err);
-                    // We might continue and hope the original filepath works? 
-                    // But likely it won't if we depend on this fix. 
-                    // Let's log and proceed, maybe the error handler catches it later.
+                    console.error('[Worker] Failed to download file from URL:', err);
+                    throw new Error(`Failed to download invoice file: ${err.message}`);
                 }
             }
             // ------------------------------------------------------------------

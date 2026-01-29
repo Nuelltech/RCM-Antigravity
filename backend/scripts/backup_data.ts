@@ -50,7 +50,25 @@ const models = [
     'faturaImportacao',
     'faturaLinhaImportacao',
     'matchingHistorico',
-    'invoiceTemplate'
+    'invoiceTemplate',
+    'lead',
+    'demoRequest',
+    'internalRole',
+    'internalPermission',
+    'internalRolePermission',
+    'internalUser',
+    'vendaImportacao',
+    'vendaLinhaImportacao',
+    'salesMatchingHistorico',
+    'salesProcessingMetrics',
+    'workerMetric',
+    'tenantNote',
+    'tenantEvent',
+    'systemHealth',
+    'errorLog',
+    'performanceMetric',
+    'custoEstruturaHistorico',
+    'invoiceProcessingMetrics'
 ];
 
 async function backup() {

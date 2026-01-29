@@ -140,30 +140,30 @@ async function main() {
     server.register(internalAuthRoutes, { prefix: '/api/internal/auth' });
 
     // Internal users management (REQUIRES INTERNAL AUTH - ADMIN)
-    const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
-    server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
+    // const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
+    // server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
 
     // Internal roles management (REQUIRES INTERNAL AUTH - ADMIN)
-    const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
-    server.register(internalRolesRoutes, { prefix: '/api/internal/roles' });
+    // const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
+    // server.register(internalRolesRoutes, { prefix: '/api/internal/roles' });
 
     // Internal leads management routes (REQUIRES INTERNAL AUTH)
     // Fixed leads service schema fields 
-    const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
-    server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+    // const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+    // server.register(internalLeadsRoutes, { prefix: '/api/internal' });
 
     // Internal dashboard stats (REQUIRES INTERNAL AUTH)
-    const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
-    server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
+    // const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
+    // server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
 
 
     // Internal system health (REQUIRES INTERNAL AUTH)
-    const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
-    server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
+    // const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
+    // server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
 
     // Internal tenants management (REQUIRES INTERNAL AUTH)
-    const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
-    server.register(internalTenantsModule);
+    // const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
+    // server.register(internalTenantsModule);
 
 
     // Health Check & Root Route (NO AUTH REQUIRED - must be BEFORE middleware)
@@ -194,8 +194,8 @@ async function main() {
 
     // Performance Tracker (Phase 4)
     server.addHook('onRequest', async (req, reply) => {
-        const { performanceTracker } = await import('./middleware/performance-tracker');
-        await performanceTracker(req, reply);
+        // const { performanceTracker } = await import('./middleware/performance-tracker');
+        // await performanceTracker(req, reply);
     });
 
     server.addHook('onRequest', async (req, reply) => {
@@ -206,10 +206,26 @@ async function main() {
 
     // Global Error Logger (Phase 4)
     server.setErrorHandler(async (error, req, reply) => {
-        const { errorLogger } = await import('./middleware/error-logger');
-        await errorLogger(error, req, reply);
+        // const { errorLogger } = await import('./middleware/error-logger');
+        // await errorLogger(error, req, reply);
+        console.error(error);
     });
 
+    // Register Internal Portal Routes
+    const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
+    const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
+    const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
+    const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
+    const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
+    const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+
+    // internalAuthRoutes is already registered above
+    await server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
+    await server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
+    await server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
+    await server.register(internalTenantsModule);
+    await server.register(internalRolesRoutes, { prefix: '/api/internal' }); // Roles now defines /roles inside
+    await server.register(internalLeadsRoutes, { prefix: '/api/internal' });
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });
     server.register(tenantRoutes, { prefix: '/api/tenants' });

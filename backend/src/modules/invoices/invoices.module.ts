@@ -123,26 +123,6 @@ export async function invoicesRoutes(app: FastifyInstance) {
                 // Continue - multimodal in worker will handle the file directly
             }
 
-            // ------------------------------------------------------------------
-            // FIX: Pass file content to worker via Redis (Base64)
-            // This bypasses the need for shared storage between API and Worker
-            // ------------------------------------------------------------------
-            let finalBuffer: Buffer;
-            if (uploadedBuffers.length === 1) {
-                finalBuffer = uploadedBuffers[0].buffer;
-            } else {
-                // If merged, we need to read the merged file back or (better) just trust the file exists for now?
-                // Actually, fileUploadService.mergeImagesToPdf returns the file info but not the buffer directly unless we asked.
-                // For simplicity and robustness given the "no shared fs" issue, we re-read the merged file here? 
-                // OR better, we know the previous step wrote it to disk. 
-                // Since this API process WROTE it, it CAN read it from disk to send to worker.
-                const fs = await import('fs/promises');
-                finalBuffer = await fs.readFile(uploadedFile.filepath);
-            }
-
-            const fileContentBase64 = finalBuffer.toString('base64');
-            // [PROD-FIX] Base64 file transfer enabled for worker compatibility
-            // ------------------------------------------------------------------
 
             // Add to processing queue (async via BullMQ)
             const { invoiceProcessingQueue } = await import('../../queues/invoice-processing.queue');
@@ -151,15 +131,13 @@ export async function invoicesRoutes(app: FastifyInstance) {
                 invoiceId: fatura.id,
                 tenantId: req.tenantId,
                 ocrText: ocrText,  // May be empty if OCR failed
-                filepath: uploadedFile.filepath, // Keep original path for reference/URL
+                filepath: uploadedFile.filepath, // Public URL to file on Hostinger
                 uploadSource: 'web',
                 userId: req.userId,
-                // NEW: Pass content directly
-                fileContent: fileContentBase64,
                 mimetype: uploadedFile.mimetype
             });
 
-            console.log(`[Upload] Invoice ${fatura.id} created and queued for processing (with Base64 content)`);
+            console.log(`[Upload] Invoice ${fatura.id} created and queued for processing`);
 
             // Return 202 Accepted (processing async)
             return reply.status(202).send({

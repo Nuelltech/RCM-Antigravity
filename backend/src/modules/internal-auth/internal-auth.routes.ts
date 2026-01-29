@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { InternalAuthService } from './internal-auth.service';
-import { loginSchema } from './internal-auth.schema';
+import { loginSchema, forgotPasswordSchema, resetPasswordSchema } from './internal-auth.schema';
 
 export async function internalAuthRoutes(app: FastifyInstance) {
     const service = new InternalAuthService(app);
@@ -30,6 +30,39 @@ export async function internalAuthRoutes(app: FastifyInstance) {
             return reply.status(401).send({
                 success: false,
                 error: err.message || 'Falha no login',
+            });
+        }
+    });
+
+    // Public endpoint - Forgot Password
+    app.withTypeProvider<ZodTypeProvider>().post('/forgot-password', {
+        schema: {
+            body: forgotPasswordSchema,
+            tags: ['Internal', 'Auth'],
+            summary: 'Request password reset',
+        },
+    }, async (req, reply) => {
+        const { email } = req.body;
+        await service.forgotPassword(email); // Always success for security
+        return reply.send({ success: true, message: 'If account exists, email sent' });
+    });
+
+    // Public endpoint - Reset Password
+    app.withTypeProvider<ZodTypeProvider>().post('/reset-password', {
+        schema: {
+            body: resetPasswordSchema,
+            tags: ['Internal', 'Auth'],
+            summary: 'Reset password with token',
+        },
+    }, async (req, reply) => {
+        try {
+            const { token, password } = req.body;
+            await service.resetPassword(token, password);
+            return reply.send({ success: true, message: 'Password updated' });
+        } catch (err: any) {
+            return reply.status(400).send({
+                success: false,
+                error: err.message
             });
         }
     });

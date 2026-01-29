@@ -126,6 +126,35 @@ async function main() {
         }
     }
 
+    // 6. Internal Roles & Users
+    console.log('Seeding internal roles...');
+    const adminRole = await prisma.internalRole.upsert({
+        where: { name: 'ADMIN' },
+        update: {},
+        create: { name: 'ADMIN', description: 'Administrator' },
+    });
+
+    const salesRole = await prisma.internalRole.upsert({
+        where: { name: 'SALES' },
+        update: {},
+        create: { name: 'SALES', description: 'Sales Team' },
+    });
+
+    const salesUser = await prisma.internalUser.upsert({
+        where: { email: 'sales@rcm.com' },
+        update: {},
+        create: {
+            name: 'Sales Rep',
+            email: 'sales@rcm.com',
+            password_hash: await bcrypt.hash('password123', 10),
+            internal_role_id: salesRole.id,
+            role: 'SALES', // Deprecated but required by schema
+            active: true,
+            email_verified: true,
+        },
+    });
+    console.log(`Created internal user: ${salesUser.email} with role ${salesRole.name}`);
+
     console.log('Seed completed');
 }
 
