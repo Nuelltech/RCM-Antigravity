@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-export type UserRole = "admin" | "manager" | "operador" | "visualizador";
+export type UserRole = "owner" | "admin" | "manager" | "operador" | "visualizador";
 
 interface User {
     id: string;
@@ -25,7 +25,7 @@ function normalizeRole(role: string | null): UserRole {
     if (role === "gestor") return "manager";
 
     // Validate and return as UserRole
-    const validRoles: UserRole[] = ["admin", "manager", "operador", "visualizador"];
+    const validRoles: UserRole[] = ["owner", "admin", "manager", "operador", "visualizador"];
     return validRoles.includes(role as UserRole) ? (role as UserRole) : "operador";
 }
 

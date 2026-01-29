@@ -70,6 +70,7 @@ export function RoleGuard({ children, allowedRoles, redirectTo }: RoleGuardProps
  */
 function getDefaultRouteForRole(role: UserRole): string {
     switch (role) {
+        case "owner":
         case "admin":
         case "manager":
             return "/dashboard";
