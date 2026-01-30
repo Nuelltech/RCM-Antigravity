@@ -153,7 +153,7 @@ const worker = new Worker<InvoiceProcessingJob>(
             console.log(`[Worker] ✅ Invoice #${invoiceId} processed successfully in ${duration}ms (${result.lineItems.length} items, method: ${result.method})`);
 
             // Phase 4: Generic Worker Metric - SKIPPED FOR PROD HOTFIX
-            /*
+
             try {
                 // @ts-ignore - Stale Prisma types legacy workaround
                 await prisma.workerMetric.create({
@@ -168,7 +168,7 @@ const worker = new Worker<InvoiceProcessingJob>(
                     }
                 });
             } catch (err) { console.error('Failed to log worker metric', err); }
-            */
+
 
             return {
                 success: true,
@@ -206,7 +206,7 @@ const worker = new Worker<InvoiceProcessingJob>(
             });
 
             // Phase 4: Generic Worker Metric - SKIPPED FOR PROD HOTFIX
-            /*
+
             try {
                 // @ts-ignore - Stale Prisma types legacy workaround
                 await prisma.workerMetric.create({
@@ -221,7 +221,22 @@ const worker = new Worker<InvoiceProcessingJob>(
                     }
                 });
             } catch (err) { console.error('Failed to log worker metric', err); }
-            */
+            // Log to System Errors (ErrorLog) for Dashboard visibility
+            await prisma.errorLog.create({
+                data: {
+                    level: 'ERROR',
+                    source: 'WORKER',
+                    message: `Invoice #${invoiceId} failed: ${error.message}`,
+                    stack_trace: error.stack,
+                    tenant_id: tenantId,
+                    metadata: {
+                        jobId: job.id,
+                        uploadSource,
+                        method: isGeminiUnavailable ? 'gemini_unavailable' : 'failed'
+                    }
+                }
+            });
+
 
             // Save error metrics
             await prisma.invoiceProcessingMetrics.create({

@@ -68,7 +68,8 @@ async function main() {
                     'file://',
                     'http://localhost',
                     'http://10.0.2.2', // Android Emulator
-                    'http://localhost:8081'
+                    'http://localhost:8081',
+                    'https://rcm-internal-staging-91ex9n9pv-nuelltechs-projects.vercel.app' // Internal Portal Staging
                 ];
 
                 const isAllowed = allowedOrigins.some(pattern =>
