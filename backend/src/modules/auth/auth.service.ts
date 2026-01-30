@@ -397,4 +397,18 @@ export class AuthService {
 
         return { message: 'Password updated successfully' };
     }
+
+    async registerPushToken(userId: number, token: string) {
+        await prisma.session.updateMany({
+            where: {
+                user_id: userId,
+                revoked: false,
+                expires_at: { gt: new Date() }
+            },
+            data: {
+                push_token: token
+            }
+        });
+        return { success: true };
+    }
 }

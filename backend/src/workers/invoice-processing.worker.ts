@@ -3,6 +3,7 @@ import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { IntelligentParserRouter } from '../modules/invoices/services/intelligent-parser-router.service';
 import { prisma } from '../core/database';
+import { notificationService } from '../services/notification.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -168,6 +169,21 @@ const worker = new Worker<InvoiceProcessingJob>(
                     }
                 });
             } catch (err) { console.error('Failed to log worker metric', err); }
+
+            // Send Push Notification
+            try {
+                if (userId) {
+                    await notificationService.sendToUser(
+                        userId,
+                        'Fatura Processada',
+                        `A fatura #${invoiceId} foi processada com sucesso. Toque para validar.`,
+                        // @ts-ignore
+                        { schema: `rcm://financial/invoices/${invoiceId}`, invoiceId }
+                    );
+                }
+            } catch (notifError) {
+                console.error('Failed to send push notification', notifError);
+            }
 
 
             return {

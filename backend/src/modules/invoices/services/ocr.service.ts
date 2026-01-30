@@ -32,6 +32,7 @@ export class OCRService {
     constructor() {
         // Initialize Vision API client
         const keyPath = process.env.GOOGLE_VISION_API_KEY_PATH;
+        const googleCredentials = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
         try {
             if (keyPath && fs.existsSync(keyPath)) {
@@ -40,10 +41,27 @@ export class OCRService {
                 });
                 this.isAvailable = true;
                 console.log('[OCR] Google Vision initialized with key file.');
-            } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-                this.client = new ImageAnnotatorClient();
-                this.isAvailable = true;
-                console.log('[OCR] Google Vision initialized with default credentials.');
+            } else if (googleCredentials) {
+                // Check if it's a file path or JSON content
+                if (googleCredentials.trim().startsWith('{')) {
+                    // It's JSON content -> Parse it
+                    try {
+                        const credentials = JSON.parse(googleCredentials);
+                        this.client = new ImageAnnotatorClient({
+                            credentials
+                        });
+                        this.isAvailable = true;
+                        console.log('[OCR] Google Vision initialized with JSON content from env var.');
+                    } catch (parseError) {
+                        console.error('[OCR] Failed to parse GOOGLE_APPLICATION_CREDENTIALS JSON:', parseError);
+                        throw parseError;
+                    }
+                } else {
+                    // It's a file path (Default behavior)
+                    this.client = new ImageAnnotatorClient();
+                    this.isAvailable = true;
+                    console.log('[OCR] Google Vision initialized with default credentials path.');
+                }
             } else {
                 console.warn('[OCR] Google Vision API not configured. OCR will not be available.');
                 console.warn('[OCR] Set GOOGLE_VISION_API_KEY_PATH or GOOGLE_APPLICATION_CREDENTIALS to enable OCR.');

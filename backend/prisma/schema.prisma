@@ -178,6 +178,7 @@ model Session {
   refresh_token_hash  String    @db.VarChar(64)
   ip_address          String?
   user_agent          String?
+  push_token          String?
   expires_at          DateTime
   refresh_expires_at  DateTime
   revoked             Boolean   @default(false)
