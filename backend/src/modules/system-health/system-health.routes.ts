@@ -8,7 +8,6 @@ import redis from '../../core/redis';
 
 const healthCheckService = new HealthCheckService();
 
-// Force update for Render deployment
 export async function systemHealthRoutes(app: FastifyInstance) {
     const server = app.withTypeProvider<ZodTypeProvider>();
 
