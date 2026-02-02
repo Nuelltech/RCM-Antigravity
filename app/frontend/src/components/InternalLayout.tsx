@@ -63,8 +63,8 @@ export default function InternalLayout({ children }: { children: React.ReactNode
                                     key={item.name}
                                     href={item.href}
                                     className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                                            ? "bg-orange-50 text-orange-600 font-medium"
-                                            : "text-slate-700 hover:bg-slate-50"
+                                        ? "bg-orange-50 text-orange-600 font-medium"
+                                        : "text-slate-700 hover:bg-slate-50"
                                         }`}
                                 >
                                     <item.icon className="w-5 h-5" />

@@ -14,6 +14,7 @@ export default function SystemPage() {
         { id: "overview", label: "Overview", icon: Activity },
         { id: "processing", label: "Processing", icon: Activity },
         { id: "database", label: "Database", icon: Database },
+        { id: "redis", label: "Redis Cache", icon: Zap },
         { id: "workers", label: "Workers", icon: Server },
         { id: "errors", label: "Errors", icon: AlertTriangle }, // Added Errors tab
         { id: "performance", label: "Performance", icon: Zap },
@@ -63,6 +64,7 @@ export default function SystemPage() {
                     {activeTab === "overview" && <OverviewTab />}
                     {activeTab === "processing" && <ProcessingTab />}
                     {activeTab === "database" && <DatabaseTab />}
+                    {activeTab === "redis" && <RedisTab />}
                     {activeTab === "workers" && <WorkersTab />}
                     {activeTab === "errors" && <ErrorsTab />}
                     {activeTab === "performance" && <PerformanceTab />}
@@ -553,6 +555,85 @@ function DatabaseTab() {
                 <MetricRow label="Active Connections" value={`${stats.active_connections} / ${stats.max_connections}`} />
                 <MetricRow label="Database Size" value={formatBytes(stats.size_mb)} />
                 <MetricRow label="Last Backup" value={stats.last_backup ? new Date(stats.last_backup.created_at).toLocaleString() : 'N/A'} />
+            </div>
+        </div>
+    );
+}
+
+function RedisTab() {
+    const [stats, setStats] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [cleaning, setCleaning] = useState(false);
+
+    const fetchStats = async () => {
+        setLoading(true);
+        try {
+            const data = await fetchWithAuth('/api/internal/health/cache');
+            if (data.success) {
+                setStats(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch Redis stats', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchStats();
+        const interval = setInterval(fetchStats, 10000); // 10s refresh
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleClearCache = async () => {
+        if (!confirm('ATENÇÃO: Isto vai apagar TODA a cache do sistema (filas de jobs, sessões, etc). Tem a certeza?')) return;
+
+        setCleaning(true);
+        try {
+            await fetchWithAuth('/api/internal/health/cache/clear', { method: 'POST' });
+            alert('Cache limpa com sucesso!');
+            fetchStats();
+        } catch (error) {
+            alert('Erro ao limpar cache');
+        } finally {
+            setCleaning(false);
+        }
+    };
+
+    if (loading && !stats) return <div className="p-8 text-center text-gray-500">Loading Redis stats...</div>;
+
+    const isHighMemory = stats?.memory_used?.includes('G') || (stats?.memory_used?.includes('M') && parseInt(stats?.memory_used) > 500);
+
+    return (
+        <div className="bg-white rounded-xl p-8 border border-slate-200">
+            <div className="flex justify-between items-start mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                    <Zap className="text-amber-500" />
+                    Redis Cache Status
+                </h2>
+                <button
+                    onClick={handleClearCache}
+                    disabled={cleaning}
+                    className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                    {cleaning ? 'Cleaning...' : 'Flush Cache (Danger)'}
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                    <MetricRow label="Keys / Jobs" value={stats?.keys?.toString() || '0'} />
+                    <MetricRow
+                        label="Memory Used"
+                        value={stats?.memory_used || 'Unknown'}
+                        status={isHighMemory ? 'warning' : 'success'}
+                    />
+                    <MetricRow label="Peak Memory" value={stats?.memory_peak || 'Unknown'} />
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-lg text-xs font-mono text-slate-600 overflow-auto max-h-48">
+                    <pre>{stats?.info || 'No info available'}</pre>
+                </div>
             </div>
         </div>
     );

@@ -4,6 +4,7 @@ import { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { prisma } from '../../core/database';
 import { HealthCheckService } from './health-check.service';
+import redis from '../../core/redis';
 
 const healthCheckService = new HealthCheckService();
 
@@ -189,5 +190,58 @@ export async function systemHealthRoutes(app: FastifyInstance) {
             ...e,
             id: e.id.toString(),
         }));
+    });
+
+
+    // GET /api/internal/health/cache
+    // Redis Cache Stats
+    server.get('/cache', {
+        schema: {
+            tags: ['System Health'],
+            summary: 'Get Redis cache statistics',
+        }
+    }, async (request, reply) => {
+        try {
+            const info = await redis.info();
+            const dbSize = await redis.dbsize();
+
+            // Parse INFO command output for memory usage
+            const memoryMatch = info.match(/used_memory_human:(\S+)/);
+            const memoryPeakMatch = info.match(/used_memory_peak_human:(\S+)/);
+            const memory = memoryMatch ? memoryMatch[1] : 'Unknown';
+            const peak = memoryPeakMatch ? memoryPeakMatch[1] : 'Unknown';
+
+            return {
+                success: true,
+                keys: dbSize,
+                memory_used: memory,
+                memory_peak: peak,
+                info: info.substring(0, 500) // First 500 chars snippet
+            };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    // POST /api/internal/health/cache/clear
+    // Flush Redis Cache
+    server.post('/cache/clear', {
+        schema: {
+            tags: ['System Health'],
+            summary: 'Clear all Redis cache',
+            response: {
+                200: z.object({
+                    success: z.boolean(),
+                    message: z.string()
+                })
+            }
+        }
+    }, async (request, reply) => {
+        try {
+            await redis.flushall();
+            return { success: true, message: 'Redis cache cleared successfully' };
+        } catch (error: any) {
+            return reply.status(500).send({ success: false, message: error.message });
+        }
     });
 }

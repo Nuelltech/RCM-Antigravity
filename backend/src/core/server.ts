@@ -32,6 +32,7 @@ import { invoicesRoutes } from '../modules/invoices/invoices.module';
 import { usersRoutes } from '../modules/users/users.routes';
 import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
 import { menuAnalysisRoutes } from '../modules/menu-analysis/menu-analysis.module';
+import { proxyRoutes } from '../modules/proxy/proxy.routes';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
@@ -69,7 +70,9 @@ async function main() {
                     'http://localhost',
                     'http://10.0.2.2', // Android Emulator
                     'http://localhost:8081',
-                    'https://rcm-internal-staging-91ex9n9pv-nuelltechs-projects.vercel.app' // Internal Portal Staging
+                    'https://rcm-internal-staging-91ex9n9pv-nuelltechs-projects.vercel.app', // Internal Portal Staging
+                    'http://localhost:3000',
+                    'http://127.0.0.1:3000'
                 ];
 
                 const isAllowed = allowedOrigins.some(pattern =>
@@ -254,6 +257,7 @@ async function main() {
     server.register(usersRoutes, { prefix: '/api/users' });
     server.register(purchasesDashboardRoutes, { prefix: '/api/purchases' });  // Dashboard analytics
     server.register(menuAnalysisRoutes, { prefix: '/api/menu' });  // Menu Engineering Analysis
+    server.register(proxyRoutes, { prefix: '/api/proxy' });
 
 
 
