@@ -15,7 +15,7 @@
             },
             "env": {
                 "EAS_SKIP_AUTO_FINGERPRINT": "1",
-                "EXPO_PUBLIC_API_URL": "https://rcm-nuelltech.onrender.com"
+                "EXPO_PUBLIC_API_URL": "https://rcm-staging.onrender.com"
             }
         },
         "staging": {
@@ -25,11 +25,14 @@
             },
             "env": {
                 "EAS_SKIP_AUTO_FINGERPRINT": "1",
-                "EXPO_PUBLIC_API_URL": "https://rcm-antigravity-staging.onrender.com"
+                "EXPO_PUBLIC_API_URL": "https://rcm-staging.onrender.com"
             }
         },
         "production": {
-            "autoIncrement": true
+            "autoIncrement": true,
+            "env": {
+                "EXPO_PUBLIC_API_URL": "https://rcm-backend.onrender.com"
+            }
         }
     },
     "submit": {

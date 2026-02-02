@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Linking } from 'react-native';
 import { useState, useEffect } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Invoice, InvoiceLine, InvoiceStatus } from '../../../../types/invoice';
@@ -26,6 +26,31 @@ export default function InvoiceDetailsScreen() {
             Alert.alert('Erro', 'Não foi possível carregar os detalhes da fatura');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleViewFile = async (url?: string) => {
+        if (!url) {
+            Alert.alert('Erro', 'Não há ficheiro associado a esta fatura.');
+            return;
+        }
+
+        try {
+            let fullUrl = url;
+            if (url.startsWith('/')) {
+                const baseUrl = api.defaults.baseURL || '';
+                fullUrl = `${baseUrl}${url}`;
+            }
+
+            const supported = await Linking.canOpenURL(fullUrl);
+            if (supported) {
+                await Linking.openURL(fullUrl);
+            } else {
+                Alert.alert('Erro', `Não é possível abrir este URL.`);
+            }
+        } catch (error) {
+            console.error('Error opening URL:', error);
+            Alert.alert('Erro', 'Erro ao abrir o ficheiro.');
         }
     };
 
@@ -123,7 +148,18 @@ export default function InvoiceDetailsScreen() {
                             <Text className="text-white text-2xl font-bold mb-2">
                                 {invoice.numero_fatura || `Fatura #${invoice.id}`}
                             </Text>
-                            <Text className="text-slate-400 text-sm">{invoice.ficheiro_nome}</Text>
+                            <View className="flex-row items-center gap-2">
+                                <Text className="text-slate-400 text-sm flex-1" numberOfLines={1}>
+                                    {invoice.ficheiro_nome}
+                                </Text>
+                                <TouchableOpacity
+                                    onPress={() => handleViewFile(invoice.ficheiro_url)}
+                                    className="bg-slate-700 px-3 py-1 rounded-full flex-row items-center"
+                                >
+                                    <Text className="text-orange-400 text-xs font-bold mr-1">👁️</Text>
+                                    <Text className="text-white text-xs">Ver Original</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                         <InvoiceStatusBadge status={invoice.status} />
                     </View>

@@ -5,9 +5,13 @@ import { useAuth } from '../lib/auth';
 import { PaperProvider } from 'react-native-paper';
 import { paperTheme } from '../ui/theme';
 import { ProtectedRouteWrapper } from '../lib/protected-route';
+import { ErrorBoundary } from '../components/ErrorBoundary';
+
+import { usePushNotifications } from '../hooks/usePushNotifications';
 
 export default function RootLayout() {
   const { checkSession, isAuthenticated } = useAuth();
+  usePushNotifications();
 
   useEffect(() => {
     checkSession();
@@ -15,12 +19,14 @@ export default function RootLayout() {
 
   return (
     <PaperProvider theme={paperTheme}>
-      <ProtectedRouteWrapper>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(auth)" />
-        </Stack>
-      </ProtectedRouteWrapper>
+      <ErrorBoundary>
+        <ProtectedRouteWrapper>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(auth)" />
+          </Stack>
+        </ProtectedRouteWrapper>
+      </ErrorBoundary>
       <StatusBar style="light" />
     </PaperProvider>
   );

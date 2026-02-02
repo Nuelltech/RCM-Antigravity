@@ -1,34 +1,55 @@
 import { prisma } from '../../core/database';
-import { Decimal } from '@prisma/client/runtime/library';
+import { Prisma } from '@prisma/client';
+
+const Decimal = Prisma.Decimal;
+import { notificationService } from '../../services/notification.service';
 
 export class RecalculationService {
     /**
      * Main entry point: Recalculate all entities after a price change
      */
-    async recalculateAfterPriceChange(produtoId: number) {
+    async recalculateAfterPriceChange(produtoId: number, logId?: number) {
         const affectedRecipes = new Set<number>();
         const affectedMenuItems = new Set<number>();
         const affectedCombos = new Set<number>();
 
         // STEP 1: Recalculate recipes that DIRECTLY use this product
-        await this.recalculateRecipesUsingProduct(produtoId, affectedRecipes);
+        await this.recalculateRecipesUsingProduct(produtoId, affectedRecipes, logId);
 
         // STEP 2: RECURSIVELY recalculate recipes that use affected pre-prep recipes
-        await this.recalculateRecipesUsingPrepreps(affectedRecipes);
+        await this.recalculateRecipesUsingPrepreps(affectedRecipes, logId);
 
         // STEP 3: Recalculate combos that use this product or affected recipes
-        await this.recalculateCombosUsingProduct(produtoId, affectedCombos);
-        await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos);
+        await this.recalculateCombosUsingProduct(produtoId, affectedCombos, logId);
+        await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos, logId);
 
         // STEP 4: Recalculate menu items for all affected FINAL recipes
         // Optimization: Batch update menu items
         if (affectedRecipes.size > 0) {
-            await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems);
+            await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems, logId);
         }
 
         // STEP 5: Recalculate menu items for all affected combos
         if (affectedCombos.size > 0) {
-            await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems);
+            await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems, logId);
+        }
+
+        // NOTIFICATION
+        if (logId) {
+            const product = await prisma.produto.findUnique({ where: { id: produtoId }, select: { nome: true } });
+            try {
+                // Find user from log
+                const log = await prisma.integrationLog.findUnique({ where: { id: logId } });
+                if (log && log.user_id) {
+                    const message = `Integração concluída. ${affectedRecipes.size} receitas e ${affectedMenuItems.size} menus atualizados.`;
+                    await notificationService.sendToUser(log.user_id, 'Relatório de Integração Pronto', message, { type: 'INVOICE_REPORT_READY', invoiceId: log.fatura_id, logId: log.id });
+
+                    // Update log status to verified (or completed if previously processing)
+                    // Actually integration service sets it to completed. 
+                }
+            } catch (e) {
+                console.error('Failed to send notification', e);
+            }
         }
 
         return {
@@ -87,8 +108,10 @@ export class RecalculationService {
      */
     private async recalculateRecipesUsingProduct(
         produtoId: number,
-        affectedRecipes: Set<number>
+        affectedRecipes: Set<number>,
+        logId?: number
     ) {
+        // ... (lines 92-116 unchanged) ... 
         // 1. Find all ingredients using this product
         const ingredientes = await prisma.ingredienteReceita.findMany({
             where: { produto_id: produtoId },
@@ -114,18 +137,15 @@ export class RecalculationService {
         // 4. Recalculate total cost for each affected recipe
         // Optimization: Process unique recipes in parallel
         const uniqueRecipes = [...new Set(ingredientes.map((i) => i.receita_id))];
-        await Promise.all(uniqueRecipes.map(id => this.recalculateSingleRecipe(id)));
+        await Promise.all(uniqueRecipes.map(id => this.recalculateSingleRecipe(id, logId)));
     }
 
     /**
      * Recursively recalculate recipes that use pre-prep recipes
      */
-    private async recalculateRecipesUsingPrepreps(affectedRecipes: Set<number>) {
+    private async recalculateRecipesUsingPrepreps(affectedRecipes: Set<number>, logId?: number) {
+        // ... (lines 124-167) ...
         let currentBatch = new Set(affectedRecipes);
-
-        // Loop until no more recipes are affected (recursive propagation)
-        // Optimization: Track processed edges to avoid cycles or redundant checks?
-        // For now, simple BFS/Level-by-level approach
 
         while (currentBatch.size > 0) {
             const nextBatch = new Set<number>();
@@ -164,7 +184,7 @@ export class RecalculationService {
 
             // Recalculate costs for all recipes in next batch
             if (nextBatch.size > 0) {
-                await Promise.all(Array.from(nextBatch).map(id => this.recalculateSingleRecipe(id)));
+                await Promise.all(Array.from(nextBatch).map(id => this.recalculateSingleRecipe(id, logId)));
             }
 
             currentBatch = nextBatch;
@@ -174,7 +194,7 @@ export class RecalculationService {
     /**
      * Recalculate single recipe totals
      */
-    private async recalculateSingleRecipe(receitaId: number) {
+    private async recalculateSingleRecipe(receitaId: number, logId?: number) {
         const receita = await prisma.receita.findUnique({
             where: { id: receitaId },
             include: { ingredientes: true }
@@ -194,6 +214,12 @@ export class RecalculationService {
 
         // Only update if changed to avoid DB writes
         if (!custoTotal.equals(receita.custo_total) || !custoPorPorcao.equals(receita.custo_por_porcao)) {
+
+            // LOGGING
+            if (logId) {
+                await this.logChange(logId, 'RECIPE', receita.id, receita.nome, 'cost', receita.custo_por_porcao, custoPorPorcao);
+            }
+
             await prisma.receita.update({
                 where: { id: receitaId },
                 data: {
@@ -209,7 +235,8 @@ export class RecalculationService {
      */
     private async recalculateMenuItemsForRecipes(
         receitaIds: number[],
-        affectedMenuItems: Set<number>
+        affectedMenuItems: Set<number>,
+        logId?: number
     ) {
         // Fetch all menu items linked to these recipes
         const menuItems = await prisma.menuItem.findMany({
@@ -229,6 +256,15 @@ export class RecalculationService {
                 : new Decimal(0);
             const cmv = pvp.greaterThan(0) ? custo.dividedBy(pvp).times(100) : new Decimal(0);
 
+            // Check if Changed (Logic approximation: if cost per portion of recipe changed, menu margin likely changed)
+            // But we don't have old values here easily without fetching or assuming
+            // Let's rely on update check? No, we need explicit log.
+            // We can compare with current item.margem_bruta
+
+            if (logId && item.margem_bruta && !item.margem_bruta.equals(margem)) {
+                await this.logChange(logId, 'MENU_ITEM', item.id, item.nome_comercial, 'margin', item.margem_bruta, margem);
+            }
+
             await prisma.menuItem.update({
                 where: { id: item.id },
                 data: {
@@ -247,7 +283,8 @@ export class RecalculationService {
      */
     private async recalculateMenuItemsForCombos(
         comboIds: number[],
-        affectedMenuItems: Set<number>
+        affectedMenuItems: Set<number>,
+        logId?: number
     ) {
         const menuItems = await prisma.menuItem.findMany({
             where: { combo_id: { in: comboIds } },
@@ -282,7 +319,7 @@ export class RecalculationService {
     /**
      * Get current unit price for a product
      */
-    async getPrecoUnitarioAtual(produtoId: number): Promise<Decimal> {
+    async getPrecoUnitarioAtual(produtoId: number): Promise<Prisma.Decimal> {
         // Get the active variation with the most recent price
         const variacao = await prisma.variacaoProduto.findFirst({
             where: {
@@ -388,7 +425,8 @@ export class RecalculationService {
      */
     private async recalculateCombosUsingProduct(
         produtoId: number,
-        affectedCombos: Set<number>
+        affectedCombos: Set<number>,
+        logId?: number
     ) {
         // Find all combo items using this product
         const comboItems = await prisma.comboItem.findMany({
@@ -421,7 +459,8 @@ export class RecalculationService {
      */
     private async recalculateCombosUsingRecipes(
         affectedRecipes: Set<number>,
-        affectedCombos: Set<number>
+        affectedCombos: Set<number>,
+        logId?: number
     ) {
         if (affectedRecipes.size === 0) return;
 
@@ -525,6 +564,28 @@ export class RecalculationService {
             where: { id: comboId },
             data: { custo_total: custoTotal },
         });
+    }
+
+
+
+
+    /**
+     * Helper to log changes
+     */
+    private async logChange(logId: number, type: string, id: number, name: string, field: string, oldVal: Prisma.Decimal, newVal: Prisma.Decimal) {
+        try {
+            await prisma.integrationLogItem.create({
+                data: {
+                    log_id: logId,
+                    entity_type: type,
+                    entity_id: id,
+                    entity_name: name,
+                    field_changed: field,
+                    old_value: oldVal,
+                    new_value: newVal
+                }
+            });
+        } catch (e) { console.error('Error logging change', e); }
     }
 }
 

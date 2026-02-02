@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, LayoutChangeEvent } from 'react-native';
 import { Card, Text } from 'react-native-paper';
-import { Svg, Path, Line } from 'react-native-svg';
+import { Svg, Path, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../../ui/theme';
 import { spacing } from '../../ui/spacing';
 
@@ -43,25 +43,40 @@ export const DashboardChart: React.FC<DashboardChartProps> = ({
     };
 
     const generatePath = (key: 'vendas' | 'custos') => {
-        if (data.length === 0 || chartWidth === 0) return '';
+        try {
+            if (!Array.isArray(data) || data.length < 2 || chartWidth <= 0) return '';
 
-        const maxValue = Math.max(
-            ...data.map((d) => Math.max(d.vendas, d.custos)),
-            100
-        );
+            // Calculate max value safely
+            const maxVal = Math.max(
+                ...data.map((d) => Math.max(Number(d.vendas) || 0, Number(d.custos) || 0)),
+                0
+            );
+            // Avoid division by zero: if maxVal is 0, render a flat line at 0 (bottom)
+            // But we use it as denominator, so set a safe minimum (e.g. 100)
+            const safeMax = maxVal === 0 ? 100 : maxVal;
 
-        const points = data.map((point, index) => {
-            // Use dynamic chartWidth instead of fixed 300
-            const x = (index / (data.length - 1)) * chartWidth;
-            const y = 160 - (point[key] / maxValue) * 160;
-            return `${x},${y}`;
-        });
+            const points = data.map((point, index) => {
+                // Safe division guarded by length < 2 check above
+                const rawX = (index / (data.length - 1)) * chartWidth;
+                const rawY = 160 - ((Number(point[key]) || 0) / safeMax) * 160;
 
-        return `M ${points.join(' L ')}`;
+                // Final safety check for NaN/Infinity
+                const x = Number.isFinite(rawX) ? rawX : 0;
+                const y = Number.isFinite(rawY) ? rawY : 160; // Default to bottom if invalid
+
+                return `${x},${y}`;
+            });
+
+            return `M ${points.join(' L ')}`;
+        } catch (e) {
+            console.error("Error generating chart path:", e);
+            return '';
+        }
     };
 
     const calculateTotal = (key: 'vendas' | 'custos') => {
-        return data.reduce((sum, item) => sum + item[key], 0);
+        if (!Array.isArray(data)) return 0;
+        return data.reduce((sum, item) => sum + (Number(item[key]) || 0), 0);
     };
 
     return (
@@ -117,21 +132,36 @@ export const DashboardChart: React.FC<DashboardChartProps> = ({
 
                                 {/* Vertical Grid Lines + Date Labels */}
                                 {(() => {
-                                    // Show max 6 date labels evenly distributed
                                     const numLabels = Math.min(6, data.length);
-                                    const step = Math.floor(data.length / (numLabels - 1));
-                                    const indices = Array.from({ length: numLabels }, (_, i) =>
-                                        i === numLabels - 1 ? data.length - 1 : i * step
-                                    );
+                                    if (numLabels < 2) return null; // Need at least 2 points for a meaningful axis
+
+                                    const lastIndex = data.length - 1;
+                                    // Protect against 0 length (though guarded above)
+                                    if (lastIndex <= 0) return null;
+
+                                    const step = lastIndex / (numLabels - 1);
+
+                                    // Generate indices safely
+                                    const indices = Array.from({ length: numLabels }, (_, i) => Math.round(i * step));
 
                                     return indices.map((dataIndex) => {
-                                        const x = (dataIndex / (data.length - 1)) * chartWidth;
-                                        const dateLabel = new Date(data[dataIndex].date)
-                                            .toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit' });
+                                        // Ensure index is within bounds
+                                        const safeIndex = Math.min(Math.max(0, dataIndex), data.length - 1);
+                                        const item = data[safeIndex];
+                                        if (!item) return null;
+
+                                        const x = (safeIndex / lastIndex) * chartWidth;
+
+                                        // Safe date parsing
+                                        let dateLabel = '';
+                                        try {
+                                            dateLabel = new Date(item.date).toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit' });
+                                        } catch (e) {
+                                            dateLabel = item.date;
+                                        }
 
                                         return (
-                                            <React.Fragment key={dataIndex}>
-                                                {/* Vertical line */}
+                                            <React.Fragment key={`axis-${safeIndex}`}>
                                                 <Line
                                                     x1={x}
                                                     y1="0"
@@ -141,8 +171,7 @@ export const DashboardChart: React.FC<DashboardChartProps> = ({
                                                     strokeWidth="1"
                                                     strokeDasharray="2,2"
                                                 />
-                                                {/* Date label */}
-                                                <text
+                                                <SvgText
                                                     x={x}
                                                     y="175"
                                                     fill={theme.colors.textSecondary}
@@ -150,7 +179,7 @@ export const DashboardChart: React.FC<DashboardChartProps> = ({
                                                     textAnchor="middle"
                                                 >
                                                     {dateLabel}
-                                                </text>
+                                                </SvgText>
                                             </React.Fragment>
                                         );
                                     });

@@ -468,6 +468,72 @@ export async function invoicesRoutes(app: FastifyInstance) {
         }
     });
 
+    // Get Integration Log
+    app.withTypeProvider<ZodTypeProvider>().get('/:id/integration-log', {
+        schema: {
+            tags: ['Invoices'],
+            security: [{ bearerAuth: [] }],
+            params: z.object({
+                id: z.string().transform(Number)
+            }),
+            response: {
+                200: z.object({
+                    log: z.any().nullable()
+                })
+            }
+        }
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const { id } = req.params;
+
+        const log = await prisma.integrationLog.findFirst({
+            where: { fatura_id: id, tenant_id: req.tenantId },
+            include: {
+                // Include summary counts if needed, but for now just the log
+            }
+        });
+
+        return { log };
+    });
+
+    // Get Integration Log Items
+    app.withTypeProvider<ZodTypeProvider>().get('/:id/integration-log/items', {
+        schema: {
+            tags: ['Invoices'],
+            security: [{ bearerAuth: [] }],
+            params: z.object({
+                id: z.string().transform(Number)
+            }),
+            querystring: z.object({
+                type: z.string().optional() // Filter by PRODUCT, RECIPE, MENU_ITEM
+            }),
+            response: {
+                200: z.array(z.any())
+            }
+        }
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const { id } = req.params;
+        const { type } = req.query;
+
+        const log = await prisma.integrationLog.findFirst({
+            where: { fatura_id: id, tenant_id: req.tenantId },
+            select: { id: true }
+        });
+
+        if (!log) return [];
+
+        const items = await prisma.integrationLogItem.findMany({
+            where: {
+                log_id: log.id,
+                ...(type ? { entity_type: type } : {})
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        return items;
+    });
+
     // Get invoices that recently completed processing (for frontend polling)
     app.get('/pending-status', async (req, reply) => {
         if (!req.tenantId) return reply.status(401).send();

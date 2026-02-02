@@ -96,6 +96,9 @@ async function main() {
 
     await server.register(jwt, {
         secret: env.JWT_SECRET,
+        sign: {
+            expiresIn: '15m' // 15 minutos de inatividade
+        }
     });
 
     await server.register(swagger, {

@@ -93,6 +93,7 @@ model Tenant {
   performanceMetrics     PerformanceMetric[]
   tenantNotes            TenantNote[]
   tenantEvents           TenantEvent[]
+  integrationLogs        IntegrationLog[]
 
   @@map("tenants")
 }
@@ -1880,4 +1881,38 @@ model SystemHealth {
   
   @@index([timestamp, service])
   @@map("system_health")
+}
+
+// -----------------------------------------------------------------------------
+// REPORTS & LOGS
+// -----------------------------------------------------------------------------
+
+model IntegrationLog {
+  id              Int       @id @default(autoincrement())
+  tenant_id       Int
+  fatura_id       Int?
+  user_id         Int?
+  started_at      DateTime  @default(now())
+  completed_at    DateTime?
+  status          String    // 'processing', 'completed', 'verified', 'error'
+  
+  tenant          Tenant    @relation(fields: [tenant_id], references: [id])
+  items           IntegrationLogItem[]
+
+  @@map("integration_logs")
+}
+
+model IntegrationLogItem {
+  id              Int       @id @default(autoincrement())
+  log_id          Int
+  entity_type     String    // 'PRODUCT', 'RECIPE', 'COMBO', 'MENU_ITEM'
+  entity_id       Int
+  entity_name     String
+  field_changed   String    // 'cost', 'price', 'margin'
+  old_value       Decimal   @db.Decimal(10, 4)
+  new_value       Decimal   @db.Decimal(10, 4)
+  
+  log             IntegrationLog @relation(fields: [log_id], references: [id], onDelete: Cascade)
+
+  @@map("integration_log_items")
 }

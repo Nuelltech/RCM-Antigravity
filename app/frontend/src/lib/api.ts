@@ -57,6 +57,16 @@ export async function fetchClient(endpoint: string, options: RequestInit = {}) {
         headers,
     });
 
+    if (response.status === 401) {
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            // Force redirect to login
+            window.location.href = '/auth/login';
+        }
+        throw new Error('Session expired');
+    }
+
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(error.error || 'Request failed');

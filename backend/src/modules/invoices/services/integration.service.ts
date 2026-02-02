@@ -24,6 +24,16 @@ export class InvoiceIntegrationService {
         tenantId: number,
         userId: number
     ): Promise<IntegrationResult> {
+        // Create Integration Log
+        const log = await prisma.integrationLog.create({
+            data: {
+                tenant_id: tenantId,
+                fatura_id: faturaId,
+                user_id: userId,
+                status: 'processing'
+            }
+        });
+
         // Get invoice with all lines
         const fatura = await prisma.faturaImportacao.findUnique({
             where: { id: faturaId },
@@ -33,10 +43,12 @@ export class InvoiceIntegrationService {
         });
 
         if (!fatura) {
+            await prisma.integrationLog.update({ where: { id: log.id }, data: { status: 'error' } });
             throw new Error('Invoice not found');
         }
 
         if (fatura.status !== 'reviewing') {
+            await prisma.integrationLog.update({ where: { id: log.id }, data: { status: 'error' } });
             throw new Error('Invoice must be in reviewing status');
         }
 
@@ -124,7 +136,8 @@ export class InvoiceIntegrationService {
                                 normalizedPrice,
                                 precoCompraPack,
                                 tenantId,
-                                userId
+                                userId,
+                                log.id // PASS LOG ID
                             );
                             if (updated) pricesUpdated++;
                         }
@@ -150,6 +163,14 @@ export class InvoiceIntegrationService {
             await dashboardCache.invalidateTenant(tenantId);
             console.log(`[CACHE INVALIDATE] Dashboard cache cleared for tenant ${tenantId} after invoice approval`);
 
+            // Mark log as completed (or let the worker finish it)
+            // Note: Recalculation is async, so verified/completed status might depend on that. 
+            // For now, we set completed for the SYNC part. The async worker should ideally update it too, but we can rely on log items.
+            await prisma.integrationLog.update({
+                where: { id: log.id },
+                data: { completed_at: new Date(), status: 'completed' }
+            });
+
             return {
                 compraId: compraFatura.id,
                 itemsCreated,
@@ -159,6 +180,11 @@ export class InvoiceIntegrationService {
             };
         } catch (error: any) {
             console.error('Integration error:', error);
+            // Mark log as error
+            await prisma.integrationLog.update({
+                where: { id: log.id },
+                data: { status: 'error' }
+            });
             throw new Error(`Failed to integrate invoice: ${error?.message || 'Unknown error'}`);
         }
     }
@@ -171,7 +197,8 @@ export class InvoiceIntegrationService {
         newUnitPrice: number,      // Price per kg/L/UN (Normalized)
         newPackagePrice: number,   // Total package/box price
         tenantId: number,
-        userId: number             // Added userId
+        userId: number,            // Added userId
+        logId: number              // Added logId
     ): Promise<boolean> {
         try {
             const variacao = await prisma.variacaoProduto.findUnique({
@@ -202,6 +229,19 @@ export class InvoiceIntegrationService {
 
             console.log(`[Integration] Updated variation ${variacaoId}: Pack €${newPackagePrice.toFixed(2)} | Normalized Unit €${newUnitPrice.toFixed(4)}`);
 
+            // LOG CHANGE TO INTEGRATION LOG
+            await prisma.integrationLogItem.create({
+                data: {
+                    log_id: logId,
+                    entity_type: 'PRODUCT',
+                    entity_id: variacao.produto_id,
+                    entity_name: variacao.produto.nome,
+                    field_changed: 'price_unit',
+                    old_value: new Prisma.Decimal(oldUnitPrice),
+                    new_value: newUnitPriceDecimal
+                }
+            });
+
             // Create price history
             await priceHistoryService.createPriceHistory({
                 tenantId,
@@ -218,12 +258,13 @@ export class InvoiceIntegrationService {
 
             // Trigger recalculation asynchronously via Queue (Worker)
             try {
-                await addPriceChangeJob(variacao.produto_id, tenantId, userId);
+                // Pass logId to job so worker can continue logging cascading changes
+                await addPriceChangeJob(variacao.produto_id, tenantId, userId, logId);
                 console.log(`[Integration] Queued recalculation for product ${variacao.produto_id}`);
             } catch (err) {
                 console.error('[Integration] Failed to add job to queue, falling back to sync recalc:', err);
                 // Fallback to sync service if queue fails (safety net)
-                recalculationService.recalculateAfterPriceChange(variacao.produto_id).catch(e => console.error(e));
+                recalculationService.recalculateAfterPriceChange(variacao.produto_id, logId).catch(e => console.error(e));
             }
 
             return true;

@@ -18,6 +18,7 @@ export interface RecalculationJobData {
     comboId?: number;
     tenantId: number;
     triggeredBy: number; // user_id
+    logId?: number;      // For integration reporting
 }
 
 export const recalculationQueue = new Queue<RecalculationJobData>('recalculation', {
@@ -59,7 +60,8 @@ recalculationQueueEvents.on('failed', ({ jobId, failedReason }) => {
 export async function addPriceChangeJob(
     produtoId: number,
     tenantId: number,
-    triggeredBy: number
+    triggeredBy: number,
+    logId?: number
 ) {
     const job = await recalculationQueue.add(
         'price-change',
@@ -68,6 +70,7 @@ export async function addPriceChangeJob(
             produtoId,
             tenantId,
             triggeredBy,
+            logId
         },
         {
             jobId: `price-change-${produtoId}-${Date.now()}`,
