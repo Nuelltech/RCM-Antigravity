@@ -561,6 +561,7 @@ function DatabaseTab() {
 }
 
 function RedisTab() {
+    // Force update for Render deployment
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [cleaning, setCleaning] = useState(false);
