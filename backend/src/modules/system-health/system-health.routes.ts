@@ -244,4 +244,94 @@ export async function systemHealthRoutes(app: FastifyInstance) {
             return reply.status(500).send({ success: false, message: error.message });
         }
     });
+
+    // GET /api/internal/health/queues
+    // Inspect BullMQ Queues
+    server.get('/queues', {
+        schema: {
+            tags: ['System Health'],
+            summary: 'Get Queue Status',
+            querystring: z.object({
+                details: z.string().optional()
+            })
+        }
+    }, async (request, reply) => {
+        try {
+            // Import queues dynamically to avoid circular dependencies
+            const { invoiceProcessingQueue, invoiceRetryQueue } = await import('../../queues/invoice-processing.queue');
+            const { salesProcessingQueue } = await import('../../queues/sales-processing.queue');
+            // Assuming recalculation queue exists or we skip it for now
+
+            const queues = [
+                { name: 'invoice-processing', queue: invoiceProcessingQueue },
+                { name: 'invoice-retry', queue: invoiceRetryQueue },
+                { name: 'sales-processing', queue: salesProcessingQueue }
+            ];
+
+            const results = await Promise.all(queues.map(async ({ name, queue }) => {
+                const counts = await queue.getJobCounts();
+                return {
+                    name,
+                    counts,
+                    isPaused: await queue.isPaused()
+                };
+            }));
+
+            return { success: true, queues: results };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    });
+
+    // GET /api/internal/health/queues/:name/:status
+    // Inspect specific jobs in queue
+    server.get('/queues/:name/:status', {
+        schema: {
+            tags: ['System Health'],
+            summary: 'Inspect jobs in queue',
+            params: z.object({
+                name: z.string(),
+                status: z.enum(['waiting', 'active', 'delayed', 'failed', 'completed'])
+            }),
+            querystring: z.object({
+                limit: z.string().optional().transform(v => parseInt(v || '10'))
+            })
+        }
+    }, async (request, reply) => {
+        try {
+            const { name, status } = request.params;
+            const limit = (request.query as any).limit || 10;
+
+            let queue: any;
+            if (name === 'invoice-processing' || name === 'invoice-retry') {
+                const mod = await import('../../queues/invoice-processing.queue');
+                queue = name === 'invoice-processing' ? mod.invoiceProcessingQueue : mod.invoiceRetryQueue;
+            } else if (name === 'sales-processing') {
+                const mod = await import('../../queues/sales-processing.queue');
+                queue = mod.salesProcessingQueue;
+            } else {
+                return reply.status(404).send({ error: 'Queue not found' });
+            }
+
+            const jobs = await queue.getJobs([status], 0, limit - 1);
+
+            return {
+                success: true,
+                queue: name,
+                status,
+                count: jobs.length,
+                jobs: jobs.map((j: any) => ({
+                    id: j.id,
+                    data: j.data,
+                    attempts: j.attemptsMade,
+                    failedReason: j.failedReason,
+                    timestamp: j.timestamp,
+                    processedOn: j.processedOn,
+                    finishedOn: j.finishedOn
+                }))
+            };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    });
 }
