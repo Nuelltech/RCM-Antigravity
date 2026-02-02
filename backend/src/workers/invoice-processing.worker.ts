@@ -116,7 +116,7 @@ const worker = new Worker<InvoiceProcessingJob>(
             const lineItemsData = result.lineItems.map((item, index) => ({
                 fatura_importacao_id: invoiceId,
                 tenant_id: tenantId,
-                linha_numero: item.linhaNumero || index + 1,
+                linha_numero: typeof item.linhaNumero === 'string' ? parseInt(item.linhaNumero, 10) : (item.linhaNumero || index + 1),
                 descricao_original: item.descricaoOriginal,
                 descricao_limpa: item.descricaoLimpa,
                 quantidade: item.quantidade || undefined,
