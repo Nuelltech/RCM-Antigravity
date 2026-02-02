@@ -561,7 +561,6 @@ function DatabaseTab() {
 }
 
 function RedisTab() {
-    // Force update for Render deployment
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [cleaning, setCleaning] = useState(false);
@@ -591,7 +590,10 @@ function RedisTab() {
 
         setCleaning(true);
         try {
-            await fetchWithAuth('/api/internal/health/cache/clear', { method: 'POST' });
+            await fetchWithAuth('/api/internal/health/cache/clear', {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
             alert('Cache limpa com sucesso!');
             fetchStats();
         } catch (error) {
