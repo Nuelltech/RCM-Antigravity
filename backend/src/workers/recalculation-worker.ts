@@ -21,7 +21,7 @@ import { dashboardCache } from '../core/cache.service';
 async function processRecalculationJob(job: Job<RecalculationJobData>) {
     console.log(`🔧 Processing ${job.name} [${job.id}]`, job.data);
 
-    const { type, produtoId, receitaId, comboId, tenantId } = job.data;
+    const { type, produtoId, receitaId, comboId, tenantId, logId } = job.data;
 
     const start = Date.now();
 
@@ -33,8 +33,8 @@ async function processRecalculationJob(job: Job<RecalculationJobData>) {
                 if (!produtoId) {
                     throw new Error('produtoId is required for price-change job');
                 }
-                await job.updateProgress(10);
-                result = await recalculationService.recalculateAfterPriceChange(produtoId);
+                // await job.updateProgress(10);
+                result = await recalculationService.recalculateAfterPriceChange(produtoId, logId);
                 await job.updateProgress(100);
                 console.log(`✅ Price change recalculation complete:`, result);
                 break;

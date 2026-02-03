@@ -39,9 +39,28 @@ const worker = new Worker<InvoiceProcessingJob>(
 
         try {
             // ------------------------------------------------------------------
-            // Download file from Hostinger if it's a public URL
+            // FIX: Recreate file from Base64 if provided (for distributed workers)
             // ------------------------------------------------------------------
-            if (filepath && filepath.startsWith('http')) {
+            if (fileContent) {
+                try {
+                    console.log(`[Worker] 📥 Base64 content found. Recreating file locally...`);
+                    const buffer = Buffer.from(fileContent, 'base64');
+
+                    // Create temp path
+                    const tempDir = os.tmpdir();
+                    const ext = mimetype === 'application/pdf' ? '.pdf' : '.jpg'; // simple ext detection
+                    const tempFilename = `invoice_${invoiceId}_${Date.now()}${ext}`;
+                    const tempFilePath = path.join(tempDir, tempFilename);
+
+                    await fs.writeFile(tempFilePath, buffer);
+
+                    console.log(`[Worker] ✅ File recreated at: ${tempFilePath}`);
+                    filepath = tempFilePath; // Override filepath to use local temp file
+                    tempFileCreated = true;
+                } catch (err: any) {
+                    console.error('[Worker] Failed to recreate file from Base64:', err);
+                }
+            } else if (filepath && filepath.startsWith('http')) {
                 try {
                     console.log(`[Worker] 📥 Downloading file from: ${filepath}`);
 

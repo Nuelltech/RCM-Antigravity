@@ -3,6 +3,7 @@ import { priceHistoryService } from '../../produtos/price-history.service';
 import { recalculationService } from '../../produtos/recalculation.service';
 import { addPriceChangeJob } from '../../../core/queue';
 import { dashboardCache } from '../../../core/cache.service';
+import { productsCache } from '../../../core/products-cache';
 
 const prisma = new PrismaClient();
 
@@ -161,7 +162,8 @@ export class InvoiceIntegrationService {
 
             // Invalidate dashboard cache (purchases affect dashboard stats)
             await dashboardCache.invalidateTenant(tenantId);
-            console.log(`[CACHE INVALIDATE] Dashboard cache cleared for tenant ${tenantId} after invoice approval`);
+            await productsCache.invalidateTenant(tenantId);
+            console.log(`[CACHE INVALIDATE] Dashboard and Products cache cleared for tenant ${tenantId} after invoice approval`);
 
             // Mark log as completed (or let the worker finish it)
             // Note: Recalculation is async, so verified/completed status might depend on that. 
@@ -223,7 +225,8 @@ export class InvoiceIntegrationService {
                 where: { id: variacaoId },
                 data: {
                     preco_unitario: newUnitPriceDecimal,  // €/kg or €/L or €/UN
-                    preco_compra: newPackagePriceDecimal   // Total package price
+                    preco_compra: newPackagePriceDecimal,   // Total package price
+                    data_ultima_compra: new Date() // Set as latest purchase to ensure it's picked by recalculation service
                 }
             });
 
