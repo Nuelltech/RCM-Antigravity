@@ -199,16 +199,26 @@ export async function invoicesRoutes(app: FastifyInstance) {
                             id: true,
                             status: true
                         }
+                    },
+                    fornecedorRel: {
+                        select: {
+                            nome: true,
+                            nif: true
+                        }
                     }
                 }
             }),
             prisma.faturaImportacao.count({ where })
         ]);
 
-        // Transform file URLs
+        // Transform file URLs and Provider
         const transformedInvoices = invoices.map(inv => ({
             ...inv,
-            ficheiro_url: toPublicUrl(inv.ficheiro_url)
+            ficheiro_url: toPublicUrl(inv.ficheiro_url),
+            fornecedor: inv.fornecedorRel ? {
+                nome: inv.fornecedorRel.nome,
+                nif: inv.fornecedorRel.nif
+            } : undefined
         }));
 
         return {
@@ -293,7 +303,8 @@ export async function invoicesRoutes(app: FastifyInstance) {
                         variacao: true
                     }
                 },
-                compras: true
+                compras: true,
+                fornecedorRel: true
             }
         });
 
@@ -303,7 +314,12 @@ export async function invoicesRoutes(app: FastifyInstance) {
 
         return {
             ...fatura,
-            ficheiro_url: toPublicUrl(fatura.ficheiro_url)
+            ficheiro_url: toPublicUrl(fatura.ficheiro_url),
+            fornecedor: fatura.fornecedorRel ? {
+                nome: fatura.fornecedorRel.nome,
+                nif: fatura.fornecedorRel.nif,
+                // ...fatura.fornecedorRel // spread other fields if needed
+            } : undefined
         };
     });
 
