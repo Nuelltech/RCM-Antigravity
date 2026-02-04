@@ -336,7 +336,7 @@ model VariacaoProduto {
   tenant_id           Int
   produto_id          Int
   tipo_unidade_compra String   // ex: "Caixa 12un"
-  unidades_por_compra Decimal  @db.Decimal(10, 4)
+  unidades_por_compra Decimal?  @db.Decimal(10, 4)
   volume_por_unidade  Decimal? @db.Decimal(10, 4) // Optional: volume/quantity per individual unit (e.g., 0.33 for 33cl bottle)
   preco_compra        Decimal  @db.Decimal(10, 2)
   preco_unitario      Decimal  @db.Decimal(10, 4) // Computed in app, stored for cache

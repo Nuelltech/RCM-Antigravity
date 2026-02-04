@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma } from '../../core/database';
 import { LoginInput, RegisterInput, VerifyEmailInput, ForgotPasswordInput, ResetPasswordInput } from './auth.schema';
 import { FastifyInstance } from 'fastify';
@@ -218,7 +219,7 @@ export class AuthService {
             tenantName: defaultTenant.tenant.nome_restaurante,
         });
 
-        return {
+        const response = {
             token,
             user: {
                 id: user.id,
@@ -235,6 +236,25 @@ export class AuthService {
                 role: ut.role, // User's role in this tenant
             })),
         };
+
+        // Create Session Record (Critical for Notifications)
+        const accessTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+        const refreshToken = crypto.randomBytes(40).toString('hex'); // Dummy refresh for now
+        const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+        await prisma.session.create({
+            data: {
+                user_id: user.id,
+                tenant_id: defaultTenant.tenant_id,
+                access_token_hash: accessTokenHash,
+                refresh_token_hash: refreshTokenHash,
+                expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins (match JWT)
+                refresh_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+                user_agent: 'Mobile App', // Hardcoded safely for mobile
+            }
+        });
+
+        return response;
     }
 
     /**
