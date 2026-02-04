@@ -242,17 +242,25 @@ export class AuthService {
         const refreshToken = crypto.randomBytes(40).toString('hex'); // Dummy refresh for now
         const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
 
-        await prisma.session.create({
-            data: {
-                user_id: user.id,
-                tenant_id: defaultTenant.tenant_id,
-                access_token_hash: accessTokenHash,
-                refresh_token_hash: refreshTokenHash,
-                expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins (match JWT)
-                refresh_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-                user_agent: 'Mobile App', // Hardcoded safely for mobile
-            }
-        });
+        console.log(`[AUTH] 🚀 Creating session for User ${user.id} in Tenant ${defaultTenant.tenant_id}...`);
+
+        try {
+            const session = await prisma.session.create({
+                data: {
+                    user_id: user.id,
+                    tenant_id: defaultTenant.tenant_id,
+                    access_token_hash: accessTokenHash,
+                    refresh_token_hash: refreshTokenHash,
+                    expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins (match JWT)
+                    refresh_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+                    user_agent: 'Mobile App', // Hardcoded safely for mobile
+                }
+            });
+            console.log(`[AUTH] ✅ Session created successfully! ID: ${session.id}`);
+        } catch (err) {
+            console.error('[AUTH] ❌ FAILED to create session:', err);
+            // We log but don't throw to allow login to proceed (though push won't work)
+        }
 
         return response;
     }

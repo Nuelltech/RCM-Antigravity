@@ -19,11 +19,29 @@ async function main() {
         const sessionsWithToken = sessions.filter(s => s.push_token);
         console.log(`Sessions with Push Token: ${sessionsWithToken.length}`);
 
-        if (sessionsWithToken.length > 0) {
-            console.log('Tokens found:', sessionsWithToken.map(s => s.push_token));
+        if (sessions.length > 0) {
+            console.log('\n--- ACTIVE SESSIONS ---');
+            sessions.forEach(s => {
+                console.log(`ID: ${s.id} | Created: ${s.createdAt.toISOString()} | Token: ${s.push_token ? '✅ YES' : '❌ NO'} | UA: ${s.user_agent || 'N/A'}`);
+                if (s.push_token) console.log(`   └─ Token: ${s.push_token.substring(0, 15)}...`);
+            });
+            console.log('-----------------------\n');
         } else {
-            console.log('WARNING: No active sessions have a push token.');
-            console.log('The mobile app needs to be opened and logged in to register a token.');
+            console.log('WARNING: No active sessions found.');
+
+            // Check for ANY sessions (including revoked/expired)
+            const allSessions = await prisma.session.findMany({
+                where: { user_id: 1 },
+                orderBy: { createdAt: 'desc' },
+                take: 5
+            });
+
+            if (allSessions.length > 0) {
+                console.log('\n--- RECENT HISTORY (Inactive/Revoked) ---');
+                allSessions.forEach(s => {
+                    console.log(`ID: ${s.id} | Created: ${s.createdAt.toISOString()} | Revoked: ${s.revoked} | Exp: ${s.expires_at.toISOString()}`);
+                });
+            }
         }
     } catch (err) {
         console.error('Error querying sessions:', err);

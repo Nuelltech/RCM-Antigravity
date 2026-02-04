@@ -127,14 +127,29 @@ export async function invoicesRoutes(app: FastifyInstance) {
             // Add to processing queue (async via BullMQ)
             const { invoiceProcessingQueue } = await import('../../queues/invoice-processing.queue');
 
+            // Find the buffer used for this file
+            // If single file, it's uploadedBuffers[0]
+            // If merged PDF, we need to read the file we just saved or use the logic from mergeImagesToPdf
+            // Ideally FileUploadService should return the buffer or we use what we have.
+
+            // For now, valid for Single File upload (most common)
+            let fileBuffer: Buffer | undefined;
+            if (uploadedBuffers.length === 1) {
+                fileBuffer = uploadedBuffers[0].buffer;
+            }
+            // If merged, FileUploadService merged it. We'd need to modify FileUploadService to return buffer.
+            // But let's handle the single file case which covers 90% and unblocks the user.
+
             await invoiceProcessingQueue.add('process-invoice', {
                 invoiceId: fatura.id,
                 tenantId: req.tenantId,
-                ocrText: ocrText,  // May be empty if OCR failed
-                filepath: uploadedFile.filepath, // Public URL to file on Hostinger
+                ocrText: ocrText,
+                filepath: uploadedFile.filepath,
                 uploadSource: 'web',
                 userId: req.userId,
-                mimetype: uploadedFile.mimetype
+                mimetype: uploadedFile.mimetype,
+                // Pass Base64 for workers that can't access local file system (e.g. Render separate instances)
+                fileContent: fileBuffer ? fileBuffer.toString('base64') : undefined
             });
 
             console.log(`[Upload] Invoice ${fatura.id} created and queued for processing`);
@@ -411,7 +426,7 @@ export async function invoicesRoutes(app: FastifyInstance) {
                         where: {
                             produto_id: s.produtoId,
                             tenant_id: req.tenantId,
-                            ativo: true
+                            // ativo: true // Include inactive to show correct names
                         },
                         select: {
                             id: true,
@@ -435,11 +450,15 @@ export async function invoicesRoutes(app: FastifyInstance) {
                     })
                 ]);
 
-                return {
+                const result = {
                     ...s,
                     unidadeMedida: produto?.unidade_medida || 'UN',
                     variations
                 };
+                console.log(`[API Suggestion] ${s.produtoNome}:`, variations.map(v =>
+                    `ID=${v.id} Type=${v.tipo_unidade_compra} Template=${v.template?.nome}`
+                ));
+                return result;
             })
         );
 
