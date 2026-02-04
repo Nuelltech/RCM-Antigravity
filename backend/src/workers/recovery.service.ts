@@ -56,19 +56,6 @@ export class RecoveryService {
                     data: { status: 'pending' }
                 });
 
-                // Read file content for Base64 fallback (Critical for distributed workers)
-                let fileContent: string | undefined;
-                try {
-                    // Check if path is local (not starting with http)
-                    if (invoice.ficheiro_url && !invoice.ficheiro_url.startsWith('http')) {
-                        const buffer = await fs.readFile(invoice.ficheiro_url);
-                        fileContent = buffer.toString('base64');
-                        console.log(`[Recovery] 📥 Loaded ${buffer.length} bytes for Base64 transfer`);
-                    }
-                } catch (readErr) {
-                    console.warn(`[Recovery] ⚠️ Could not read file for Base64: ${invoice.ficheiro_url}`, readErr);
-                }
-
                 // Add back to queue
                 await this.queue.add('process-invoice', {
                     invoiceId: invoice.id,
@@ -77,8 +64,8 @@ export class RecoveryService {
                     filepath: invoice.ficheiro_url,
                     uploadSource: 'recovery',
                     userId: undefined, // We might lose the original uploader ID if not stored in invoice table
-                    mimetype: invoice.ficheiro_tipo === 'pdf' ? 'application/pdf' : 'image/jpeg',
-                    fileContent // Pass base64 content
+                    mimetype: invoice.ficheiro_tipo === 'pdf' ? 'application/pdf' : 'image/jpeg'
+                    // Note: Basic mimetype inference, ideal would be to store it in DB
                 });
             }
 

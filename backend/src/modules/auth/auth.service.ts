@@ -427,7 +427,8 @@ export class AuthService {
     }
 
     async registerPushToken(userId: number, token: string) {
-        await prisma.session.updateMany({
+        console.log(`[AuthService] Registering push token for user ${userId}...`);
+        const result = await prisma.session.updateMany({
             where: {
                 user_id: userId,
                 revoked: false,
@@ -437,6 +438,7 @@ export class AuthService {
                 push_token: token
             }
         });
+        console.log(`[AuthService] Updated ${result.count} sessions with push token.`);
         return { success: true };
     }
 }

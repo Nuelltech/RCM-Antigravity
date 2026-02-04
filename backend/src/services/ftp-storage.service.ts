@@ -29,10 +29,19 @@ export class FTPStorageService {
         // Use FTP only if configured
         this.useFTP = !!(this.ftpHost && this.ftpUser && this.ftpPassword);
 
+        // DEBUG: Log configuration status (masked)
+        console.log('[FTP] Initializing storage service...');
+        console.log(`[FTP] HOST: ${this.ftpHost ? 'Set (' + this.ftpHost + ')' : 'MISSING'}`);
+        console.log(`[FTP] USER: ${this.ftpUser ? 'Set' : 'MISSING'}`);
+        console.log(`[FTP] PASS: ${this.ftpPassword ? 'Set (******)' : 'MISSING'}`);
+        console.log(`[FTP] PORT: ${this.ftpPort}`);
+        console.log(`[FTP] BASE PATH: ${this.ftpBasePath}`);
+        console.log(`[FTP] PUBLIC URL: ${this.publicUrlBase || 'MISSING (Will return raw paths)'}`);
+
         if (!this.useFTP) {
-            console.warn('[FTP] FTP not configured, will use local filesystem fallback');
+            console.error('[FTP] ❌ FTP not configured! Falls back to local filesystem (BAD for distributed workers)');
         } else {
-            console.log(`[FTP] Environment: ${this.environment}`);
+            console.log(`[FTP] ✅ FTP Configured. Environment: ${this.environment}`);
         }
     }
 

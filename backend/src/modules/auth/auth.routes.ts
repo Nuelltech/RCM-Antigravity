@@ -150,6 +150,8 @@ export async function authRoutes(app: FastifyInstance) {
             const token = authHeader.substring(7);
             const decoded = await app.jwt.verify(token) as { userId: number };
 
+            console.log(`[PushToken] Request from User ${decoded.userId}. Token length: ${(req.body as { token: string }).token?.length}`);
+
             await service.registerPushToken(decoded.userId, (req.body as { token: string }).token);
 
             return reply.send({ success: true });
