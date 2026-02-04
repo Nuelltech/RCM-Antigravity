@@ -8,16 +8,7 @@ import { theme } from '../../../../ui/theme';
 import { spacing } from '../../../../ui/spacing';
 import { typography } from '../../../../ui/typography';
 
-interface Invoice {
-    id: number;
-    numero_fatura?: string;
-    fornecedor?: { nome: string };
-    data_fatura?: string;
-    total?: number;
-    status: string;
-    created_at: string;
-    ficheiro_url?: string;
-}
+import { Invoice } from '../../../../types/invoice';
 
 export default function InvoicesIndexScreen() {
     const router = useRouter();
@@ -146,13 +137,18 @@ export default function InvoicesIndexScreen() {
                                     </View>
                                 </View>
                                 <Text style={styles.supplier}>
-                                    {invoice.fornecedor?.nome || 'Fornecedor desconhecido'}
+                                    {invoice.fornecedor?.nome || invoice.fornecedor_nome || 'Fornecedor desconhecido'}
                                 </Text>
                                 <View style={styles.invoiceFooter}>
-                                    <Text style={styles.date}>{formatDate(invoice.data_fatura)}</Text>
-                                    {invoice.total && (
-                                        <Text style={styles.total}>{formatCurrency(invoice.total)}</Text>
-                                    )}
+                                    <View>
+                                        <Text style={styles.date}>{formatDate(invoice.data_fatura)}</Text>
+                                        <Text style={styles.itemCount}>
+                                            {invoice.linhas?.length || 0} artigos
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.total}>
+                                        {formatCurrency(invoice.total_com_iva || invoice.total_sem_iva || 0)}
+                                    </Text>
                                 </View>
                             </Card.Content>
                             <Card.Actions style={{ justifyContent: 'flex-end', paddingTop: 0 }}>
@@ -265,6 +261,11 @@ const styles = StyleSheet.create({
     date: {
         color: theme.colors.textLight,
         fontSize: 12,
+    },
+    itemCount: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        marginTop: 2,
     },
     total: {
         color: theme.colors.primary,

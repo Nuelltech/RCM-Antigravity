@@ -143,7 +143,7 @@ export default function LoginScreen() {
 
                     {isBiometricAvailable && (
                         <Button
-                            mode="text"
+                            variant="text"
                             onPress={handleBiometricLogin}
                             disabled={loading}
                             style={styles.bioButton}

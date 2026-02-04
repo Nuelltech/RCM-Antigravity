@@ -418,7 +418,12 @@ export async function invoicesRoutes(app: FastifyInstance) {
                             tipo_unidade_compra: true,
                             unidades_por_compra: true,
                             preco_compra: true,
-                            preco_unitario: true
+                            preco_unitario: true,
+                            template: {
+                                select: {
+                                    nome: true
+                                }
+                            }
                         },
                         orderBy: {
                             id: 'asc'  // First variation created = default

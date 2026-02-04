@@ -1,5 +1,5 @@
 import { View, ScrollView, FlatList, StyleSheet, Platform } from 'react-native';
-import { Text, Card, Chip, Searchbar, ActivityIndicator, IconButton, FAB } from 'react-native-paper';
+import { Text, Card, Chip, Searchbar, ActivityIndicator, IconButton, FAB, Button } from 'react-native-paper';
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useGlobalSearchParams } from 'expo-router';
 import api, { fetchRecipes, fetchCombos, fetchMenu, fetchMenuStats } from '../../../lib/api';
@@ -238,7 +238,17 @@ export default function CatalogScreen() {
                         </Card>
                     ))}
                 </View>
-            </View>
+
+
+                {/* TEMPORARY: Debug Button */}
+                <Button
+                    mode="contained"
+                    onPress={() => router.push('/financial/invoices')}
+                    style={{ marginTop: 20, backgroundColor: theme.colors.warning }}
+                >
+                    [DEBUG] Ver Lista Cartões (Invoices)
+                </Button>
+            </View >
         );
     }
 

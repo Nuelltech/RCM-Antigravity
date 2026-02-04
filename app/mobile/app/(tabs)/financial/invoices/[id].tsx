@@ -1,14 +1,16 @@
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Linking } from 'react-native';
+import { View, ScrollView, StyleSheet, Linking, Platform, Alert } from 'react-native';
+import { Text, Card, ActivityIndicator, Divider, Button, Chip, DataTable, IconButton } from 'react-native-paper';
 import { useState, useEffect } from 'react';
-import { useLocalSearchParams, router } from 'expo-router';
-import { Invoice, InvoiceLine, InvoiceStatus } from '../../../../types/invoice';
-import InvoiceStatusBadge from '../../../../components/invoices/InvoiceStatusBadge';
-import { ApiService } from '../../../../services';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Invoice, InvoiceStatus } from '../../../../types/invoice';
 import api from '../../../../lib/api';
 import { theme } from '../../../../ui/theme';
+import { spacing } from '../../../../ui/spacing';
+import { typography } from '../../../../ui/typography';
 
 export default function InvoiceDetailsScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    const router = useRouter();
     const [invoice, setInvoice] = useState<Invoice | null>(null);
     const [loading, setLoading] = useState(true);
     const [approving, setApproving] = useState(false);
@@ -23,15 +25,56 @@ export default function InvoiceDetailsScreen() {
             setInvoice(response.data);
         } catch (error) {
             console.error('Failed to fetch invoice details:', error);
-            Alert.alert('Erro', 'Não foi possível carregar os detalhes da fatura');
+            // Fallback for demo/dev if API fails or ID is invalid in some environments
+            // setInvoice(mockInvoice); 
         } finally {
             setLoading(false);
         }
     };
 
+    const formatCurrency = (value?: number) => {
+        if (value === undefined || value === null) return '€0.00';
+        return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+    };
+
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return 'N/A';
+        return new Date(dateStr).toLocaleDateString('pt-PT', {
+            day: '2-digit',
+            month: 'long', // Full month name for details
+            year: 'numeric',
+        });
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'approved': return theme.colors.success;
+            case 'approved_partial': return theme.colors.warning;
+            case 'reviewing': return theme.colors.warning;
+            case 'processing': return theme.colors.info;
+            case 'pending': return theme.colors.secondary;
+            case 'error': return theme.colors.error;
+            case 'rejected': return theme.colors.error;
+            default: return theme.colors.textSecondary;
+        }
+    };
+
+    const getStatusLabel = (status: string) => {
+        switch (status) {
+            case 'approved': return 'Aprovada';
+            case 'approved_partial': return 'Parcialmente Aprovada';
+            case 'reviewing': return 'Em Revisão';
+            case 'processing': return 'A Processar';
+            case 'pending': return 'Pendente';
+            case 'error': return 'Erro';
+            case 'rejected': return 'Rejeitada';
+            default: return status;
+        }
+    }
+
     const handleViewFile = async (url?: string) => {
         if (!url) {
-            Alert.alert('Erro', 'Não há ficheiro associado a esta fatura.');
+            alert('Não há ficheiro associado a esta fatura.');
             return;
         }
 
@@ -46,23 +89,37 @@ export default function InvoiceDetailsScreen() {
             if (supported) {
                 await Linking.openURL(fullUrl);
             } else {
-                Alert.alert('Erro', `Não é possível abrir este URL.`);
+                alert(`Não é possível abrir este URL: ${fullUrl}`);
             }
         } catch (error) {
             console.error('Error opening URL:', error);
-            Alert.alert('Erro', 'Erro ao abrir o ficheiro.');
+            alert('Erro ao abrir o ficheiro.');
         }
     };
 
     const handleApprove = async () => {
+        if (!invoice) return;
+
+        // Check for unmatched lines
+        const unmatchedLines = invoice.linhas?.filter((l) => !l.produto_id) || [];
+        const isPartial = unmatchedLines.length > 0;
+
+        let title = 'Aprovar Fatura';
+        let message = 'Confirmar aprovação? Isto irá criar a compra no sistema.';
+
+        if (isPartial) {
+            title = 'Aprovação Parcial';
+            message = `Existem ${unmatchedLines.length} itens sem correspondência que serão ignorados.\n\nDeseja continuar com a aprovação parcial?`;
+        }
+
         Alert.alert(
-            'Aprovar Fatura',
-            'Tem a certeza que deseja aprovar esta fatura? Isto irá criar uma compra e atualizar os preços.',
+            title,
+            message,
             [
                 { text: 'Cancelar', style: 'cancel' },
                 {
-                    text: 'Aprovar',
-                    style: 'destructive',
+                    text: isPartial ? 'Aprovar Parcialmente' : 'Aprovar',
+                    style: 'default',
                     onPress: async () => {
                         try {
                             setApproving(true);
@@ -71,7 +128,7 @@ export default function InvoiceDetailsScreen() {
                                 { text: 'OK', onPress: () => router.back() }
                             ]);
                         } catch (error: any) {
-                            Alert.alert('Erro', error?.response?.data?.error || 'Falha ao aprovar fatura');
+                            Alert.alert('Erro', error?.response?.data?.error || 'Falha ao aprovar');
                         } finally {
                             setApproving(false);
                         }
@@ -81,248 +138,256 @@ export default function InvoiceDetailsScreen() {
         );
     };
 
-    const handleReject = async () => {
-        Alert.alert(
-            'Rejeitar Fatura',
-            'Tem a certeza que deseja rejeitar esta fatura? Esta ação não pode ser desfeita.',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Rejeitar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await api.delete(`/api/invoices/${id}`);
-                            Alert.alert('Sucesso', 'Fatura rejeitada', [
-                                { text: 'OK', onPress: () => router.back() }
-                            ]);
-                        } catch (error) {
-                            Alert.alert('Erro', 'Falha ao rejeitar fatura');
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
-    const formatCurrency = (value?: number) => {
-        if (!value) return '€0.00';
-        return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
-    };
-
-    const formatDate = (dateStr?: string) => {
-        if (!dateStr) return 'N/A';
-        return new Date(dateStr).toLocaleDateString('pt-PT');
-    };
-
     if (loading) {
         return (
-            <View className="flex-1 bg-slate-900 items-center justify-center">
-                <ActivityIndicator size="large" color="#f97316" />
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
             </View>
         );
     }
 
     if (!invoice) {
         return (
-            <View className="flex-1 bg-slate-900 items-center justify-center p-6">
-                <Text className="text-white text-lg">Fatura não encontrada</Text>
+            <View style={styles.loadingContainer}>
+                <Text style={{ color: theme.colors.text }}>Fatura não encontrada.</Text>
+                <Button onPress={() => router.back()}>Voltar</Button>
             </View>
         );
     }
 
-    const allMatched = invoice.linhas?.every(l => l.status === 'matched') ?? false;
-    const canApprove = invoice.status === 'reviewing' && invoice.linhas && invoice.linhas.length > 0;
+    const providerName = invoice.fornecedor?.nome || invoice.fornecedor_nome || 'Fornecedor Desconhecido';
+    const statusColor = getStatusColor(invoice.status);
+    const canEdit = invoice.status === 'reviewing' || invoice.status === 'approved_partial';
 
     return (
-        <View className="flex-1 bg-slate-900">
-            <ScrollView className="flex-1">
-                {/* Header */}
-                <View className="p-6 pt-16">
-                    <TouchableOpacity onPress={() => router.back()} className="mb-4">
-                        <Text className="text-orange-500 text-base">← Voltar</Text>
-                    </TouchableOpacity>
+        <View style={styles.container}>
+            <View style={styles.header}>
+                <IconButton
+                    icon="arrow-left"
+                    iconColor="white"
+                    onPress={() => router.back()}
+                />
+                <Text style={styles.headerTitle}>Detalhes da Fatura</Text>
+                <IconButton
+                    icon="file-document-outline"
+                    iconColor={theme.colors.primary}
+                    onPress={() => handleViewFile(invoice.ficheiro_url)}
+                />
+            </View>
 
-                    <View className="flex-row justify-between items-start mb-4">
-                        <View className="flex-1">
-                            <Text className="text-white text-2xl font-bold mb-2">
-                                {invoice.numero_fatura || `Fatura #${invoice.id}`}
-                            </Text>
-                            <View className="flex-row items-center gap-2">
-                                <Text className="text-slate-400 text-sm flex-1" numberOfLines={1}>
-                                    {invoice.ficheiro_nome}
-                                </Text>
-                                <TouchableOpacity
-                                    onPress={() => handleViewFile(invoice.ficheiro_url)}
-                                    className="bg-slate-700 px-3 py-1 rounded-full flex-row items-center"
-                                >
-                                    <Text className="text-orange-400 text-xs font-bold mr-1">👁️</Text>
-                                    <Text className="text-white text-xs">Ver Original</Text>
-                                </TouchableOpacity>
+            <ScrollView contentContainerStyle={styles.content}>
+                {/* Header Card */}
+                <Card style={styles.card}>
+                    <Card.Content>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Fornecedor</Text>
+                                <Text style={styles.providerValue}>{providerName}</Text>
+                                {invoice.fornecedor?.nif && <Text style={styles.nif}>NIF: {invoice.fornecedor.nif}</Text>}
                             </View>
+                            <Chip
+                                style={{ backgroundColor: statusColor + '20' }}
+                                textStyle={{ color: statusColor, fontSize: 12 }}
+                            >
+                                {getStatusLabel(invoice.status)}
+                            </Chip>
                         </View>
-                        <InvoiceStatusBadge status={invoice.status} />
-                    </View>
 
-                    {/* Invoice Info */}
-                    <View className="bg-slate-800 rounded-xl p-4 mb-4">
-                        <View className="flex-row justify-between mb-3">
+                        <Divider style={styles.divider} />
+
+                        <View style={styles.row}>
                             <View>
-                                <Text className="text-slate-400 text-xs mb-1">Fornecedor</Text>
-                                <Text className="text-white font-semibold">
-                                    {invoice.fornecedor_nome || 'N/A'}
-                                </Text>
-                                {invoice.fornecedor_nif && (
-                                    <Text className="text-slate-400 text-xs">NIF: {invoice.fornecedor_nif}</Text>
-                                )}
+                                <Text style={styles.label}>Nº Fatura</Text>
+                                <Text style={styles.value}>{invoice.numero_fatura || 'N/A'}</Text>
                             </View>
-                            <View className="items-end">
-                                <Text className="text-slate-400 text-xs mb-1">Data</Text>
-                                <Text className="text-white font-semibold">
-                                    {formatDate(invoice.data_fatura)}
-                                </Text>
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.label}>Data</Text>
+                                <Text style={styles.value}>{formatDate(invoice.data_fatura)}</Text>
                             </View>
                         </View>
+                    </Card.Content>
+                </Card>
 
-                        <View className="border-t border-slate-700 pt-3">
-                            <View className="flex-row justify-between mb-2">
-                                <Text className="text-slate-400 text-sm">Subtotal</Text>
-                                <Text className="text-white">{formatCurrency(invoice.total_sem_iva)}</Text>
-                            </View>
-                            <View className="flex-row justify-between mb-2">
-                                <Text className="text-slate-400 text-sm">IVA</Text>
-                                <Text className="text-white">{formatCurrency(invoice.total_iva)}</Text>
-                            </View>
-                            <View className="flex-row justify-between">
-                                <Text className="text-white font-bold">Total</Text>
-                                <Text className="text-orange-500 font-bold text-lg">
-                                    {formatCurrency(invoice.total_com_iva)}
-                                </Text>
-                            </View>
+                {/* Totals Card */}
+                <Card style={styles.card}>
+                    <Card.Content>
+                        <View style={styles.row}>
+                            <Text style={styles.totalLabel}>Subtotal</Text>
+                            <Text style={styles.totalValue}>{formatCurrency(invoice.total_sem_iva)}</Text>
                         </View>
-                    </View>
+                        <View style={styles.row}>
+                            <Text style={styles.totalLabel}>IVA</Text>
+                            <Text style={styles.totalValue}>{formatCurrency(invoice.total_iva)}</Text>
+                        </View>
+                        <Divider style={styles.divider} />
+                        <View style={styles.row}>
+                            <Text style={[styles.totalLabel, { fontSize: 18, color: theme.colors.textInverse }]}>Total</Text>
+                            <Text style={[styles.totalValue, { fontSize: 24, color: theme.colors.primary }]}>{formatCurrency(invoice.total_com_iva ?? invoice.total_sem_iva)}</Text>
+                        </View>
+                    </Card.Content>
+                </Card>
 
-                    {/* Line Items */}
-                    <Text className="text-white text-lg font-bold mb-3">
-                        Linhas da Fatura ({invoice.linhas?.length || 0})
-                    </Text>
+                {/* Lines Section */}
+                <Text style={styles.sectionTitle}>Linhas da Fatura ({invoice.linhas?.length || 0})</Text>
 
-                    {invoice.linhas && invoice.linhas.length > 0 ? (
-                        invoice.linhas.map((line) => (
-                            <LineItemCard key={line.id} line={line} invoiceId={invoice.id} />
-                        ))
+                <Card style={[styles.card, { padding: 0 }]}>
+                    {(invoice.linhas && invoice.linhas.length > 0) ? (
+                        <DataTable>
+                            <DataTable.Header>
+                                <DataTable.Title style={{ flex: 2 }}><Text style={{ color: theme.colors.textSecondary }}>Descrição</Text></DataTable.Title>
+                                <DataTable.Title numeric style={{ flex: 0.8 }}><Text style={{ color: theme.colors.textSecondary }}>Qtd</Text></DataTable.Title>
+                                <DataTable.Title numeric style={{ flex: 1.2 }}><Text style={{ color: theme.colors.textSecondary }}>P.Unit</Text></DataTable.Title>
+                                <DataTable.Title numeric style={{ flex: 1.2 }}><Text style={{ color: theme.colors.textSecondary }}>Total</Text></DataTable.Title>
+                            </DataTable.Header>
+
+                            {invoice.linhas.map((line) => (
+                                <DataTable.Row
+                                    key={line.id}
+                                    onPress={canEdit ? () => router.push({
+                                        pathname: "/(tabs)/financial/invoices/match/[lineId]",
+                                        params: { lineId: line.id.toString(), invoiceId: id }
+                                    }) : undefined}
+                                >
+                                    <DataTable.Cell style={{ flex: 2 }}>
+                                        <View style={{ paddingVertical: 8 }}>
+                                            <Text style={styles.lineDesc} numberOfLines={2}>{line.descricao_original}</Text>
+                                            {line.produto ? (
+                                                <Text style={styles.lineProduct}>✓ {line.produto.nome}</Text>
+                                            ) : (
+                                                <Text style={[styles.lineProduct, { color: theme.colors.warning }]}>⚠️ Por associar</Text>
+                                            )}
+                                        </View>
+                                    </DataTable.Cell>
+                                    <DataTable.Cell numeric style={{ flex: 0.8 }}>
+                                        <Text style={styles.cellText}>{line.quantidade}</Text>
+                                    </DataTable.Cell>
+                                    <DataTable.Cell numeric style={{ flex: 1.2 }}>
+                                        <Text style={styles.cellText}>{formatCurrency(line.preco_unitario)}</Text>
+                                    </DataTable.Cell>
+                                    <DataTable.Cell numeric style={{ flex: 1.2 }}>
+                                        <Text style={styles.cellText}>{formatCurrency(line.preco_total)}</Text>
+                                    </DataTable.Cell>
+                                </DataTable.Row>
+                            ))}
+                        </DataTable>
                     ) : (
-                        <View className="bg-slate-800 rounded-xl p-6 items-center">
-                            <Text className="text-slate-400">Sem linhas processadas</Text>
+                        <View style={{ padding: spacing.md }}>
+                            <Text style={{ color: theme.colors.textSecondary, textAlign: 'center' }}>Nenhuma linha detetada.</Text>
                         </View>
                     )}
-                </View>
+                </Card>
 
-                <View className="h-32" />
-            </ScrollView>
-
-            {/* Action Buttons */}
-            {canApprove && (
-                <View className="absolute bottom-0 left-0 right-0 bg-slate-800 p-4 border-t border-slate-700">
-                    <View className="flex-row gap-3">
-                        <TouchableOpacity
-                            onPress={handleReject}
-                            className="flex-1 bg-red-500 py-3 rounded-lg items-center"
-                        >
-                            <Text className="text-white font-bold">Rejeitar</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
+                {/* Actions Footer */}
+                <View style={styles.footer}>
+                    {canEdit ? (
+                        <Button
+                            mode="contained"
                             onPress={handleApprove}
-                            disabled={approving || !allMatched}
-                            className={`flex-1 py-3 rounded-lg items-center ${approving || !allMatched ? 'bg-slate-600' : 'bg-green-500'
-                                }`}
+                            loading={approving}
+                            style={{ backgroundColor: theme.colors.success, flex: 1 }}
                         >
-                            <Text className="text-white font-bold">
-                                {approving ? 'A Aprovar...' : 'Aprovar'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                    {!allMatched && (
-                        <Text className="text-orange-400 text-xs text-center mt-2">
-                            Todas as linhas devem estar associadas para aprovar
-                        </Text>
-                    )}
+                            {invoice.status === 'reviewing' ? 'Aprovar Fatura' : 'Concluir Aprovação'}
+                        </Button>
+                    ) : null}
                 </View>
-            )}
+
+            </ScrollView>
         </View>
     );
 }
 
-// Line Item Component
-function LineItemCard({ line, invoiceId }: { line: InvoiceLine; invoiceId: number }) {
-    const formatCurrency = (value?: number) => {
-        if (!value) return '€0.00';
-        return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
-    };
-
-    const getStatusIcon = () => {
-        switch (line.status) {
-            case 'matched':
-                return '✅';
-            case 'manual_review':
-                return '⚠️';
-            case 'pending':
-                return '⏳';
-        }
-    };
-
-    return (
-        <View className="bg-slate-800 rounded-xl p-4 mb-3">
-            <View className="flex-row justify-between items-start mb-2">
-                <View className="flex-1">
-                    <Text className="text-white font-semibold mb-1">
-                        Linha {line.linha_numero}
-                    </Text>
-                    <Text className="text-slate-300 text-sm">{line.descricao_original}</Text>
-                </View>
-                <Text className="text-2xl ml-2">{getStatusIcon()}</Text>
-            </View>
-
-            <View className="flex-row justify-between mt-2">
-                <Text className="text-slate-400 text-xs">
-                    Qtd: {line.quantidade} {line.unidade}
-                </Text>
-                <Text className="text-slate-400 text-xs">
-                    {formatCurrency(line.preco_unitario)} × {line.quantidade}
-                </Text>
-                <Text className="text-white font-semibold">
-                    {formatCurrency(line.preco_total)}
-                </Text>
-            </View>
-
-            {line.status === 'matched' && line.produto && (
-                <View className="mt-3 pt-3 border-t border-slate-700">
-                    <Text className="text-green-400 text-xs mb-1">
-                        ✓ Associado a: {line.produto.nome}
-                    </Text>
-                    {line.variacao && (
-                        <Text className="text-slate-400 text-xs">
-                            {line.variacao.tipo_unidade_compra} ({line.variacao.unidades_por_compra} {line.produto.unidade_medida})
-                        </Text>
-                    )}
-                    {line.confianca_match && (
-                        <Text className="text-slate-400 text-xs">
-                            Confiança: {line.confianca_match}%
-                        </Text>
-                    )}
-                </View>
-            )}
-
-            {(line.status === 'pending' || line.status === 'manual_review') && (
-                <TouchableOpacity
-                    className="mt-3 bg-orange-500 py-2 rounded-lg"
-                    onPress={() => router.push(`/financial/invoices/match/${line.id}`)}
-                >
-                    <Text className="text-white text-center font-semibold text-sm">
-                        Ver Sugestões
-                    </Text>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
-}
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.backgroundDark,
+        paddingTop: Platform.OS === 'android' ? 40 : 0,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: theme.colors.backgroundDark,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: spacing.sm,
+        paddingBottom: spacing.sm,
+        backgroundColor: theme.colors.backgroundDark, // Match background
+    },
+    headerTitle: {
+        ...typography.h3,
+        color: theme.colors.textInverse,
+    },
+    content: {
+        padding: spacing.md,
+        paddingBottom: 80,
+    },
+    card: {
+        backgroundColor: theme.colors.surfaceDark,
+        marginBottom: spacing.md,
+        borderColor: theme.colors.border,
+        borderWidth: 1,
+    },
+    label: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginBottom: 2,
+    },
+    providerValue: {
+        ...typography.h4,
+        color: theme.colors.textInverse,
+    },
+    nif: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginTop: 2,
+    },
+    value: {
+        fontSize: 16,
+        color: theme.colors.textInverse,
+    },
+    divider: {
+        backgroundColor: theme.colors.border,
+        marginVertical: spacing.md,
+    },
+    row: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    totalLabel: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+    },
+    totalValue: {
+        fontSize: 16,
+        color: theme.colors.textInverse,
+        fontWeight: 'bold',
+    },
+    sectionTitle: {
+        ...typography.h4,
+        color: theme.colors.textInverse,
+        marginBottom: spacing.sm,
+        marginLeft: 4,
+    },
+    lineDesc: {
+        color: theme.colors.textInverse,
+        fontSize: 14,
+    },
+    lineProduct: {
+        color: theme.colors.primary,
+        fontSize: 12,
+    },
+    cellText: {
+        color: theme.colors.textInverse,
+    },
+    footer: {
+        marginTop: spacing.md,
+        marginBottom: spacing.xl,
+        flexDirection: 'row',
+        gap: spacing.md,
+    }
+});

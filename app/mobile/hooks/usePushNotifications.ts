@@ -6,12 +6,15 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { ApiService } from '../services/api.service';
 import { useAuth } from '../lib/auth';
+import { router } from 'expo-router';
 
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
     }),
 });
 
@@ -60,8 +63,8 @@ async function registerForPushNotificationsAsync() {
 export const usePushNotifications = () => {
     const [expoPushToken, setExpoPushToken] = useState<string | undefined>('');
     const [notification, setNotification] = useState<Notifications.Notification | undefined>(undefined);
-    const notificationListener = useRef<Notifications.Subscription>();
-    const responseListener = useRef<Notifications.Subscription>();
+    const notificationListener = useRef<Notifications.Subscription>(null);
+    const responseListener = useRef<Notifications.Subscription>(null);
     const { isAuthenticated } = useAuth();
 
     useEffect(() => {
@@ -85,18 +88,23 @@ export const usePushNotifications = () => {
         });
 
         responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-            console.log(response);
-            // Handle navigation based on notification data
-            // const data = response.notification.request.content.data;
-            // if (data?.schema) router.push(data.schema);
+            console.log('Notification response:', response);
+            const data = response.notification.request.content.data;
+
+            if (data?.type === 'INVOICE_REPORT_READY' && data?.invoiceId) {
+                router.push({
+                    pathname: '/financial/invoices/report',
+                    params: { invoiceId: data.invoiceId.toString() }
+                });
+            }
         });
 
         return () => {
             if (notificationListener.current) {
-                Notifications.removeNotificationSubscription(notificationListener.current);
+                notificationListener.current.remove();
             }
             if (responseListener.current) {
-                Notifications.removeNotificationSubscription(responseListener.current);
+                responseListener.current.remove();
             }
         };
     }, [isAuthenticated]);
