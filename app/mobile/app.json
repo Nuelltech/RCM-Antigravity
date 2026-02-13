@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "com.nuelltech.rcm",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -56,7 +57,6 @@
       "fallbackToCacheTimeout": 0
     },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "122eb13e-cf3d-429e-8f74-58ea47235a8b"
       }

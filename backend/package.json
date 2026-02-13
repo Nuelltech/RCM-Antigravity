@@ -23,6 +23,7 @@
     "seed:receitas": "tsx scripts/seed-receitas.ts",
     "seed:subfamilias-bebidas": "tsx scripts/seed-subfamilias-bebidas.ts",
     "seed:formatos-venda": "tsx scripts/seed-formatos-venda.ts",
+    "seed:subscriptions": "tsx scripts/seed-subscription-plans.ts",
     "seed:internal-users": "tsx scripts/seed-internal-users.ts",
     "seed:load-testing": "tsx scripts/seed-load-testing.ts",
     "seed:all": "tsx scripts/seed.ts && tsx scripts/seed-produtos.ts && tsx scripts/seed-produtos-complementares.ts && tsx scripts/seed-receitas.ts && tsx scripts/seed-subfamilias-bebidas.ts && tsx scripts/seed-formatos-venda.ts",

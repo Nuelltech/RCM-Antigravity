@@ -94,6 +94,7 @@ model Tenant {
   tenantNotes            TenantNote[]
   tenantEvents           TenantEvent[]
   integrationLogs        IntegrationLog[]
+  tenantSubscription     TenantSubscription?  // Active subscription
 
   @@map("tenants")
 }
@@ -1916,3 +1917,272 @@ model IntegrationLogItem {
 
   @@map("integration_log_items")
 }
+
+// -----------------------------------------------------------------------------
+// SUBSCRIPTION & BILLING SYSTEM
+// -----------------------------------------------------------------------------
+
+// Feature Catalog - Master list of all available features in the system
+model FeatureCatalog {
+  id                    Int       @id @default(autoincrement())
+  feature_key           String    @unique // 'invoices', 'sales', 'inventory', 'stocks_basic'
+  feature_name          String    // 'Invoice Management', 'Sales Tracking'
+  feature_category      String    // 'core', 'advanced', 'addon'
+  description           String?   @db.Text
+  icon                  String?   // Icon name for UI
+  sort_order            Int       @default(0)
+  
+  // Versioning (for future evolution)
+  version               String    @default("1.0")
+  deprecated            Boolean   @default(false)
+  replacement_feature   String?   // If deprecated, what replaces it
+  
+  active                Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  planFeatures          SubscriptionFeature[]
+  addonFeatures         AddonFeature[]
+  
+  @@index([feature_category, active])
+  @@index([deprecated, active])
+  @@map("feature_catalog")
+}
+
+// -----------------------------------------------------------------------------
+// MENU SYSTEM: Dynamic Menu Configuration
+// -----------------------------------------------------------------------------
+
+// Navigation Menu Items - Sidebar navigation configuration
+model NavigationMenuItem {
+  id                Int       @id @default(autoincrement())
+  key               String    @unique           // 'dashboard', 'sales', 'products'
+  name              String                      // 'Dashboard', 'Vendas', 'Produtos'
+  href              String                      // '/dashboard', '/sales'
+  icon              String                      // 'LayoutDashboard', 'BarChart3'
+  sort_order        Int       @default(0)       // Display order in menu
+  
+  // Feature requirement (subscription)
+  required_feature  String?                     // 'dashboard', 'sales', null
+  
+  // Visual grouping (optional)
+  group             String?                     // 'analytics', 'operations', 'settings'
+  
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  permissions       NavigationPermission[]
+  
+  @@index([active, sort_order])
+  @@map("navigation_menu_items")
+}
+
+// Navigation Permissions - Role-based access to navigation items
+model NavigationPermission {
+  id                        Int                   @id @default(autoincrement())
+  navigation_menu_item_id   Int
+  role                      String                // 'admin', 'gestor', 'operador'
+  
+  navigationMenuItem        NavigationMenuItem  @relation(fields: [navigation_menu_item_id], references: [id], onDelete: Cascade)
+  
+  @@unique([navigation_menu_item_id, role])
+  @@index([role])
+  @@map("navigation_permissions")
+}
+
+
+// Subscription Plans - Available pricing tiers
+model SubscriptionPlan {
+  id                    Int       @id @default(autoincrement())
+  name                  String    @unique // 'base', 'standard', 'plus'
+  display_name          String    // 'Base Plan', 'Standard Plan'
+  description           String?   @db.Text
+  price_monthly         Decimal   @db.Decimal(10, 2)
+  price_yearly          Decimal?  @db.Decimal(10, 2)
+  
+  // Stripe integration
+  stripe_price_id_monthly String?  @unique
+  stripe_price_id_yearly  String?  @unique
+  stripe_product_id     String?   @unique
+  
+  // Limits
+  max_users             Int       @default(5)
+  max_storage_mb        Int       @default(1000)
+  max_invoices_monthly  Int       @default(50)
+  max_sales_monthly     Int?      // null if not available
+  
+  // Features included in this plan
+  features              SubscriptionFeature[]
+  
+  active                Boolean   @default(true)
+  sort_order            Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  tenantSubscriptions   TenantSubscription[]
+  
+  @@index([active, sort_order])
+  @@map("subscription_plans")
+}
+
+// Subscription Features - Junction table: Plans <-> Features
+model SubscriptionFeature {
+  id                    Int       @id @default(autoincrement())
+  plan_id               Int
+  feature_id            Int
+  included_by_default   Boolean   @default(true)
+  
+  plan                  SubscriptionPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+  feature               FeatureCatalog @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  
+  @@unique([plan_id, feature_id])
+  @@index([plan_id])
+  @@index([feature_id])
+  @@map("subscription_features")
+}
+
+// Tenant Subscriptions - Active subscription for each tenant
+model TenantSubscription {
+  id                    Int       @id @default(autoincrement())
+  tenant_id             Int       @unique
+  plan_id               Int
+  
+  // Stripe integration
+  stripe_customer_id    String?   @unique
+  stripe_subscription_id String?  @unique
+  
+  // Billing
+  status                String    @default("active") // trial, active, past_due, canceled, suspended
+  billing_period        String    @default("monthly") // monthly, yearly
+  current_period_start  DateTime?
+  current_period_end    DateTime?
+  next_billing_date     DateTime?
+  
+  // Trial
+  trial_start           DateTime?
+  trial_end             DateTime?
+  
+  // Payment failure handling
+  payment_failed_at     DateTime?
+  grace_period_end      DateTime?
+  suspension_date       DateTime?
+  cancellation_date     DateTime?
+  
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  plan                  SubscriptionPlan @relation(fields: [plan_id], references: [id])
+  paymentHistory        PaymentHistory[]
+  tenantAddons          TenantAddon[]
+  
+  @@index([status])
+  @@index([next_billing_date])
+  @@index([grace_period_end])
+  @@index([trial_end])
+  @@map("tenant_subscriptions")
+}
+
+// Add-ons - Optional modular features
+model Addon {
+  id                    Int       @id @default(autoincrement())
+  name                  String    @unique // 'stocks_module', 'ai_forecasting'
+  display_name          String    // 'Advanced Stock Management'
+  description           String?   @db.Text
+  price_monthly         Decimal   @db.Decimal(10, 2)
+  price_yearly          Decimal?  @db.Decimal(10, 2)
+  
+  // Stripe integration
+  stripe_price_id_monthly String?  @unique
+  stripe_price_id_yearly  String?  @unique
+  stripe_product_id     String?   @unique
+  
+  // Features unlocked by this addon
+  features              AddonFeature[]
+  
+  // Compatibility (can be added to which plans?)
+  compatible_plans      String?   @db.Text // JSON array: ["base", "standard", "plus"] or null = all
+  
+  active                Boolean   @default(true)
+  sort_order            Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  tenantAddons          TenantAddon[]
+  
+  @@index([active, sort_order])
+  @@map("addons")
+}
+
+// Addon Features - Junction table: Addons <-> Features
+model AddonFeature {
+  id                    Int       @id @default(autoincrement())
+  addon_id              Int
+  feature_id            Int
+  
+  addon                 Addon @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+  feature               FeatureCatalog @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  
+  @@unique([addon_id, feature_id])
+  @@index([addon_id])
+  @@index([feature_id])
+  @@map("addon_features")
+}
+
+// Tenant Add-ons - Active add-ons for each tenant
+model TenantAddon {
+  id                    Int       @id @default(autoincrement())
+  tenant_id             Int
+  addon_id              Int
+  
+  stripe_subscription_id String?  @unique
+  status                String    @default("active") // active, canceled
+  
+  activated_at          DateTime  @default(now())
+  canceled_at           DateTime?
+  
+  subscription          TenantSubscription @relation(fields: [tenant_id], references: [tenant_id], onDelete: Cascade)
+  addon                 Addon @relation(fields: [addon_id], references: [id])
+  
+  @@unique([tenant_id, addon_id])
+  @@index([status])
+  @@index([tenant_id])
+  @@map("tenant_addons")
+}
+
+// Payment History - Track all billing transactions
+model PaymentHistory {
+  id                    BigInt    @id @default(autoincrement())
+  subscription_id       Int
+  
+  // Payment details
+  stripe_invoice_id     String?   @unique
+  stripe_payment_intent_id String? @unique
+  amount                Decimal   @db.Decimal(10, 2)
+  currency              String    @default("EUR")
+  status                String    // succeeded, failed, pending, refunded
+  
+  // Timestamps
+  billing_date          DateTime
+  paid_at               DateTime?
+  failed_at             DateTime?
+  
+  // Failure details
+  failure_reason        String?   @db.Text
+  failure_code          String?
+  
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  
+  subscription          TenantSubscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  
+  @@index([subscription_id, billing_date])
+  @@index([status])
+  @@index([billing_date])
+  @@map("payment_history")
+}
+

@@ -37,23 +37,34 @@ async function registerForPushNotificationsAsync() {
             const { status } = await Notifications.requestPermissionsAsync();
             finalStatus = status;
         }
+
+        // DEBUG ALERT
+        alert(`Push Status: ${finalStatus}`);
+
         if (finalStatus !== 'granted') {
             console.log('Failed to get push token for push notification!');
+            alert('Failed to get permissions!');
             return;
         }
 
         // Project ID from app.json
         const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
 
+        // DEBUG ALERT
+        if (!projectId) alert('Project ID Missing!');
+
         try {
             token = (await Notifications.getExpoPushTokenAsync({
                 projectId,
             })).data;
-        } catch (e) {
+            // DEBUG ALERT
+            alert(`Token Got: ${token?.substring(0, 10)}...`);
+        } catch (e: any) {
             console.error("Error getting push token:", e);
+            alert(`Error Token: ${e.message}`);
         }
     } else {
-        // alert('Must use physical device for Push Notifications');
+        alert('Must use physical device for Push Notifications');
         console.log('Must use physical device for Push Notifications');
     }
 
@@ -63,8 +74,8 @@ async function registerForPushNotificationsAsync() {
 export const usePushNotifications = () => {
     const [expoPushToken, setExpoPushToken] = useState<string | undefined>('');
     const [notification, setNotification] = useState<Notifications.Notification | undefined>(undefined);
-    const notificationListener = useRef<Notifications.Subscription>(null);
-    const responseListener = useRef<Notifications.Subscription>(null);
+    const notificationListener = useRef<Notifications.Subscription | null>(null);
+    const responseListener = useRef<Notifications.Subscription | null>(null);
     const { isAuthenticated } = useAuth();
 
     useEffect(() => {

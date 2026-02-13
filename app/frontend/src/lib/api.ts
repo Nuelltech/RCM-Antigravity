@@ -54,6 +54,7 @@ export async function fetchClient(endpoint: string, options: RequestInit = {}) {
 
     const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
+        cache: 'no-store',
         headers,
     });
 

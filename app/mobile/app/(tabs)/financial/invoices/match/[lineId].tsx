@@ -104,14 +104,20 @@ export default function ProductMatchScreen() {
                         </Card.Content>
                     </Card>
                 ) : (
-                    filteredSuggestions.map((suggestion) => (
-                        <SuggestionCard
-                            key={suggestion.produtoId}
-                            suggestion={suggestion}
-                            onMatch={handleMatch}
-                            matching={matching}
-                        />
-                    ))
+                    filteredSuggestions.map((suggestion) => {
+                        // DEBUG: Check what data we are getting
+                        console.log(`[Item] ${suggestion.produtoNome}`, suggestion.variations.map(v =>
+                            `ID:${v.id} Name:${v.template?.nome ?? v.tipo_unidade_compra} (Original:${v.tipo_unidade_compra}, T:${v.template?.nome})`
+                        ));
+                        return (
+                            <SuggestionCard
+                                key={suggestion.produtoId}
+                                suggestion={suggestion}
+                                onMatch={handleMatch}
+                                matching={matching}
+                            />
+                        );
+                    })
                 )}
             </ScrollView>
         </View>
@@ -185,7 +191,7 @@ function SuggestionCard({
                                                 {variation.template?.nome ?? variation.tipo_unidade_compra}
                                             </Text>
                                             <Text style={styles.variationDetail}>
-                                                {variation.unidades_por_compra} {suggestion.unidadeMedida}
+                                                {variation.unidades_por_compra || '-'} {suggestion.unidadeMedida}
                                             </Text>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>

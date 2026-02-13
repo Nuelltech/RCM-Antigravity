@@ -33,6 +33,8 @@ import { usersRoutes } from '../modules/users/users.routes';
 import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
 import { menuAnalysisRoutes } from '../modules/menu-analysis/menu-analysis.module';
 import { proxyRoutes } from '../modules/proxy/proxy.routes';
+import { navigationRoutes } from '../modules/navigation/navigation.module';
+import { subscriptionsRoutes } from '../modules/subscriptions/subscriptions.module';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
@@ -100,7 +102,7 @@ async function main() {
     await server.register(jwt, {
         secret: env.JWT_SECRET,
         sign: {
-            expiresIn: '15m' // 15 minutos de inatividade
+            expiresIn: '60m' // 60 minutos de inatividade
         }
     });
 
@@ -257,6 +259,8 @@ async function main() {
     server.register(usersRoutes, { prefix: '/api/users' });
     server.register(purchasesDashboardRoutes, { prefix: '/api/purchases' });  // Dashboard analytics
     server.register(menuAnalysisRoutes, { prefix: '/api/menu' });  // Menu Engineering Analysis
+    server.register(subscriptionsRoutes, { prefix: '/api/subscriptions' });  // Subscription Management
+    server.register(navigationRoutes, { prefix: '/api/navigation' });  // Dynamic Navigation Menu
     server.register(proxyRoutes, { prefix: '/api/proxy' });
 
 

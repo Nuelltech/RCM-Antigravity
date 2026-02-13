@@ -4,6 +4,7 @@ import { recalculationService } from '../../produtos/recalculation.service';
 import { addPriceChangeJob } from '../../../core/queue';
 import { dashboardCache } from '../../../core/cache.service';
 import { productsCache } from '../../../core/products-cache';
+import { menuCache } from '../../../core/menu-cache';
 
 const prisma = new PrismaClient();
 
@@ -163,7 +164,8 @@ export class InvoiceIntegrationService {
             // Invalidate dashboard cache (purchases affect dashboard stats)
             await dashboardCache.invalidateTenant(tenantId);
             await productsCache.invalidateTenant(tenantId);
-            console.log(`[CACHE INVALIDATE] Dashboard and Products cache cleared for tenant ${tenantId} after invoice approval`);
+            await menuCache.invalidateTenant(tenantId);
+            console.log(`[CACHE INVALIDATE] Dashboard, Products, and Menu cache cleared for tenant ${tenantId} after invoice approval`);
 
             // Mark log as completed (or let the worker finish it)
             // Note: Recalculation is async, so verified/completed status might depend on that. 

@@ -9,11 +9,11 @@ import { GeminiSalesParserService } from '../modules/vendas/services/gemini-sale
 import { SalesMatchingService } from '../modules/vendas/services/sales-matching.service';
 import { OCRService } from '../modules/invoices/services/ocr.service';
 import { RegexSalesParserService } from '../modules/vendas/services/regex-sales-parser.service';
+import { env } from '../core/env';
+import { redisOptions } from '../core/redis';
 
 // const prisma = new PrismaClient();
-const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
-});
+const redisConnection = new Redis(env.REDIS_URL, redisOptions);
 
 interface SalesProcessingJob {
     salesImportId: number;

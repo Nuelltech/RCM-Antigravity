@@ -1,5 +1,7 @@
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
-import redis from './redis';
+import { redis, redisOptions } from './redis';
+import { env } from './env';
+import Redis from 'ioredis';
 
 /**
  * Job Queue Infrastructure
@@ -22,7 +24,7 @@ export interface RecalculationJobData {
 }
 
 export const recalculationQueue = new Queue<RecalculationJobData>('recalculation', {
-    connection: redis,
+    connection: new Redis(env.REDIS_URL, redisOptions),
     defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -41,7 +43,7 @@ export const recalculationQueue = new Queue<RecalculationJobData>('recalculation
 
 // Queue events for monitoring
 export const recalculationQueueEvents = new QueueEvents('recalculation', {
-    connection: redis,
+    connection: new Redis(env.REDIS_URL, redisOptions),
 });
 
 recalculationQueueEvents.on('completed', ({ jobId }) => {

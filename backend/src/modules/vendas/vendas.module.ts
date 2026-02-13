@@ -7,6 +7,7 @@ import { dashboardCache } from '../../core/cache.service';
 import { addSalesProcessingJob } from '../../queues/sales-processing.queue';
 import { SalesMatchingService } from './services/sales-matching.service';
 import { SalesFileUploadService } from './services/sales-file-upload.service';
+import { requiresFeature } from '../../common/middleware/subscription.middleware';
 
 const createBatchSalesSchema = z.object({
     date: z.string().datetime(),
@@ -252,8 +253,12 @@ export async function salesRoutes(app: FastifyInstance) {
      * Upload sales report (PDF/Image)
      * Supports single file or multiple images (merged to PDF)
      * Uses FTP storage with automatic fallback to local filesystem
+     * 
+     * 🔒 Protected by subscription - Requires 'sales' feature
      */
-    app.post('/upload', async (req: any, reply: any) => {
+    app.post('/upload', {
+        onRequest: [requiresFeature('sales')]
+    }, async (req: any, reply: any) => {
         if (!req.tenantId) return reply.status(401).send();
 
         try {
