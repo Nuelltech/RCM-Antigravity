@@ -197,13 +197,23 @@ const menuItemsData = [
 ];
 
 async function seedMenuItems() {
-    console.log('🌱 Seeding menu items...');
+    console.log('🌱 Seeding navigation menu items...');
 
     for (const item of menuItemsData) {
         try {
-            // Create menu item
-            const menuItem = await prisma.menuItem.create({
-                data: {
+            // Create navigation menu item
+            const menuItem = await prisma.navigationMenuItem.upsert({
+                where: { key: item.key },
+                update: {
+                    name: item.name,
+                    href: item.href,
+                    icon: item.icon,
+                    sort_order: item.sortOrder,
+                    required_feature: item.requiredFeature,
+                    group: item.group,
+                    active: true,
+                },
+                create: {
                     key: item.key,
                     name: item.name,
                     href: item.href,
@@ -217,21 +227,28 @@ async function seedMenuItems() {
 
             // Create permissions
             for (const role of item.permissions) {
-                await prisma.menuPermission.create({
-                    data: {
-                        menu_item_id: menuItem.id,
+                await prisma.navigationPermission.upsert({
+                    where: {
+                        navigation_menu_item_id_role: {
+                            navigation_menu_item_id: menuItem.id,
+                            role: role
+                        }
+                    },
+                    update: {},
+                    create: {
+                        navigation_menu_item_id: menuItem.id,
                         role: role,
                     }
                 });
             }
 
-            console.log(`✓ Created: ${menuItem.name} (${item.permissions.length} roles)`);
+            console.log(`   ✓ Processed: ${menuItem.name}`);
         } catch (error) {
-            console.error(`✗ Failed to create ${item.name}:`, error);
+            console.error(`✗ Failed to process ${item.name}:`, error);
         }
     }
 
-    console.log('✅ Menu items seeding completed!');
+    console.log('\n✅ Navigation menu items seeding completed!');
 }
 
 seedMenuItems()

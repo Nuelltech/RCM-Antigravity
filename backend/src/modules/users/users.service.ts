@@ -233,6 +233,7 @@ export class UsersService {
             email: user.email,
             role: input.role,
             message: 'Convite enviado com sucesso',
+            inviteLink: `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`, // Debug/Backup
         };
     }
 
@@ -607,6 +608,7 @@ export class UsersService {
 
         return {
             message: 'Convite reenviado com sucesso',
+            inviteLink: `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`, // Debug/Backup
         };
     }
 }
