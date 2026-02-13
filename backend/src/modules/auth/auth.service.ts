@@ -182,6 +182,12 @@ export class AuthService {
             throw new Error('Email not verified. Please check your inbox for the verification code.');
         }
 
+        // Update last login time
+        await prisma.user.update({
+            where: { id: user.id },
+            data: { ultimo_login: new Date() },
+        });
+
         // Get all tenants this user has access to
         const userTenants = await prisma.userTenant.findMany({
             where: {
