@@ -15,7 +15,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const checkAuth = async () => {
             // Allow access to public paths
-            if (PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/auth/")) {
+            if (PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/auth/") || pathname.startsWith("/accept-invite")) {
                 setIsLoading(false);
                 return;
             }
