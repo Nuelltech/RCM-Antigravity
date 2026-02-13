@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Lock } from "lucide-react";
 import { getIcon } from "@/lib/iconMap";
+import { fetchClient } from "@/lib/api";
 
 interface NavigationItem {
     key: string;
@@ -29,28 +30,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     useEffect(() => {
         async function fetchMenuItems() {
             try {
-                const token = localStorage.getItem('token');
-                const tenantId = localStorage.getItem('tenantId');
-
-                if (!token || !tenantId) {
-                    console.warn('No token or tenantId found');
-                    setLoading(false);
-                    return;
-                }
-
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/navigation/items`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'X-Tenant-ID': tenantId,
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to fetch navigation items');
-                }
-
-                const data = await response.json();
-                setMenuItems(data.items || []);
+                const data = await fetchClient('/navigation/items');
+                setMenuItems(data?.items || []);
                 setError(null);
             } catch (err) {
                 console.error('Error fetching navigation items:', err);
