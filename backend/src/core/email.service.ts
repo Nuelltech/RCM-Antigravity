@@ -50,17 +50,33 @@ export interface EmailUser {
  * Helper to send email using the best available provider
  */
 async function sendMail(to: string, subject: string, html: string, text?: string) {
-    try {
-        if (SENDGRID_API_KEY) {
+    let sentViaSendGrid = false;
+
+    // Try SendGrid first if configured
+    if (SENDGRID_API_KEY) {
+        try {
             await sgMail.send({
                 to,
-                from: `${FROM_NAME} <${FROM_EMAIL}>`, // Verified Sender
+                from: `${FROM_NAME} <${FROM_EMAIL}>`,
                 subject,
                 html,
                 text,
             });
             console.log(`[SendGrid] Email sent to ${to}`);
-        } else {
+            sentViaSendGrid = true;
+            return;
+        } catch (error: any) {
+            console.warn('[SendGrid] Failed to send email. Falling back to SMTP.', error.message);
+            if (error.response) {
+                console.error('[SendGrid] Error Body:', JSON.stringify(error.response.body, null, 2));
+            }
+            // Proceed to SMTP fallback
+        }
+    }
+
+    // SMTP Fallback (if SendGrid failed or not configured)
+    if (!sentViaSendGrid) {
+        try {
             const info = await transporter.sendMail({
                 from: `${FROM_NAME} <${FROM_EMAIL}>`,
                 to,
@@ -69,13 +85,10 @@ async function sendMail(to: string, subject: string, html: string, text?: string
                 text,
             });
             console.log(`[SMTP] Email sent to ${to} (MessageID: ${info.messageId})`);
+        } catch (error: any) {
+            console.error('[SMTP] Email sending failed:', error);
+            throw new Error(`Failed to send email via both providers: ${error.message}`);
         }
-    } catch (error: any) {
-        console.error('Email sending failed:', error);
-        if (error.response) {
-            console.error('SendGrid Error Body:', error.response.body);
-        }
-        throw new Error(`Failed to send email: ${error.message}`);
     }
 }
 
@@ -127,7 +140,7 @@ export async function sendForgotPassword(user: EmailUser, code: string): Promise
 
     const emailText = `Olá ${user.name},\n\nRecebemos um pedido para redefinir a password da tua conta.\n\nCódigo de verificação: ${code}`;
 
-    await sendMail(user.email, 'Recuperar Password - Restaurante Manager', emailHtml, emailText);
+    await sendMail(user.email, 'Código de Segurança: Recuperação de Conta', emailHtml, emailText);
 }
 
 /**
