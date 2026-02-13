@@ -20,10 +20,15 @@ console.log('📧 SMTP Configuration:', {
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.hostinger.com',
     port: smtpPort,
-    secure: isSecure, // true for 465, false for 587
+    secure: isSecure, // false for 587
+    requireTLS: !isSecure, // true for 587 (Hostinger recommendation)
     auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
+    },
+    tls: {
+        ciphers: 'SSLv3',
+        servername: process.env.SMTP_HOST || 'smtp.hostinger.com', // Crucial for cloud environments
     },
 });
 

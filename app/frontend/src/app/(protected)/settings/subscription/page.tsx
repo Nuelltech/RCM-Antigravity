@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { fetchClient } from '@/lib/api';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { PlanCard } from '@/components/subscription/PlanCard';
@@ -48,26 +49,16 @@ export default function SubscriptionPage() {
                 const token = localStorage.getItem('token');
 
                 // Fetch available plans
-                const plansResponse = await fetch('/api/subscriptions/plans', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
-                const plansData = await plansResponse.json();
-                setPlans(plansData.plans || []);
+                const plansData = await fetchClient('/subscriptions/plans');
+                setPlans(plansData?.plans || []);
 
                 // Fetch current subscription
-                const subscriptionResponse = await fetch('/api/subscriptions/current', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
+                const subscriptionData = await fetchClient('/subscriptions/current');
 
-                if (subscriptionResponse.ok) {
-                    const subscriptionData = await subscriptionResponse.json();
+                if (subscriptionData?.subscription) {
                     setCurrentSubscription(subscriptionData.subscription);
-                    if (subscriptionData.subscription?.billing_period) {
-                        setBillingPeriod(subscriptionData.subscription.billing_period);
+                    if (subscriptionData.subscription.billing_period) {
+                        setBillingPeriod(subscriptionData.subscription.billing_period as 'monthly' | 'yearly');
                     }
                 }
             } catch (error) {

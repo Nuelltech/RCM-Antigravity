@@ -38,6 +38,11 @@ export default function UsersPage() {
     const [inviteForm, setInviteForm] = useState({ nome: '', email: '', role: 'operador' });
     const [inviteLoading, setInviteLoading] = useState(false);
 
+    // Backup Invite Link Modal
+    const [inviteLinkModalOpen, setInviteLinkModalOpen] = useState(false);
+    const [backupInviteLink, setBackupInviteLink] = useState('');
+    const [lastInvitedEmail, setLastInvitedEmail] = useState('');
+
     // Edit modal state
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -63,12 +68,19 @@ export default function UsersPage() {
     async function handleInviteUser() {
         setInviteLoading(true);
         try {
-            await fetchClient('/users/invite', {
+            const response = await fetchClient('/users/invite', {
                 method: 'POST',
                 body: JSON.stringify(inviteForm),
             });
 
-            alert(`Convite enviado para ${inviteForm.email}`);
+            if (response.inviteLink) {
+                setBackupInviteLink(response.inviteLink);
+                setLastInvitedEmail(inviteForm.email);
+                setInviteLinkModalOpen(true);
+            } else {
+                alert(`Convite enviado para ${inviteForm.email}`);
+            }
+
             setInviteModalOpen(false);
             setInviteForm({ nome: '', email: '', role: 'operador' });
             loadUsers();
@@ -116,11 +128,19 @@ export default function UsersPage() {
 
     async function handleResendInvite(userId: number) {
         try {
-            await fetchClient(`/users/${userId}/resend-invite`, {
+            const response = await fetchClient(`/users/${userId}/resend-invite`, {
                 method: 'POST',
             });
 
-            alert('Convite reenviado com sucesso');
+            if (response.inviteLink) {
+                setBackupInviteLink(response.inviteLink);
+                // Find user email for context
+                const user = users.find(u => u.id === userId);
+                setLastInvitedEmail(user?.email || 'utilizador');
+                setInviteLinkModalOpen(true);
+            } else {
+                alert('Convite reenviado com sucesso');
+            }
         } catch (error) {
             alert('Erro ao reenviar convite');
         }
@@ -505,6 +525,42 @@ export default function UsersPage() {
                                     </div>
                                 </div>
                             )}
+                        </DialogContent>
+                    </Dialog>
+
+                    {/* Backup Invite Link Modal */}
+                    <Dialog open={inviteLinkModalOpen} onOpenChange={setInviteLinkModalOpen}>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>🔗 Link de Convite</DialogTitle>
+                                <DialogDescription>
+                                    O convite foi gerado com sucesso. Caso o utilizador não receba o email, pode partilhar este link diretamente.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 pt-4">
+                                <div className="bg-gray-50 p-4 rounded-lg border break-all font-mono text-sm">
+                                    {backupInviteLink}
+                                </div>
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <p className="text-sm text-blue-800">
+                                        ℹ️ Este link permite definir a password e ativar a conta para: <strong>{lastInvitedEmail}</strong>
+                                    </p>
+                                </div>
+                                <div className="flex gap-3 pt-4">
+                                    <Button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(backupInviteLink);
+                                            alert('Link copiado para a área de transferência!');
+                                        }}
+                                        className="flex-1"
+                                    >
+                                        Copiar Link
+                                    </Button>
+                                    <Button variant="outline" onClick={() => setInviteLinkModalOpen(false)} className="flex-1">
+                                        Fechar
+                                    </Button>
+                                </div>
+                            </div>
                         </DialogContent>
                     </Dialog>
                 </div>
