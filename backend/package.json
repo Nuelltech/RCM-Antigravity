@@ -2,9 +2,9 @@
   "name": "rcm-backend",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
+  "main": "dist/core/server.js",
   "scripts": {
-    "start": "node dist/server.js",
+    "start": "node dist/core/server.js",
     "build": "tsc",
     "dev": "ts-node-dev --respawn --transpile-only --exit-child src/core/server.ts",
     "debug:user": "ts-node scripts/debug-user-login.ts",
