@@ -13,6 +13,8 @@
     "worker:recalc": "ts-node src/workers/recalculation-worker.ts",
     "worker:ftp": "ts-node src/workers/ftp-processor.worker.ts",
     "start:worker": "ts-node src/workers/index.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
     "seed:staging": "ts-node scripts/seed-staging.ts",
     "seed:navigation": "ts-node scripts/seed-navigation.ts",
     "validate:system": "ts-node scripts/validate-system.ts",
