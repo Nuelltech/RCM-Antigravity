@@ -138,6 +138,7 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
         if (!req.tenantId) return reply.status(401).send({ error: 'Unauthorized' });
 
         const subscription = await subscriptionsService.getTenantSubscription(req.tenantId);
+        const status = await subscriptionsService.getSubscriptionStatus(req.tenantId);
 
         if (!subscription) {
             return reply.status(402).send({
@@ -148,7 +149,17 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
             });
         }
 
-        return reply.send(subscription);
+        // Return combined data expected by frontend
+        return reply.send({
+            ...subscription,
+            status: status.status,
+            trial_end: status.trial_end,
+            days_remaining: status.days_remaining,
+            // Ensure plan details are flat if needed or keep structure
+            plan_name: (subscription as any).plan?.name || (subscription as any).plan_name,
+            plan_display_name: (subscription as any).plan?.display_name || (subscription as any).plan_display_name,
+            features: await subscriptionsService.getTenantFeatures(req.tenantId)
+        });
     });
 
     /**

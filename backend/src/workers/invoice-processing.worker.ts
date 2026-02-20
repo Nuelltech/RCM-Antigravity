@@ -302,7 +302,7 @@ const worker = new Worker<InvoiceProcessingJob>(
         }
     },
     {
-        connection: redisConnection,
+        connection: redisConnection as any,
         concurrency: 5,  // Process up to 5 invoices in parallel
         limiter: {
             max: 10,  // Max 10 jobs

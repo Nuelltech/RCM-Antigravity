@@ -35,6 +35,7 @@ import { menuAnalysisRoutes } from '../modules/menu-analysis/menu-analysis.modul
 import { proxyRoutes } from '../modules/proxy/proxy.routes';
 import { navigationRoutes } from '../modules/navigation/navigation.module';
 import { subscriptionsRoutes } from '../modules/subscriptions/subscriptions.module';
+import { onboardingRoutes } from '../modules/onboarding/onboarding.module';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
@@ -198,6 +199,14 @@ async function main() {
         return { status: 'ok', timestamp: new Date() };
     });
 
+    server.get('/api/debug/version', async () => {
+        return {
+            version: 'debug-v1',
+            timestamp: new Date().toISOString(),
+            generatedAt: '2026-02-19T19:20:00Z' // HARDCODED MARKER
+        };
+    });
+
 
     // Global Middleware (applies to ALL routes registered AFTER this point)
 
@@ -261,6 +270,7 @@ async function main() {
     server.register(menuAnalysisRoutes, { prefix: '/api/menu' });  // Menu Engineering Analysis
     server.register(subscriptionsRoutes, { prefix: '/api/subscriptions' });  // Subscription Management
     server.register(navigationRoutes, { prefix: '/api/navigation' });  // Dynamic Navigation Menu
+    server.register(onboardingRoutes, { prefix: '/api/onboarding' });
     server.register(proxyRoutes, { prefix: '/api/proxy' });
 
 
@@ -268,6 +278,7 @@ async function main() {
     try {
         await server.listen({ port: parseInt(env.PORT), host: '0.0.0.0' });
         console.log(`Server running on port ${env.PORT}`);
+        console.log(`[DEBUG] Server started with LATEST changes (Timestamp: ${new Date().toISOString()})`);
     } catch (err) {
         server.log.error(err);
         process.exit(1);

@@ -36,7 +36,7 @@ interface SubscriptionData {
 }
 
 export default function SubscriptionPage() {
-    const { planName, features, loading: subscriptionLoading } = useSubscription();
+    const { planName, features, loading: subscriptionLoading, status, daysRemaining } = useSubscription();
     const [plans, setPlans] = useState<Plan[]>([]);
     const [currentSubscription, setCurrentSubscription] = useState<SubscriptionData['subscription']>(null);
     const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
@@ -56,6 +56,7 @@ export default function SubscriptionPage() {
                 const subscriptionData = await fetchClient('/subscriptions/current');
 
                 if (subscriptionData?.subscription) {
+                    console.log('Subscription Data Loaded:', subscriptionData.subscription);
                     setCurrentSubscription(subscriptionData.subscription);
                     if (subscriptionData.subscription.billing_period) {
                         setBillingPeriod(subscriptionData.subscription.billing_period as 'monthly' | 'yearly');
@@ -69,7 +70,7 @@ export default function SubscriptionPage() {
         };
 
         fetchData();
-    }, []);
+    }, [status]); // Add status to dependency to refresh if context changes
 
     if (loading || subscriptionLoading) {
         return (
@@ -86,11 +87,14 @@ export default function SubscriptionPage() {
         <AppLayout>
             <div className="mx-auto max-w-7xl p-6">
                 {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">Gestão de Subscrição</h1>
-                    <p className="mt-2 text-gray-600">
-                        Gira a tua subscrição do RCM e acesso às funcionalidades
-                    </p>
+                <div className="mb-8 flex justify-between items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Gestão de Subscrição</h1>
+                        <p className="mt-2 text-gray-600">
+                            Gira a tua subscrição do RCM e acesso às funcionalidades
+                        </p>
+                    </div>
+
                 </div>
 
                 {/* Current Plan Overview */}
@@ -117,10 +121,21 @@ export default function SubscriptionPage() {
                                 <div>
                                     <p className="text-sm text-gray-600">Estado</p>
                                     <p className="text-lg font-semibold capitalize text-gray-900">
-                                        {currentSubscription.status === 'trial' ? 'Período de Teste' :
-                                            currentSubscription.status === 'active' ? 'Ativo' :
-                                                currentSubscription.status}
+                                        {status === 'trial' ? 'Período de Teste' :
+                                            status === 'active' ? 'Ativo' :
+                                                status === 'grace_period' ? 'Em Atraso' :
+                                                    status === 'suspended' ? 'Suspenso' : status}
                                     </p>
+                                    {(status === 'trial' || (currentSubscription?.trial_end && new Date(currentSubscription.trial_end) > new Date())) && (
+                                        <div className="mt-1">
+                                            <p className="text-sm text-orange-600 font-medium">
+                                                {daysRemaining ?? Math.ceil((new Date(currentSubscription.trial_end!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} dias restantes
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                Válido até {new Date(currentSubscription.trial_end!).toLocaleDateString('pt-PT')}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

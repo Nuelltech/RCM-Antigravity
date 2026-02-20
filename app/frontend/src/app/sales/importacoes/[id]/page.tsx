@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Table,
     TableBody,
@@ -54,6 +55,14 @@ interface SalesLine {
         id: number;
         nome_comercial: string;
     };
+    metadata?: {
+        inferred_quantity?: boolean;
+        inference_reason?: string;
+        price_mismatch?: boolean;
+        system_pvp?: number;
+        file_price?: number;
+        original_qty?: number;
+    };
 }
 
 interface SalesImport {
@@ -94,6 +103,9 @@ export default function SalesReviewPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [suggestions, setSuggestions] = useState<MenuItemSuggestion[]>([]);
     const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+    // Price Update State
+    const [itemsToUpdatePrice, setItemsToUpdatePrice] = useState<number[]>([]);
 
     useEffect(() => {
         if (salesImportId) {
@@ -175,14 +187,22 @@ export default function SalesReviewPage() {
         }
     };
 
+    const togglePriceUpdate = (menuItemId: number) => {
+        setItemsToUpdatePrice(prev =>
+            prev.includes(menuItemId)
+                ? prev.filter(id => id !== menuItemId)
+                : [...prev, menuItemId]
+        );
+    };
+
     const handleApprove = async () => {
         const unmatchedLines = salesImport?.linhas.filter((l) => !l.menu_item_id) || [];
 
         if (unmatchedLines.length > 0) {
             const confirmed = window.confirm(
-                `⚠️ Existem ${unmatchedLines.length} linha(s) sem correspondência.\\n\\n` +
-                `Deseja aprovar parcialmente?\\n\\n` +
-                `✓ Linhas com correspondência serão processadas\\n` +
+                `⚠️ Existem ${unmatchedLines.length} linha(s) sem correspondência.\n\n` +
+                `Deseja aprovar parcialmente?\n\n` +
+                `✓ Linhas com correspondência serão processadas\n` +
                 `✗ Linhas sem correspondência serão ignoradas`
             );
 
@@ -195,15 +215,21 @@ export default function SalesReviewPage() {
         try {
             const data = await fetchClient(`/vendas/importacoes/${salesImportId}/approve`, {
                 method: 'POST',
-                body: JSON.stringify({})
+                body: JSON.stringify({
+                    updatePrices: itemsToUpdatePrice
+                })
             });
 
             const statusMessage = data.partial
-                ? `\\n\\n⚠️ Aprovação PARCIAL: ${unmatchedLines.length} linha(s) não processada(s)`
+                ? `\n\n⚠️ Aprovação PARCIAL: ${unmatchedLines.length} linha(s) não processada(s)`
+                : '';
+
+            const priceMsg = itemsToUpdatePrice.length > 0
+                ? `\n✓ ${itemsToUpdatePrice.length} preço(s) atualizado(s) no sistema`
                 : '';
 
             alert(
-                `Importação aprovada com sucesso!${statusMessage}\\n\\n` +
+                `Importação aprovada com sucesso!${statusMessage}${priceMsg}\n\n` +
                 `${data.vendas_criadas} venda(s) criada(s)`
             );
             router.push('/sales');
@@ -236,6 +262,18 @@ export default function SalesReviewPage() {
     const getLineStatusBadge = (line: SalesLine) => {
         if (line.menu_item_id) {
             const confidence = line.confianca_match || 0;
+            // If there's a price mismatch or inferred quantity, warn but still green if matched?
+            // User requested explicit warning.
+
+            if (line.metadata?.price_mismatch) {
+                return (
+                    <Badge className="bg-yellow-500 text-yellow-950 hover:bg-yellow-600">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Reparar Preço
+                    </Badge>
+                );
+            }
+
             if (confidence >= 80) {
                 return (
                     <Badge className="bg-green-500">
@@ -245,7 +283,7 @@ export default function SalesReviewPage() {
                 );
             } else {
                 return (
-                    <Badge className="bg-yellow-500">
+                    <Badge className="bg-orange-400">
                         <AlertCircle className="h-3 w-3 mr-1" />
                         Revisão ({confidence}%)
                     </Badge>
@@ -261,7 +299,7 @@ export default function SalesReviewPage() {
     };
 
     const formatCurrency = (value?: number | null) => {
-        if (!value) return '-';
+        if (value === undefined || value === null) return '-';
         return new Intl.NumberFormat('pt-PT', {
             style: 'currency',
             currency: 'EUR',
@@ -271,6 +309,57 @@ export default function SalesReviewPage() {
     const formatDate = (dateString?: string | null) => {
         if (!dateString) return '-';
         return new Date(dateString).toLocaleDateString('pt-PT');
+    };
+
+    const renderPriceCell = (line: SalesLine) => {
+        const mismatch = line.metadata?.price_mismatch;
+        const systemPrice = line.metadata?.system_pvp;
+        const filePrice = line.preco_unitario;
+
+        if (mismatch && line.menu_item_id) {
+            return (
+                <div className="flex flex-col items-end">
+                    <span className="font-bold text-yellow-600 bg-yellow-50/50 px-1 rounded flex items-center gap-1">
+                        {formatCurrency(filePrice)}
+                        <AlertTriangle className="h-3 w-3" />
+                    </span>
+                    <span className="text-xs text-muted-foreground line-through">
+                        Sys: {formatCurrency(systemPrice)}
+                    </span>
+                    {line.menu_item_id && (
+                        <div className="flex items-center gap-1 mt-1">
+                            <Checkbox
+                                id={`upd-${line.id}`}
+                                checked={itemsToUpdatePrice.includes(line.menu_item_id!)}
+                                onChange={() => togglePriceUpdate(line.menu_item_id!)}
+                                className="h-3 w-3"
+                            />
+                            <label htmlFor={`upd-${line.id}`} className="text-[10px] cursor-pointer text-muted-foreground select-none">
+                                Atualizar
+                            </label>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        return <div className="text-right">{formatCurrency(filePrice)}</div>;
+    };
+
+    const renderQuantityCell = (line: SalesLine) => {
+        if (line.metadata?.inferred_quantity) {
+            return (
+                <div className="text-right flex flex-col items-end">
+                    <span className="font-bold text-blue-600 cursor-help flex items-center gap-1" title={line.metadata.inference_reason || 'Quantidade inferida'}>
+                        {line.quantidade}
+                        <span className="text-[10px] bg-blue-100 px-1 rounded">Calc</span>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                        Orig: {line.metadata.original_qty ?? '-'}
+                    </span>
+                </div>
+            );
+        }
+        return <div className="text-right">{line.quantidade || '-'}</div>;
     };
 
     if (loading) {
@@ -316,7 +405,10 @@ export default function SalesReviewPage() {
                             Voltar
                         </Button>
                         <h1 className="text-3xl font-bold">Revisão de Importação</h1>
-                        <p className="text-muted-foreground">{salesImport.ficheiro_nome}</p>
+                        <p className="text-muted-foreground transition-colors hover:text-foreground">
+                            {salesImport.ficheiro_nome}
+                            <span className="ml-2 text-xs bg-muted px-2 py-1 rounded-full">ID: {salesImport.id}</span>
+                        </p>
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={handleReject} disabled={approving}>
@@ -372,7 +464,7 @@ export default function SalesReviewPage() {
                             </div>
                             <div>
                                 <Label className="text-muted-foreground">Total Líquido</Label>
-                                <p className="font-medium text-lg">{formatCurrency(salesImport.total_liquido)}</p>
+                                <p className="font-medium text-lg text-primary">{formatCurrency(salesImport.total_liquido)}</p>
                             </div>
                             <div>
                                 <Label className="text-muted-foreground">Dinheiro</Label>
@@ -424,17 +516,19 @@ export default function SalesReviewPage() {
                                 {salesImport.linhas.map((line) => (
                                     <TableRow key={line.id}>
                                         <TableCell>{line.linha_numero}</TableCell>
-                                        <TableCell className="font-medium max-w-xs">
+                                        <TableCell className="font-medium max-w-xs truncate" title={line.descricao_original}>
                                             {line.descricao_original}
                                         </TableCell>
-                                        <TableCell className="text-right">{line.quantidade || '-'}</TableCell>
-                                        <TableCell className="text-right">{formatCurrency(line.preco_unitario)}</TableCell>
+                                        <TableCell>{renderQuantityCell(line)}</TableCell>
+                                        <TableCell>{renderPriceCell(line)}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(line.preco_total)}</TableCell>
                                         <TableCell>
                                             {line.menuItem ? (
                                                 <div className="flex items-center gap-2">
                                                     <Package className="h-4 w-4 text-green-500" />
-                                                    <span className="text-sm">{line.menuItem.nome_comercial}</span>
+                                                    <span className="text-sm truncate max-w-[200px]" title={line.menuItem.nome_comercial}>
+                                                        {line.menuItem.nome_comercial}
+                                                    </span>
                                                 </div>
                                             ) : (
                                                 <span className="text-muted-foreground text-sm">-</span>
@@ -448,7 +542,7 @@ export default function SalesReviewPage() {
                                                 onClick={() => openMatchingModal(line)}
                                             >
                                                 <Search className="h-4 w-4 mr-1" />
-                                                {line.menu_item_id ? 'Alterar' : 'Associar'}
+                                                {line.menu_item_id ? 'Alt' : 'Assoc'}
                                             </Button>
                                         </TableCell>
                                     </TableRow>
@@ -476,6 +570,7 @@ export default function SalesReviewPage() {
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="Nome do item..."
+                                    className="mt-1"
                                 />
                             </div>
 
@@ -493,11 +588,11 @@ export default function SalesReviewPage() {
                                         Nenhuma sugestão encontrada
                                     </p>
                                 ) : (
-                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    <div className="space-y-2 max-h-96 overflow-y-auto mt-2">
                                         {suggestions.map((suggestion) => (
                                             <div
                                                 key={suggestion.menuItemId}
-                                                className="border rounded-lg p-3 hover:bg-accent cursor-pointer flex justify-between items-center"
+                                                className="border rounded-lg p-3 hover:bg-accent cursor-pointer flex justify-between items-center transition-colors"
                                                 onClick={() => {
                                                     if (matchingLine) {
                                                         handleMatchMenuItem(matchingLine.id, suggestion.menuItemId);

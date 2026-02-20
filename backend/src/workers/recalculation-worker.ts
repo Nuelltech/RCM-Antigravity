@@ -131,7 +131,7 @@ const recalculationWorker = new Worker<RecalculationJobData>(
     'recalculation',
     processRecalculationJob,
     {
-        connection: new Redis(env.REDIS_URL, redisOptions),
+        connection: new Redis(env.REDIS_URL, redisOptions) as any,
         concurrency: 5, // Process up to 5 jobs concurrently
         limiter: {
             max: 10, // Max 10 jobs

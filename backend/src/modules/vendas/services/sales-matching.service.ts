@@ -144,9 +144,23 @@ export class SalesMatchingService {
      * Auto-match line items based on confidence threshold
      */
     async autoMatchLineItems(
-        linhas: Array<{ id: number; descricao_original: string; tenant_id: number }>,
+        linhas: Array<{
+            id: number;
+            descricao_original: string;
+            tenant_id: number;
+            quantidade?: number | object | null; // Changed to match possible Decimal or number
+            preco_total: number | object; // Prisma Decimal
+            preco_unitario?: number | object | null;
+            metadata?: any;
+        }>,
         confidenceThreshold: number = 85
     ): Promise<void> {
+        // Helper to convert Decimal/Object to number
+        const toNumber = (val: any) => {
+            if (val && typeof val === 'object' && 'toNumber' in val) return val.toNumber();
+            return Number(val) || 0;
+        };
+
         for (const linha of linhas) {
             const suggestions = await this.findMenuItemSuggestions(
                 linha.descricao_original,
@@ -154,19 +168,91 @@ export class SalesMatchingService {
             );
 
             if (suggestions.length > 0 && suggestions[0].confianca >= confidenceThreshold) {
-                // Auto-match with high confidence
+                const bestMatch = suggestions[0];
+                const matchedMenuItemId = bestMatch.menuItemId;
+
+                // Get fresh MenuItem data for calculations (PVP)
+                const menuItem = await prisma.menuItem.findUnique({
+                    where: { id: matchedMenuItemId },
+                    select: { pvp: true }
+                });
+
+                if (!menuItem) continue; // Should not happen if foreign key valid
+
+                const pvpSystem = Number(menuItem.pvp);
+                const precoTotalLine = toNumber(linha.preco_total);
+                const qtdOriginal = toNumber(linha.quantidade);
+                const precoUnitarioLine = toNumber(linha.preco_unitario);
+
+                // LOGIC 1: INFER QUANTITY
+                let finalQty = qtdOriginal;
+                let inferredQty = false;
+                let inferenceReason = null;
+
+                if (!qtdOriginal || qtdOriginal === 0 || (qtdOriginal === 1 && !linha.preco_unitario)) {
+                    // Start assuming 1
+                    finalQty = 1;
+
+                    // Try to infer from Total / PVP
+                    if (precoTotalLine > 0 && pvpSystem > 0) {
+                        const calculated = precoTotalLine / pvpSystem;
+                        // Check if close to integer (allow small tolerance e.g. 0.1 for floating point issues)
+                        const rounded = Math.round(calculated);
+                        const diff = Math.abs(calculated - rounded);
+
+                        // If it's a clean multiple (e.g. 4.99 or 5.01 -> 5)
+                        if (diff < 0.1) {
+                            finalQty = rounded;
+                            inferredQty = true;
+                            inferenceReason = `Inferred from total (${precoTotalLine.toFixed(2)} / ${pvpSystem.toFixed(2)})`;
+
+                            console.log(`[SALES-MATCHING] Inferred Qty for "${linha.descricao_original}": ${calculated.toFixed(2)} -> ${finalQty}`);
+                        }
+                    }
+                }
+
+                // LOGIC 2: PRICE DISCREPANCY CHECK
+                // Calculate implicit unit price from file
+                const implicitUnitPrice = finalQty > 0 ? (precoTotalLine / finalQty) : 0;
+                // Or use explicit unit price if available, otherwise implicit
+                const comparisonPrice = precoUnitarioLine > 0 ? precoUnitarioLine : implicitUnitPrice;
+
+                const priceDiffers = Math.abs(comparisonPrice - pvpSystem) > 0.05; // 5 cents tolerance
+
+                // Construct metadata
+                const metadata = {
+                    ...(linha.metadata || {}),
+                    inferred_quantity: inferredQty,
+                    inference_reason: inferenceReason,
+                    price_mismatch: priceDiffers,
+                    system_pvp: pvpSystem,
+                    file_price: comparisonPrice,
+                    original_qty: qtdOriginal
+                };
+
+                // Auto-match with high confidence & updates
                 await prisma.vendaLinhaImportacao.update({
                     where: { id: linha.id },
                     data: {
-                        menu_item_id: suggestions[0].menuItemId,
-                        confianca_match: suggestions[0].confianca,
-                        status: 'matched'
+                        menu_item_id: matchedMenuItemId,
+                        confianca_match: bestMatch.confianca,
+                        status: priceDiffers ? 'manual_review' : 'matched', // Force review if price differs? Or just matched with warning? 
+                        // User asked for alert, let's keep it 'matched' but UI shows alert, 
+                        // OR 'manual_review' to force attention.
+                        // Let's use 'matched' so it *can* be auto-approved, 
+                        // but UI will show yellow warning. 
+                        // Actually, "status: 'reviewing'" on the parent import handles the flow.
+                        // Line status 'matched' is fine.
+                        quantidade: finalQty,
+                        metadata: metadata
                     }
                 });
 
                 console.log(
                     `[SALES-MATCHING] Auto-matched: "${linha.descricao_original}" → ` +
-                    `${suggestions[0].menuItemNome} (${suggestions[0].confianca}%)`
+                    `${bestMatch.menuItemNome} (${bestMatch.confianca}%) ` +
+                    `${inferredQty ? `[Qty: ${finalQty}]` : ''} ` +
+                    `${priceDiffers ? `[Price Diff: ${comparisonPrice} vs ${pvpSystem}]` : ''}`
                 );
             } else {
                 // Low confidence - needs manual review

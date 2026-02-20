@@ -61,6 +61,16 @@ export default function SalesImportsListPage() {
         }
     };
 
+    // Auto-refresh if there are pending items
+    useEffect(() => {
+        const hasPendingItems = imports.some(i => ['processing', 'pending'].includes(i.status));
+
+        if (hasPendingItems) {
+            const interval = setInterval(fetchImports, 5000);
+            return () => clearInterval(interval);
+        }
+    }, [imports]); // Re-run effect when imports change (to check if we still need to poll)
+
     const formatCurrency = (value: number | null) => {
         if (!value) return '-';
         return new Intl.NumberFormat('pt-PT', {

@@ -25,19 +25,26 @@ export default function MenuPage() {
     }, [statusFilter]); // Reload when status filter changes
 
     const loadMenu = async () => {
-        setLoading(true);
         try {
-            // If we want specific inactive items or all, we request "ativo=false" (which returns ALL) 
-            // and filter client-side if needed, OR we could rely on backend filtering if it supported 'inactive' only.
-            // Current backend: ativo=true -> only active. ativo=false -> ALL.
-            // So: active -> ?ativo=true
-            // inactive -> ?ativo=false (fetch all) -> client filter
-            // all -> ?ativo=false (fetch all)
-            const query = statusFilter === "active" ? "?ativo=true" : "?ativo=false";
-            const data = await fetchClient(`/menu${query}`, { cache: 'no-store' });
-            setMenuItems(data);
+            setLoading(true);
+            // Backend expects 'status' param: 'active' | 'inactive' | 'all'
+            const queryParam = statusFilter === "active" ? "active" : "all";
+            console.log(`[DEBUG] Fetching menu items with status=${queryParam}...`);
+
+            const data = await fetchClient(`/menu?status=${queryParam}`, { cache: 'no-store' });
+            console.log('[DEBUG] Menu items fetched:', data);
+
+            if (Array.isArray(data)) {
+                setMenuItems(data);
+                console.log(`[DEBUG] Set ${data.length} menu items.`);
+            } else {
+                console.warn('[DEBUG] Menu data is not an array:', data);
+                setMenuItems([]);
+            }
         } catch (error) {
             console.error("Failed to load menu:", error);
+            // Probe backend version/health
+            fetchClient("/health").then(h => console.log('[DEBUG] Health Check:', h)).catch(e => console.error('[DEBUG] Health Check Failed:', e));
         } finally {
             setLoading(false);
         }
@@ -68,7 +75,9 @@ export default function MenuPage() {
         }
     };
 
-    const filteredItems = menuItems.filter(item => {
+    const items = Array.isArray(menuItems) ? menuItems : [];
+
+    const filteredItems = items.filter(item => {
         const matchesSearch = item.nome_comercial.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = categoryFilter === "all" || item.categoria_menu === categoryFilter;
 
@@ -83,7 +92,7 @@ export default function MenuPage() {
         return matchesSearch && matchesCategory && matchesStatus;
     });
 
-    const categories = Array.from(new Set(menuItems.map(i => i.categoria_menu).filter(Boolean)));
+    const categories = Array.from(new Set(items.map(i => i.categoria_menu).filter(Boolean)));
     // Note: categories list might change based on visible items. Ideally should be unique of ALL items?
     // Current implementation derives categories from loaded items.
 
@@ -115,7 +124,7 @@ export default function MenuPage() {
                     {(() => {
                         const stats = new Map<string, { totalCost: number, totalPvp: number, count: number }>();
 
-                        menuItems.forEach(item => {
+                        items.forEach(item => {
                             if (!item.ativo && statusFilter === 'active') return;
                             // If viewing inactive, we show stats for inactive? 
                             // Usually summary is for "Active Menu". Let's restrict summary to Active items ONLY regardless of view.

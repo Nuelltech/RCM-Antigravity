@@ -6,7 +6,7 @@ const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:63
 });
 
 export const salesProcessingQueue = new Queue('sales-processing', {
-    connection: redisConnection
+    connection: redisConnection as any
 });
 
 export interface SalesProcessingJobData {

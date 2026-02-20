@@ -75,17 +75,37 @@ export function SystemAlerts() {
 
     useEffect(() => {
         if (!tenantId) return;
+
+        const controller = new AbortController();
+
         // ✅ FIX: Reset alerts before loading
         setAlerts([]);
-        loadAlerts();
+        loadAlerts(controller.signal);
+
+        return () => {
+            controller.abort();
+        };
     }, [tenantId]); // ✅ FIX: Reload when tenant changes
 
-    async function loadAlerts() {
+    async function loadAlerts(signal?: AbortSignal) {
         try {
+            // Check signal before fetch
+            if (signal?.aborted) return;
+
             const data = await fetchClient('/alerts');
-            setAlerts(data);
+
+            if (signal?.aborted) return;
+
+            if (Array.isArray(data)) {
+                setAlerts(data);
+            } else {
+                console.warn('Alerts data is not an array:', data);
+                setAlerts([]);
+            }
         } catch (error) {
+            if (signal?.aborted) return;
             console.error('Erro ao carregar alertas:', error);
+            setAlerts([]);
         }
     }
 

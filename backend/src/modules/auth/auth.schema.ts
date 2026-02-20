@@ -9,6 +9,7 @@ export const registerSchema = z.object({
     nome_restaurante: z.string().min(3),
     nif: z.string().min(9), // Assuming PT NIF
     morada: z.string().min(5),
+    telefone: z.string().min(9).optional(),
     nome_usuario: z.string().min(3),
     email: z.string().email(),
     password: z.string().min(6),

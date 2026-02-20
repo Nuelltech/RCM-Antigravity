@@ -12,7 +12,7 @@ export class RecoveryService {
     private queue: Queue;
 
     constructor() {
-        this.queue = new Queue('invoice-processing', { connection: redisConnection });
+        this.queue = new Queue('invoice-processing', { connection: redisConnection as any });
     }
 
     /**

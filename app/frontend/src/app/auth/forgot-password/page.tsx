@@ -198,6 +198,7 @@ export default function ForgotPasswordPage() {
                                     placeholder="123456"
                                     className="h-12 text-center text-lg tracking-widest"
                                     maxLength={6}
+                                    autoComplete="one-time-code"
                                     {...registerVerify("code")}
                                 />
                                 {errorsVerify.code && <p className="text-sm text-red-500">{errorsVerify.code.message}</p>}

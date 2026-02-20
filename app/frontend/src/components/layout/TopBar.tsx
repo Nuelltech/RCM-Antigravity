@@ -16,11 +16,26 @@ export function TopBar({ onMenuClick }: TopBarProps) {
     const [userEmail, setUserEmail] = useState('utilizador@rcm.com');
     const [restaurantName, setRestaurantName] = useState('Meu Restaurante');
 
-    useEffect(() => {
-        // Load user data only on client side
+    const updateState = () => {
         setUserName(localStorage.getItem('userName') || 'Utilizador');
         setUserEmail(localStorage.getItem('userEmail') || 'utilizador@rcm.com');
         setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
+    };
+
+    useEffect(() => {
+        // Initial load
+        updateState();
+
+        // Listen for updates
+        window.addEventListener('storage', updateState);
+        window.addEventListener('userRoleUpdated', updateState); // Re-use this event or create a specific one
+        window.addEventListener('tenantUpdated', updateState); // Specific event for tenant switch
+
+        return () => {
+            window.removeEventListener('storage', updateState);
+            window.removeEventListener('userRoleUpdated', updateState);
+            window.removeEventListener('tenantUpdated', updateState);
+        };
     }, []);
 
     const handleLogout = () => {

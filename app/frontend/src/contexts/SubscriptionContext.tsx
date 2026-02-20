@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useUser } from '@/hooks/useUser';
+import { fetchClient } from '@/lib/api';
 
 interface SubscriptionState {
     features: string[];
@@ -9,6 +10,9 @@ interface SubscriptionState {
     planDisplayName: string | null;
     loading: boolean;
     error: string | null;
+    status?: string;
+    trialEnd?: Date | null;
+    daysRemaining?: number;
 }
 
 interface SubscriptionContextType extends SubscriptionState {
@@ -28,6 +32,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         planDisplayName: null,
         loading: true,
         error: null,
+        status: undefined,
+        trialEnd: undefined,
+        daysRemaining: undefined
     });
 
     // Load features from API
@@ -46,58 +53,32 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         try {
             setState(prev => ({ ...prev, loading: true, error: null }));
 
-            const token = localStorage.getItem('token');
-            const tenantId = localStorage.getItem('tenantId');
+            const data = await fetchClient('/subscriptions/features');
 
-            if (!token || !tenantId) {
-                setState({
-                    features: [],
-                    planName: null,
-                    planDisplayName: null,
-                    loading: false,
-                    error: 'Not authenticated',
-                });
+            if (!data) {
+                console.warn('[SubscriptionContext] No data returned from features API');
+                setState(prev => ({ ...prev, loading: false }));
                 return;
             }
-
-            const response = await fetch('/api/subscriptions/features', {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'X-Tenant-ID': tenantId,
-                },
-            });
-
-            if (response.status === 402) {
-                // No subscription - set empty features
-                const emptyState = {
-                    features: [],
-                    planName: null,
-                    planDisplayName: null,
-                    loading: false,
-                    error: 'No active subscription',
-                };
-                setState(emptyState);
-                return;
-            }
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch features: ${response.statusText}`);
-            }
-
-            const data = await response.json();
 
             const newState = {
                 features: data.features || [],
-                planName: data.plan_name || null,
+                planName: data.plan || null, // API returns 'plan', context expects 'planName'
                 planDisplayName: data.plan_display_name || null,
-                loading: false,
-                error: null,
+                status: data.status,
+                trialEnd: data.trial_end,
+                daysRemaining: data.days_remaining
             };
 
-            setState(newState);
+            setState(prev => ({
+                ...prev,
+                ...newState,
+                loading: false,
+            }));
 
         } catch (error: any) {
             console.error('Error fetching subscription features:', error);
+
             setState(prev => ({
                 ...prev,
                 loading: false,
@@ -106,9 +87,21 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         }
     };
 
+    // Helper to calculate days remaining
+    const calculateDaysRemaining = (dateStr: string | null) => {
+        if (!dateStr) return undefined;
+        const end = new Date(dateStr);
+        const now = new Date();
+        return Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    };
+
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+
     // Load features on mount and when auth changes
     useEffect(() => {
-        if (!user) {
+        const token = localStorage.getItem('token');
+        // Don't fetch on public pages or if no token
+        if (!user || !token || pathname.startsWith('/auth') || pathname === '/' || pathname.startsWith('/accept-invite')) {
             setState({
                 features: [],
                 planName: null,
@@ -121,11 +114,12 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
         // Fetch from API
         refreshFeatures();
-    }, [user?.id]);
+    }, [user?.id, pathname]);
 
     // Auto-refresh every 15 minutes
     useEffect(() => {
-        if (!user) return;
+        const token = localStorage.getItem('token');
+        if (!user || !token) return;
 
         const interval = setInterval(() => {
             refreshFeatures();

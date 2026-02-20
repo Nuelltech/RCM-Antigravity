@@ -21,6 +21,7 @@ const createBatchSalesSchema = z.object({
 });
 
 export async function salesRoutes(app: FastifyInstance) {
+    console.log('[DEBUG] Registering Sales Routes...');
     // Register multipart support for file uploads
     await app.register(require('@fastify/multipart'), {
         limits: {
@@ -445,6 +446,43 @@ export async function salesRoutes(app: FastifyInstance) {
     });
 
     /**
+     * Get pending status updates (polling)
+     */
+    app.get('/pending-status', {
+        schema: {
+            querystring: z.object({
+                since: z.string().datetime()
+            })
+        }
+    }, async (req: any, reply: any) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        const { since } = req.query;
+        const sinceDate = new Date(since);
+
+        // Find sales imports that finished processing recently
+        const salesImports = await prisma.vendaImportacao.findMany({
+            where: {
+                tenant_id: req.tenantId,
+                processado_em: {
+                    gt: sinceDate
+                },
+                status: {
+                    in: ['reviewing', 'error']
+                }
+            },
+            select: {
+                id: true,
+                status: true,
+                ficheiro_nome: true,
+                processado_em: true
+            }
+        });
+
+        return { salesImports };
+    });
+
+    /**
      * Get menu item suggestions for a line
      */
     app.get('/importacoes/:id/linhas/:lineId/suggestions', async (req: any, reply: any) => {
@@ -526,6 +564,7 @@ export async function salesRoutes(app: FastifyInstance) {
         if (!req.tenantId) return reply.status(401).send();
 
         const { id } = req.params;
+        const { updatePrices } = req.body; // Array of menu_item_ids to update price
 
         const salesImport = await prisma.vendaImportacao.findFirst({
             where: {
@@ -549,6 +588,33 @@ export async function salesRoutes(app: FastifyInstance) {
         const matchedLines = salesImport.linhas.filter(l => l.menu_item_id);
         const unmatchedLines = salesImport.linhas.filter(l => !l.menu_item_id);
 
+        // Update system prices if requested
+        if (updatePrices && Array.isArray(updatePrices) && updatePrices.length > 0) {
+            console.log(`[SALES-APPROVE] Updating prices for ${updatePrices.length} items`);
+            for (const menuItemId of updatePrices) {
+                // Find LAST valid price for this item in the import lines
+                // (In case multiple lines match the same item, take the last one or average? Let's take last)
+                const line = matchedLines.reverse().find(l => l.menu_item_id === menuItemId);
+
+                if (line && line.preco_unitario) {
+                    const newPrice = line.preco_unitario;
+
+                    // Update MenuItem PVP
+                    await prisma.menuItem.update({
+                        where: { id: menuItemId },
+                        data: {
+                            pvp: newPrice
+                        }
+                    });
+
+                    // Update Price in FormatoVenda (if applicable) -> complex, skip for now or do basic
+                    // Usually PVP is on MenuItem. 
+
+                    console.log(`[SALES-APPROVE] Updated MenuItem #${menuItemId} PVP to ${newPrice}`);
+                }
+            }
+        }
+
         // Create Venda records for matched lines
         const vendasCreated = [];
         for (const line of matchedLines) {
@@ -561,7 +627,7 @@ export async function salesRoutes(app: FastifyInstance) {
                     tipo: 'ITEM',
                     menu_item_id: line.menu_item_id!,
                     quantidade: Number(line.quantidade) || 1,
-                    pvp_praticado: line.preco_unitario || menuItem.pvp,
+                    pvp_praticado: line.preco_unitario || menuItem.pvp, // Use imported price as practiced price
                     receita_total: line.preco_total,
                     metodo_entrada: 'PDF',  // Manual, POS, API, PDF
                     venda_importacao_id: salesImport.id,
@@ -599,7 +665,8 @@ export async function salesRoutes(app: FastifyInstance) {
                 dados_novos: {
                     matched_lines: matchedLines.length,
                     unmatched_lines: unmatchedLines.length,
-                    total_vendas: vendasCreated.length
+                    total_vendas: vendasCreated.length,
+                    prices_updated: updatePrices?.length || 0
                 },
                 resultado: 'sucesso'
             }

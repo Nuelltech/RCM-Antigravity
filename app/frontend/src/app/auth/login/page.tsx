@@ -137,20 +137,31 @@ function LoginPageContent() {
         console.log("[Login] Dispatched userRoleUpdated event, role:", response.user?.role);
 
         // Redirect based on user role
-        // Note: Backend sends "gestor" but we check it directly (no normalization here)
-        const userRole = response.user?.role || "operador";
-        let redirectPath = "/dashboard"; // Default for admin/gestor/manager
+        // Backend now returns English roles, but we keep Portuguese cases for safety/legacy
+        const userRole = response.user?.role || "operator";
+
+        // CHECK ONBOARDING STATUS
+        // If the backend says it's not seeded (isSeeded === false) and user is Owner/Admin, go to onboarding
+        if (response.isSeeded === false && (userRole === 'admin' || userRole === 'owner')) {
+            router.push('/onboarding');
+            return;
+        }
+
+        let redirectPath = "/dashboard"; // Default for admin/manager
 
         switch (userRole) {
             case "admin":
-            case "gestor":  // Backend sends "gestor" (Portuguese)
-            case "manager":  // Just in case backend sends English
+            case "owner":
+            case "manager":
+            case "gestor":  // Legacy Portuguese
                 redirectPath = "/dashboard";
                 break;
-            case "operador":
+            case "operator":
+            case "operador": // Legacy Portuguese
                 redirectPath = "/recipes";
                 break;
-            case "visualizador":
+            case "viewer":
+            case "visualizador": // Legacy Portuguese
                 redirectPath = "/menu";
                 break;
             default:

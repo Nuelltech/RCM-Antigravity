@@ -24,7 +24,7 @@ export interface RecalculationJobData {
 }
 
 export const recalculationQueue = new Queue<RecalculationJobData>('recalculation', {
-    connection: new Redis(env.REDIS_URL, redisOptions),
+    connection: new Redis(env.REDIS_URL, redisOptions) as any,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -43,7 +43,7 @@ export const recalculationQueue = new Queue<RecalculationJobData>('recalculation
 
 // Queue events for monitoring
 export const recalculationQueueEvents = new QueueEvents('recalculation', {
-    connection: new Redis(env.REDIS_URL, redisOptions),
+    connection: new Redis(env.REDIS_URL, redisOptions) as any,
 });
 
 recalculationQueueEvents.on('completed', ({ jobId }) => {
@@ -52,6 +52,44 @@ recalculationQueueEvents.on('completed', ({ jobId }) => {
 
 recalculationQueueEvents.on('failed', ({ jobId, failedReason }) => {
     console.error(`❌ Recalculation job ${jobId} failed:`, failedReason);
+});
+
+// ==================== SEED DATA QUEUE ====================
+
+export interface SeedDataJobData {
+    tenantId: number;
+    userId: number;
+    options?: {
+        includeProducts?: boolean;
+        productIds?: number[]; // If we implement specific product selection later
+    };
+}
+
+export const seedDataQueue = new Queue<SeedDataJobData>('seed-data', {
+    connection: new Redis(env.REDIS_URL, redisOptions) as any,
+    defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 1000,
+        },
+        removeOnComplete: {
+            count: 100,
+            age: 24 * 3600,
+        },
+    },
+});
+
+export const seedDataQueueEvents = new QueueEvents('seed-data', {
+    connection: new Redis(env.REDIS_URL, redisOptions) as any,
+});
+
+seedDataQueueEvents.on('completed', ({ jobId }) => {
+    console.log(`✅ Seed data job ${jobId} completed`);
+});
+
+seedDataQueueEvents.on('failed', ({ jobId, failedReason }) => {
+    console.error(`❌ Seed data job ${jobId} failed:`, failedReason);
 });
 
 // ==================== HELPERS ====================
@@ -113,10 +151,42 @@ export async function addRecipeChangeJob(
 }
 
 /**
+ * Add a seed data job
+ */
+export async function addSeedDataJob(
+    tenantId: number,
+    userId: number,
+    options?: SeedDataJobData['options']
+) {
+    const job = await seedDataQueue.add(
+        'seed-initial-data',
+        {
+            tenantId,
+            userId,
+            options
+        },
+        {
+            jobId: `seed-${tenantId}-${Date.now()}`,
+        }
+    );
+
+    return {
+        jobId: job.id,
+        status: 'queued',
+    };
+}
+
+/**
  * Get job status by ID
  */
 export async function getJobStatus(jobId: string) {
-    const job = await recalculationQueue.getJob(jobId);
+    // Try recalculation queue first
+    let job = await recalculationQueue.getJob(jobId);
+
+    // If not found, try seed data queue
+    if (!job) {
+        job = await seedDataQueue.getJob(jobId) as any;
+    }
 
     if (!job) {
         return { status: 'not-found' };

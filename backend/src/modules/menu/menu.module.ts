@@ -74,6 +74,7 @@ class MenuService {
         const whereClause: any = {
             tenant_id: this.tenantId,
         };
+        console.log(`[DEBUG] MenuService.list called for tenantId: ${this.tenantId}, status: ${status}`);
 
         if (status === 'active') {
             whereClause.ativo = true;
@@ -134,17 +135,28 @@ class MenuService {
             ],
         });
 
+        console.log(`[DEBUG] MenuService.list found ${menuItems.length} items for tenant ${this.tenantId}. params: categoria=${categoria}, status=${status}`);
+
+        // Calculate CMV% for each item
+
+        console.log(`[DEBUG] MenuService.list found ${menuItems.length} items for tenant ${this.tenantId}`);
+        if (menuItems.length === 0) {
+            // Debug why zero
+            const totalCount = await prisma.menuItem.count({ where: { tenant_id: this.tenantId } });
+            console.log(`[DEBUG] Total items in DB for tenant ${this.tenantId}: ${totalCount} (Filter applied: ${JSON.stringify(whereClause)})`);
+        }
+
         // Calculate CMV% for each item
         const result = menuItems.map(item => {
             const pvp = Number(item.pvp);
             let custo = 0;
 
-            if (item.receita_id) {
-                custo = Number(item.receita!.custo_por_porcao);
-            } else if (item.combo_id) {
-                custo = Number(item.combo!.custo_total);
-            } else if (item.formato_venda_id) {
-                custo = Number(item.formatoVenda!.custo_unitario);
+            if (item.receita_id && item.receita) {
+                custo = Number(item.receita.custo_por_porcao);
+            } else if (item.combo_id && item.combo) {
+                custo = Number(item.combo.custo_total);
+            } else if (item.formato_venda_id && item.formatoVenda) {
+                custo = Number(item.formatoVenda.custo_unitario);
             }
 
             const cmv_percentual = pvp > 0 ? (custo / pvp) * 100 : 0;

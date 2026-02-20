@@ -35,7 +35,7 @@ export default function UsersPage() {
 
     // Invite modal state
     const [inviteModalOpen, setInviteModalOpen] = useState(false);
-    const [inviteForm, setInviteForm] = useState({ nome: '', email: '', role: 'operador' });
+    const [inviteForm, setInviteForm] = useState({ nome: '', email: '', role: 'operator' });
     const [inviteLoading, setInviteLoading] = useState(false);
 
     // Backup Invite Link Modal
@@ -55,8 +55,6 @@ export default function UsersPage() {
     async function loadUsers() {
         try {
             const result = await fetchClient('/users');
-
-            // API returns { data: [...], meta: {...} }
             setUsers(result.data || []);
         } catch (error) {
             console.error('Error loading users:', error);
@@ -82,7 +80,7 @@ export default function UsersPage() {
             }
 
             setInviteModalOpen(false);
-            setInviteForm({ nome: '', email: '', role: 'operador' });
+            setInviteForm({ nome: '', email: '', role: 'operator' });
             loadUsers();
         } catch (error) {
             alert('Erro ao enviar convite');
@@ -135,7 +133,7 @@ export default function UsersPage() {
             if (response.inviteLink) {
                 setBackupInviteLink(response.inviteLink);
                 // Find user email for context
-                const user = users.find(u => u.id === userId);
+                const user = users.find((u: User) => u.id === userId);
                 setLastInvitedEmail(user?.email || 'utilizador');
                 setInviteLinkModalOpen(true);
             } else {
@@ -163,7 +161,7 @@ export default function UsersPage() {
         }
     }
 
-    const filteredUsers = users.filter(user => {
+    const filteredUsers = users.filter((user: User) => {
         const matchesSearch = user.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.email.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesRole = filterRole === 'all' || user.role === filterRole;
@@ -176,7 +174,8 @@ export default function UsersPage() {
 
     function getRoleBadgeColor(role: string) {
         if (role === 'admin') return 'bg-red-100 text-red-800';
-        if (role === 'gestor') return 'bg-blue-100 text-blue-800';
+        if (role === 'manager') return 'bg-blue-100 text-blue-800';
+        if (role === 'viewer') return 'bg-gray-100 text-gray-800';
         return 'bg-green-100 text-green-800';
     }
 
@@ -271,8 +270,8 @@ export default function UsersPage() {
                                             <input
                                                 type="radio"
                                                 name="role"
-                                                value="gestor"
-                                                checked={inviteForm.role === 'gestor'}
+                                                value="manager"
+                                                checked={inviteForm.role === 'manager'}
                                                 onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
                                                 className="mt-1"
                                             />
@@ -285,14 +284,28 @@ export default function UsersPage() {
                                             <input
                                                 type="radio"
                                                 name="role"
-                                                value="operador"
-                                                checked={inviteForm.role === 'operador'}
+                                                value="operator"
+                                                checked={inviteForm.role === 'operator'}
                                                 onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
                                                 className="mt-1"
                                             />
                                             <div>
                                                 <div className="font-medium">Operador</div>
                                                 <div className="text-sm text-gray-500">Receitas, menus e inventário</div>
+                                            </div>
+                                        </label>
+                                        <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                                            <input
+                                                type="radio"
+                                                name="role"
+                                                value="viewer"
+                                                checked={inviteForm.role === 'viewer'}
+                                                onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                                                className="mt-1"
+                                            />
+                                            <div>
+                                                <div className="font-medium">Visualizador</div>
+                                                <div className="text-sm text-gray-500">Apenas leitura</div>
                                             </div>
                                         </label>
                                     </div>
@@ -334,8 +347,9 @@ export default function UsersPage() {
                             >
                                 <option value="all">Todos os Roles</option>
                                 <option value="admin">Admin</option>
-                                <option value="gestor">Gestor</option>
-                                <option value="operador">Operador</option>
+                                <option value="manager">Gestor</option>
+                                <option value="operator">Operador</option>
+                                <option value="viewer">Visualizador</option>
                             </select>
                             <select
                                 value={filterStatus}
@@ -396,7 +410,10 @@ export default function UsersPage() {
                                                 <td className="px-6 py-4 text-gray-600">{user.email}</td>
                                                 <td className="px-6 py-4">
                                                     <Badge className={getRoleBadgeColor(user.role)}>
-                                                        {user.role === 'admin' ? '🔴 Admin' : user.role === 'gestor' ? '🔵 Gestor' : '🟢 Operador'}
+                                                        {user.role === 'admin' ? '🔴 Admin' :
+                                                            user.role === 'manager' ? '🔵 Gestor' :
+                                                                user.role === 'viewer' ? '⚪ Visualizador' :
+                                                                    '🟢 Operador'}
                                                     </Badge>
                                                 </td>
                                                 <td className="px-6 py-4">{getStatusBadge(user)}</td>
@@ -502,8 +519,9 @@ export default function UsersPage() {
                                             className="w-full px-4 py-2 border rounded-lg mt-2"
                                         >
                                             <option value="admin">Administrador</option>
-                                            <option value="gestor">Gestor</option>
-                                            <option value="operador">Operador</option>
+                                            <option value="manager">Gestor</option>
+                                            <option value="operator">Operador</option>
+                                            <option value="viewer">Visualizador</option>
                                         </select>
                                     </div>
                                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -565,6 +583,6 @@ export default function UsersPage() {
                     </Dialog>
                 </div>
             </AppLayout>
-        </ProtectedRoute >
+        </ProtectedRoute>
     );
 }

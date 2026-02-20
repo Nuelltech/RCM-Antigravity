@@ -11,7 +11,7 @@ const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:63
  * Main queue for processing uploaded invoices
  */
 export const invoiceProcessingQueue = new Queue('invoice-processing', {
-    connection: redisConnection,
+    connection: redisConnection as any,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -34,7 +34,7 @@ export const invoiceProcessingQueue = new Queue('invoice-processing', {
  * Queue for manual retries (10 minute delay)
  */
 export const invoiceRetryQueue = new Queue('invoice-retry', {
-    connection: redisConnection,
+    connection: redisConnection as any,
     defaultJobOptions: {
         delay: 10 * 60 * 1000,  // 10 minutes
         attempts: 1,  // Only 1 attempt for retries

@@ -60,8 +60,10 @@ export async function fetchClient(endpoint: string, options: RequestInit = {}) {
 
     if (response.status === 401) {
         if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            console.error(`[API] 401 Unauthorized accessing ${endpoint}. Redirecting to login.`);
+            const keysToRemove = ['token', 'user', 'userId', 'userName', 'userEmail', 'userRole', 'tenantId', 'restaurantName'];
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+
             // Force redirect to login
             window.location.href = '/auth/login';
         }

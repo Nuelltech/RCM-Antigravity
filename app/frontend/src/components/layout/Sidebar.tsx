@@ -90,21 +90,31 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                         const isActive = pathname.startsWith(item.href);
                         const Icon = getIcon(item.icon);
 
+                        if (item.isLocked) {
+                            return (
+                                <div
+                                    key={item.key}
+                                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-gray-500 opacity-60 cursor-not-allowed"
+                                    title="Disponível no plano superior - Upgrade necessário"
+                                >
+                                    <Icon className="h-5 w-5" />
+                                    <span className="flex-1">{item.name}</span>
+                                    <Lock className="h-4 w-4 text-orange-400" />
+                                </div>
+                            );
+                        }
+
                         return (
                             <Link
                                 key={item.key}
                                 href={item.href}
-                                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${item.isLocked
-                                    ? "text-gray-500 opacity-60"
-                                    : isActive
-                                        ? "bg-orange-600 text-white"
-                                        : "text-gray-300 hover:bg-slate-800 hover:text-white"
+                                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isActive
+                                    ? "bg-orange-600 text-white"
+                                    : "text-gray-300 hover:bg-slate-800 hover:text-white"
                                     }`}
-                                title={item.isLocked ? `Disponível no plano superior - Upgrade necessário` : undefined}
                             >
                                 <Icon className="h-5 w-5" />
                                 <span className="flex-1">{item.name}</span>
-                                {item.isLocked && <Lock className="h-4 w-4 text-orange-400" />}
                             </Link>
                         );
                     })}

@@ -1699,6 +1699,7 @@ model VendaLinhaImportacao {
   status                String    // pending, matched, manual_review, approved
   
   // Metadata
+  metadata              Json?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   
@@ -2067,6 +2068,7 @@ model TenantSubscription {
   payment_failed_at     DateTime?
   grace_period_end      DateTime?
   suspension_date       DateTime?
+  suspension_reason     String?   @db.Text
   cancellation_date     DateTime?
   
   // Metadata
