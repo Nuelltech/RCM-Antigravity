@@ -95,10 +95,38 @@ class HemorragiaFinanceiraService {
             }
         });
 
+        // 2b. O(1) query: Fetch all sales aggregations in the period for these items
+        const salesAgg = await prisma.venda.groupBy({
+            by: ['menu_item_id'],
+            where: {
+                tenant_id: this.tenantId,
+                menu_item_id: { in: menuItems.map(i => i.id) },
+                data_venda: {
+                    gte: startDate,
+                    lte: endDate
+                }
+            },
+            _sum: {
+                quantidade: true,
+                receita_total: true
+            }
+        });
+
+        // Map aggregate to dictionary for O(1) loop lookup
+        const salesMap = new Map<number, { volumeVendas: number, totalRevenueSales: number }>();
+        for (const agg of salesAgg) {
+            if (agg.menu_item_id) {
+                salesMap.set(agg.menu_item_id, {
+                    volumeVendas: Number(agg._sum.quantidade || 0),
+                    totalRevenueSales: Number(agg._sum.receita_total || 0)
+                });
+            }
+        }
+
         const perdas: ItemPerda[] = [];
         const ganhos: ItemGanho[] = [];
 
-        // 3. Process each item
+        // 3. Process each item (now entirely in-memory and heavily optimized)
         for (const item of menuItems) {
             // Get cost
             let custoUnitario = 0;
@@ -113,29 +141,14 @@ class HemorragiaFinanceiraService {
             // No cost data — skip
             if (custoUnitario <= 0) continue;
 
-            // Fetch sales in the period
-            const sales = await prisma.venda.findMany({
-                where: {
-                    tenant_id: this.tenantId,
-                    menu_item_id: item.id,
-                    data_venda: {
-                        gte: startDate,
-                        lte: endDate
-                    }
-                },
-                select: {
-                    quantidade: true,
-                    pvp_praticado: true,
-                    receita_total: true,
-                }
-            });
+            const itemSales = salesMap.get(item.id);
+            if (!itemSales) continue;
 
-            // Skip items with no sales in period
-            const volumeVendas = sales.reduce((sum, s) => sum + s.quantidade, 0);
+            const volumeVendas = itemSales.volumeVendas;
             if (volumeVendas === 0) continue;
 
             // Weighted average PVP
-            const totalRevenueSales = sales.reduce((sum, s) => sum + Number(s.pvp_praticado) * s.quantidade, 0);
+            const totalRevenueSales = itemSales.totalRevenueSales;
             const pvpMedio = volumeVendas > 0 ? totalRevenueSales / volumeVendas : Number(item.pvp);
 
             if (pvpMedio <= 0) continue;
