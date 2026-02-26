@@ -837,6 +837,7 @@ model Venda {
 
   @@index([tenant_id, data_venda]) // Performance: Consumption reports
   @@index([tenant_id, menu_item_id, data_venda]) // Performance: Item sales over time
+  @@index([tenant_id, data_venda, menu_item_id]) // Performance: Analytics GroupBy & Filtering
   @@map("vendas")
 }
 
