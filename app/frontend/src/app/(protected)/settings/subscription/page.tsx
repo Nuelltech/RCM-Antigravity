@@ -8,6 +8,7 @@ import { PlanCard } from '@/components/subscription/PlanCard';
 import { FeatureList } from '@/components/subscription/FeatureList';
 import { CreditCard, Calendar, TrendingUp, ExternalLink, CheckCircle2, XCircle, Clock, AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface Plan {
     id: number;
@@ -46,6 +47,7 @@ interface Payment {
 }
 
 export default function SubscriptionPage() {
+    const { toast } = useToast();
     const { planName, features, loading: subscriptionLoading, status, daysRemaining } = useSubscription();
 
     const [plans, setPlans] = useState<Plan[]>([]);
@@ -138,8 +140,15 @@ export default function SubscriptionPage() {
                 // In-place update — no redirect, just refresh data
                 await fetchData();
                 setError(null);
-            } else if (data?.url || data?.redirectUrl) {
-                window.location.href = data.url || data.redirectUrl;
+                toast({
+                    title: 'Plano atualizado!',
+                    description: 'A sua alteração de plano foi registada com sucesso.',
+                });
+            } else if (data?.url) {
+                // Stripe Checkout redirect
+                window.location.href = data.url;
+            } else if (data?.redirectUrl) {
+                window.location.href = data.redirectUrl;
             } else {
                 setError(data?.message || 'Erro ao actualizar plano.');
             }

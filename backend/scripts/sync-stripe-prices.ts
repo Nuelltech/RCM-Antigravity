@@ -77,38 +77,48 @@ async function main() {
     for (const plan of plans) {
         console.log(`\n   📦 ${plan.display_name}:`);
 
-        const monthlyAmount = Math.round(plan.price_monthly * 100); // cents
-        const yearlyAmount = Math.round(plan.price_yearly * 100);
+        const mPrice = Number(plan.price_monthly || 0);
+        const yPrice = Number(plan.price_yearly || 0);
 
-        // Find matching monthly price
-        const monthlyPrice = recurringEur.find(
-            p => p.unit_amount === monthlyAmount && p.recurring?.interval === 'month'
-        );
+        // We match by name now (e.g., 'base', 'standard', 'plus' from plan.name)
+        const planKeyword = plan.name.toLowerCase().replace(' plan', '').replace('plano ', '').trim();
 
-        // Find matching yearly price
-        const yearlyPrice = recurringEur.find(
-            p => p.unit_amount === yearlyAmount && p.recurring?.interval === 'year'
-        );
+        // Find matching monthly price by NAME
+        const monthlyPrice = recurringEur.find(p => {
+            const product = p.product as Stripe.Product;
+            return product.name.toLowerCase().includes(planKeyword) && p.recurring?.interval === 'month';
+        });
 
-        const updateData: { stripe_price_id_monthly?: string; stripe_price_id_yearly?: string } = {};
+        // Find matching yearly price by NAME
+        const yearlyPrice = recurringEur.find(p => {
+            const product = p.product as Stripe.Product;
+            return product.name.toLowerCase().includes(planKeyword) && p.recurring?.interval === 'year';
+        });
+
+        const updateData: any = {};
 
         if (monthlyPrice) {
             const product = monthlyPrice.product as Stripe.Product;
-            OK(`Monthly match: ${monthlyPrice.id} (${product.name})`);
+            const stripeAmount = (monthlyPrice.unit_amount ?? 0) / 100;
+            OK(`Monthly match: ${monthlyPrice.id} (${product.name}) | Syncing €${stripeAmount}`);
             updateData.stripe_price_id_monthly = monthlyPrice.id;
+            updateData.price_monthly = stripeAmount; // Sync Stripe amount to DB
             updates++;
         } else {
-            ERR(`No monthly Stripe price found for €${plan.price_monthly}/month`);
+            ERR(`No monthly Stripe price found containing keyword '${planKeyword}'`);
             missing++;
         }
 
         if (yearlyPrice) {
             const product = yearlyPrice.product as Stripe.Product;
-            OK(`Yearly match:  ${yearlyPrice.id} (${product.name})`);
+            const stripeAmount = (yearlyPrice.unit_amount ?? 0) / 100;
+            OK(`Yearly match:  ${yearlyPrice.id} (${product.name}) | Syncing €${stripeAmount}`);
             updateData.stripe_price_id_yearly = yearlyPrice.id;
+            updateData.price_yearly = stripeAmount; // Sync Stripe amount to DB
             updates++;
-        } else {
-            ERR(`No yearly Stripe price found for €${plan.price_yearly}/year`);
+        } else if (yPrice > 0 || plan.name !== 'free') {
+            // Only complain about missing yearly plan if it's not the free plan
+            ERR(`No yearly Stripe price found containing keyword '${planKeyword}'`);
             missing++;
         }
 

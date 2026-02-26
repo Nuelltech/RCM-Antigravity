@@ -422,44 +422,63 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
 
             // ── Path A: Update existing Stripe subscription (upgrade/downgrade) ────
             if (subscription?.stripe_subscription_id && subscription?.stripe_customer_id) {
-                const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
-                const itemId = stripeSub.items.data[0]?.id;
+                try {
+                    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+                    const itemId = stripeSub.items.data[0]?.id;
 
-                if (!itemId) throw new Error('Stripe subscription has no items');
+                    if (!itemId) throw new Error('Stripe subscription has no items');
 
-                await stripe.subscriptions.update(subscription.stripe_subscription_id, {
-                    items: [{ id: itemId, price: priceId }],
-                    proration_behavior: 'create_prorations', // Stripe calculates credit/charge
-                    metadata: { tenant_id: String(req.tenantId) },
-                });
+                    await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+                        items: [{ id: itemId, price: priceId }],
+                        proration_behavior: 'create_prorations', // Stripe calculates credit/charge
+                        metadata: { tenant_id: String(req.tenantId) },
+                    });
 
-                // ── Cancel any other active subscriptions for this customer (avoid double billing)
-                const allSubs = await stripe.subscriptions.list({
-                    customer: subscription.stripe_customer_id,
-                    status: 'active',
-                });
-                const orphanSubs = allSubs.data.filter(s => s.id !== subscription.stripe_subscription_id);
-                for (const orphan of orphanSubs) {
-                    await stripe.subscriptions.cancel(orphan.id);
-                    req.log.warn(`[SUBSCRIPTIONS] 🚫 Cancelled orphan subscription ${orphan.id} for customer ${subscription.stripe_customer_id}`);
-                }
-                if (orphanSubs.length > 0) {
-                    req.log.info(`[SUBSCRIPTIONS] Cleaned up ${orphanSubs.length} orphan subscription(s) for tenant ${req.tenantId}`);
-                }
-
-                // Update local DB immediately (webhook will also fire)
-                await prisma.tenantSubscription.update({
-                    where: { tenant_id: req.tenantId },
-                    data: {
-                        plan_id: plan.id,
-                        billing_period,
+                    // ── Cancel any other active subscriptions for this customer (avoid double billing)
+                    const allSubs = await stripe.subscriptions.list({
+                        customer: subscription.stripe_customer_id,
                         status: 'active',
-                    },
-                });
+                    });
+                    const orphanSubs = allSubs.data.filter(s => s.id !== subscription.stripe_subscription_id);
+                    for (const orphan of orphanSubs) {
+                        await stripe.subscriptions.cancel(orphan.id);
+                        req.log.warn(`[SUBSCRIPTIONS] 🚫 Cancelled orphan subscription ${orphan.id} for customer ${subscription.stripe_customer_id}`);
+                    }
+                    if (orphanSubs.length > 0) {
+                        req.log.info(`[SUBSCRIPTIONS] Cleaned up ${orphanSubs.length} orphan subscription(s) for tenant ${req.tenantId}`);
+                    }
 
-                await subscriptionsService.invalidateTenantCache(req.tenantId);
-                req.log.info(`[SUBSCRIPTIONS] ✅ Plan changed for tenant ${req.tenantId} → ${plan_name} (${billing_period})`);
-                return reply.send({ success: true, message: `Plano actualizado para ${plan.display_name}.` });
+                    // Update local DB immediately (webhook will also fire)
+                    await prisma.tenantSubscription.update({
+                        where: { tenant_id: req.tenantId },
+                        data: {
+                            plan_id: plan.id,
+                            billing_period,
+                            status: 'active',
+                        },
+                    });
+
+                    await subscriptionsService.invalidateTenantCache(req.tenantId);
+                    req.log.info(`[SUBSCRIPTIONS] ✅ Plan changed for tenant ${req.tenantId} → ${plan_name} (${billing_period})`);
+                    return reply.send({ success: true, message: `Plano actualizado para ${plan.display_name}.` });
+                } catch (stripeErr: any) {
+                    // AUTO-HEALING: Se a subscrição existia na BD mas foi apagada no Stripe (resource_missing)
+                    if (stripeErr?.code === 'resource_missing' || stripeErr?.message?.includes('No such subscription')) {
+                        req.log.warn(`[SUBSCRIPTIONS] 👻 Ghost subscription detected for tenant ${req.tenantId}. Cleaning up and falling back to new checkout.`);
+
+                        // Limpar a BD local para prosseguir com o Path B
+                        await prisma.tenantSubscription.update({
+                            where: { tenant_id: req.tenantId },
+                            data: {
+                                status: 'canceled',
+                                stripe_subscription_id: null
+                            }
+                        });
+                        subscription.stripe_subscription_id = null; // mutate variable to fall through
+                    } else {
+                        throw stripeErr; // se for outro erro (ex: cartão declinado), lança para cima
+                    }
+                }
             }
 
             // ── Path B: No existing subscription → Checkout session ─────────────
