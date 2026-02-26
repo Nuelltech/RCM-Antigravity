@@ -63,16 +63,45 @@ export async function fetchClient(endpoint: string, options: RequestInit = {}) {
             console.error(`[API] 401 Unauthorized accessing ${endpoint}. Redirecting to login.`);
             const keysToRemove = ['token', 'user', 'userId', 'userName', 'userEmail', 'userRole', 'tenantId', 'restaurantName'];
             keysToRemove.forEach(key => localStorage.removeItem(key));
-
-            // Force redirect to login
             window.location.href = '/auth/login';
         }
         throw new Error('Session expired');
     }
 
+    // 402 = subscription required / expired / suspended / cancelled
+    if (response.status === 402) {
+        if (typeof window !== 'undefined') {
+            const body = await response.json().catch(() => ({}));
+            const code = body?.code || '';
+            console.warn(`[API] 402 Subscription issue (${code}) on ${endpoint}. Redirecting to subscription page.`);
+
+            // Route to appropriate page based on the specific error code:
+            // - ACCOUNT_SUSPENDED = payment failure → payment page
+            // - ACCOUNT_CANCELLED = intentional cancel → resubscribe page
+            // - anything else → subscription management page
+            const redirectMap: Record<string, string> = {
+                'ACCOUNT_SUSPENDED': '/pagamento',
+                'ACCOUNT_CANCELLED': '/settings/subscription',
+                'PAYMENT_OVERDUE': '/pagamento',
+                'TRIAL_EXPIRED': '/settings/subscription',
+            };
+            const redirectTo = body?.redirectTo || redirectMap[code] || '/settings/subscription';
+
+            // Avoid redirect loop if already on the target page
+            const alreadyThere = ['/settings/subscription', '/pagamento'].some(
+                p => window.location.pathname.startsWith(p)
+            );
+            if (!alreadyThere) {
+                window.location.href = redirectTo;
+            }
+        }
+        const errBody = await response.json().catch(() => ({ message: 'Subscription required' }));
+        throw new Error(errBody.message || 'Subscription required');
+    }
+
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(error.error || 'Request failed');
+        throw new Error(error.message || error.error || 'Request failed');
     }
 
     if (response.status === 204) {

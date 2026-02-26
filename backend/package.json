@@ -65,7 +65,8 @@
     "@fastify/swagger": "^8.14.0",
     "@fastify/swagger-ui": "^3.0.0",
     "jsonwebtoken": "^9.0.2",
-    "tesseract.js": "^5.0.5"
+    "tesseract.js": "^5.0.5",
+    "stripe": "^14.25.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -16,6 +16,10 @@ const envSchema = z.object({
     JWT_SECRET: z.string(),
     JWT_REFRESH_SECRET: z.string(),
     FRONTEND_URL: z.string().default('http://localhost:3000'),
+    // Stripe — optional during initial setup; required once payments are live
+    STRIPE_SECRET_KEY: z.string().default(''),
+    STRIPE_WEBHOOK_SECRET: z.string().default(''),
+    STRIPE_PUBLISHABLE_KEY: z.string().default(''),
 });
 
 export const env = envSchema.parse(trimmedEnv);

@@ -212,27 +212,130 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
     });
 
     /**
-     * POST /api/subscriptions/upgrade
-     * Upgrade to a different plan (TODO: Stripe integration)
+     * POST /api/subscriptions/create-checkout-session
+     * Creates a Stripe Checkout session and returns the URL.
+     * The frontend redirects the user to this URL to complete payment.
      */
-    app.withTypeProvider<ZodTypeProvider>().post('/upgrade', {
+    app.withTypeProvider<ZodTypeProvider>().post('/create-checkout-session', {
         schema: {
             tags: ['Subscriptions'],
             security: [{ bearerAuth: [] }],
             body: z.object({
-                plan_name: z.string()
-            })
+                plan_name: z.string(),
+                billing_period: z.enum(['monthly', 'yearly']).default('monthly'),
+            }),
         },
-    }, async (req: FastifyRequest<{ Body: { plan_name: string } }>, reply: FastifyReply) => {
+    }, async (req: FastifyRequest<{ Body: { plan_name: string; billing_period: 'monthly' | 'yearly' } }>, reply: FastifyReply) => {
         if (!req.tenantId) return reply.status(401).send({ error: 'Unauthorized' });
 
-        // TODO: Implement Stripe subscription update
-        // For now, just return not implemented
-        return reply.status(501).send({
-            error: 'Upgrade functionality requires Stripe integration',
-            message: 'This feature will be available after Stripe configuration'
-        });
+        const { plan_name, billing_period } = req.body;
+
+        // Find the plan
+        const plan = await prisma.subscriptionPlan.findUnique({ where: { name: plan_name } });
+        if (!plan) return reply.status(404).send({ error: 'Plano não encontrado', message: `O plano "${plan_name}" não existe.` });
+
+        const priceId = billing_period === 'yearly'
+            ? plan.stripe_price_id_yearly
+            : plan.stripe_price_id_monthly;
+
+        if (!priceId) {
+            return reply.status(400).send({
+                error: 'price_not_configured',
+                message: `O preço Stripe para o plano "${plan.display_name}" (${billing_period}) ainda não está configurado. Contacte o suporte.`
+            });
+        }
+
+        try {
+            // Get or create Stripe customer
+            let subscription = await prisma.tenantSubscription.findUnique({
+                where: { tenant_id: req.tenantId },
+                include: { tenant: true },
+            });
+
+            let stripeCustomerId = subscription?.stripe_customer_id;
+
+            if (!stripeCustomerId) {
+                const { createStripeCustomer } = await import('../../core/stripe.service');
+                const tenant = subscription?.tenant ?? await prisma.tenant.findUnique({ where: { id: req.tenantId } });
+                if (!tenant) return reply.status(404).send({ error: 'Tenant não encontrado' });
+
+                const customer = await createStripeCustomer({
+                    email: tenant.email_contacto ?? '',
+                    name: tenant.nome_restaurante,
+                    tenantId: tenant.id,
+                    slug: tenant.slug,
+                });
+                stripeCustomerId = customer.id;
+
+                if (subscription) {
+                    await prisma.tenantSubscription.update({
+                        where: { tenant_id: req.tenantId },
+                        data: { stripe_customer_id: stripeCustomerId },
+                    });
+                }
+            }
+
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            const { createCheckoutSession } = await import('../../core/stripe.service');
+
+            const session = await createCheckoutSession({
+                stripeCustomerId,
+                stripePriceId: priceId,
+                tenantId: req.tenantId,
+                successUrl: `${frontendUrl}/pagamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+                cancelUrl: `${frontendUrl}/settings/subscription`,
+            });
+
+            req.log.info(`[SUBSCRIPTIONS] ✅ Checkout session created for tenant ${req.tenantId}, plan ${plan_name}`);
+            return reply.send({ url: session.url });
+
+        } catch (err: any) {
+            req.log.error({ err }, `[SUBSCRIPTIONS] ❌ Stripe error creating checkout session for tenant ${req.tenantId}`);
+
+            // Stripe API errors have a 'type' field
+            const stripeMessage = err?.raw?.message || err?.message || 'Erro desconhecido do Stripe';
+            return reply.status(502).send({
+                error: 'stripe_error',
+                message: `Erro ao comunicar com o Stripe: ${stripeMessage}`
+            });
+        }
     });
+
+    /**
+     * GET /api/subscriptions/billing-portal
+     * Creates a Stripe Billing Portal session so the customer can manage
+     * payment methods, download invoices, or cancel.
+     */
+    app.withTypeProvider<ZodTypeProvider>().get('/billing-portal', {
+        schema: {
+            tags: ['Subscriptions'],
+            security: [{ bearerAuth: [] }],
+        },
+    }, async (req: FastifyRequest, reply: FastifyReply) => {
+        if (!req.tenantId) return reply.status(401).send({ error: 'Unauthorized' });
+
+        const subscription = await prisma.tenantSubscription.findUnique({
+            where: { tenant_id: req.tenantId },
+        });
+
+        if (!subscription?.stripe_customer_id) {
+            return reply.status(400).send({
+                error: 'No Stripe customer found',
+                message: 'You must have an active subscription to access the billing portal.'
+            });
+        }
+
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const { createBillingPortalSession } = await import('../../core/stripe.service');
+
+        const session = await createBillingPortalSession({
+            stripeCustomerId: subscription.stripe_customer_id,
+            returnUrl: `${frontendUrl}/definicoes`,
+        });
+
+        return reply.send({ url: session.url });
+    });
+
 
     /**
      * GET /api/subscriptions/billing-history
@@ -272,5 +375,129 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
                 failure_reason: p.failure_reason
             }))
         });
+    });
+
+    /**
+     * POST /api/subscriptions/change-plan
+     * Upgrade or downgrade an existing Stripe subscription in-place.
+     * Uses stripe.subscriptions.update() if the tenant already has a
+     * stripe_subscription_id, otherwise falls back to a new Checkout session.
+     */
+    app.withTypeProvider<ZodTypeProvider>().post('/change-plan', {
+        schema: {
+            tags: ['Subscriptions'],
+            security: [{ bearerAuth: [] }],
+            body: z.object({
+                plan_name: z.string(),
+                billing_period: z.enum(['monthly', 'yearly']).default('monthly'),
+            }),
+        },
+    }, async (req: FastifyRequest<{ Body: { plan_name: string; billing_period: 'monthly' | 'yearly' } }>, reply: FastifyReply) => {
+        if (!req.tenantId) return reply.status(401).send({ error: 'Unauthorized' });
+
+        const { plan_name, billing_period } = req.body;
+
+        // Find the target plan
+        const plan = await prisma.subscriptionPlan.findUnique({ where: { name: plan_name } });
+        if (!plan) return reply.status(404).send({ error: 'Plano não encontrado', message: `O plano "${plan_name}" não existe.` });
+
+        const priceId = billing_period === 'yearly'
+            ? plan.stripe_price_id_yearly
+            : plan.stripe_price_id_monthly;
+
+        if (!priceId) {
+            return reply.status(400).send({
+                error: 'price_not_configured',
+                message: `O preço Stripe para o plano "${plan.display_name}" (${billing_period}) ainda não está configurado.`
+            });
+        }
+
+        const subscription = await prisma.tenantSubscription.findUnique({
+            where: { tenant_id: req.tenantId },
+            include: { tenant: true },
+        });
+
+        try {
+            const { stripe } = await import('../../core/stripe.service');
+
+            // ── Path A: Update existing Stripe subscription (upgrade/downgrade) ────
+            if (subscription?.stripe_subscription_id && subscription?.stripe_customer_id) {
+                const stripeSub = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+                const itemId = stripeSub.items.data[0]?.id;
+
+                if (!itemId) throw new Error('Stripe subscription has no items');
+
+                await stripe.subscriptions.update(subscription.stripe_subscription_id, {
+                    items: [{ id: itemId, price: priceId }],
+                    proration_behavior: 'create_prorations', // Stripe calculates credit/charge
+                    metadata: { tenant_id: String(req.tenantId) },
+                });
+
+                // ── Cancel any other active subscriptions for this customer (avoid double billing)
+                const allSubs = await stripe.subscriptions.list({
+                    customer: subscription.stripe_customer_id,
+                    status: 'active',
+                });
+                const orphanSubs = allSubs.data.filter(s => s.id !== subscription.stripe_subscription_id);
+                for (const orphan of orphanSubs) {
+                    await stripe.subscriptions.cancel(orphan.id);
+                    req.log.warn(`[SUBSCRIPTIONS] 🚫 Cancelled orphan subscription ${orphan.id} for customer ${subscription.stripe_customer_id}`);
+                }
+                if (orphanSubs.length > 0) {
+                    req.log.info(`[SUBSCRIPTIONS] Cleaned up ${orphanSubs.length} orphan subscription(s) for tenant ${req.tenantId}`);
+                }
+
+                // Update local DB immediately (webhook will also fire)
+                await prisma.tenantSubscription.update({
+                    where: { tenant_id: req.tenantId },
+                    data: {
+                        plan_id: plan.id,
+                        billing_period,
+                        status: 'active',
+                    },
+                });
+
+                await subscriptionsService.invalidateTenantCache(req.tenantId);
+                req.log.info(`[SUBSCRIPTIONS] ✅ Plan changed for tenant ${req.tenantId} → ${plan_name} (${billing_period})`);
+                return reply.send({ success: true, message: `Plano actualizado para ${plan.display_name}.` });
+            }
+
+            // ── Path B: No existing subscription → Checkout session ─────────────
+            let stripeCustomerId = subscription?.stripe_customer_id;
+
+            if (!stripeCustomerId) {
+                const { createStripeCustomer } = await import('../../core/stripe.service');
+                const tenant = subscription?.tenant ?? await prisma.tenant.findUnique({ where: { id: req.tenantId } });
+                if (!tenant) return reply.status(404).send({ error: 'Tenant não encontrado' });
+
+                const customer = await createStripeCustomer({
+                    email: tenant.email_contacto ?? '',
+                    name: tenant.nome_restaurante,
+                    tenantId: tenant.id,
+                    slug: tenant.slug,
+                });
+                stripeCustomerId = customer.id;
+            }
+
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            const { createCheckoutSession } = await import('../../core/stripe.service');
+            const session = await createCheckoutSession({
+                stripeCustomerId,
+                stripePriceId: priceId,
+                tenantId: req.tenantId,
+                successUrl: `${frontendUrl}/pagamento/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+                cancelUrl: `${frontendUrl}/settings/subscription`,
+            });
+
+            return reply.send({ redirectUrl: session.url });
+
+        } catch (err: any) {
+            req.log.error({ err }, `[SUBSCRIPTIONS] ❌ Error changing plan for tenant ${req.tenantId}`);
+            const stripeMessage = err?.raw?.message || err?.message || 'Erro desconhecido';
+            return reply.status(502).send({
+                error: 'stripe_error',
+                message: `Erro ao actualizar plano: ${stripeMessage}`
+            });
+        }
     });
 }

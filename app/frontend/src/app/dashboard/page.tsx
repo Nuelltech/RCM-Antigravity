@@ -18,6 +18,7 @@ import { DashboardPDF } from '@/components/pdf/DashboardPDF';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExportPDFModal } from '@/components/dashboard/ExportPDFModal';
+import { CmvAlertCard } from '@/components/dashboard/CmvAlertCard';
 
 interface DashboardStats {
     vendasMes: number;
@@ -285,6 +286,16 @@ export default function DashboardPage() {
                             </>
                         )}
                     </div>
+
+                    {/* CMV Hemorragia Alert Card */}
+                    {!loading && dateRange.from && dateRange.to && (
+                        <div className="mb-4">
+                            <CmvAlertCard
+                                startDate={dateRange.from}
+                                endDate={dateRange.to}
+                            />
+                        </div>
+                    )}
 
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                         <div className="col-span-4">

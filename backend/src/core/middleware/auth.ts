@@ -35,7 +35,8 @@ export async function authMiddleware(req: FastifyRequest, reply: FastifyReply) {
         '/favicon.ico',
         '/fonts',
         '/uploads',
-        '/documentation'
+        '/documentation',
+        '/api/webhooks',  // Stripe webhooks — no JWT, verified by stripe-signature header
     ];
 
     // Check for exact root route match

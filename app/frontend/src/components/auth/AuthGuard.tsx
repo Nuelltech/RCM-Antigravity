@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { API_URL, fetchClient } from "@/lib/api";
+import { fetchClient } from "@/lib/api";
 
-const PUBLIC_PATHS = ["/", "/auth/login", "/auth/register", "/auth/forgot-password", "/accept-invite"];
+const PUBLIC_PATHS = [
+    "/",
+    "/auth/login",
+    "/auth/register",
+    "/auth/forgot-password",
+    "/accept-invite",
+    "/pagamento",
+    "/pagamento/sucesso",
+];
+
+// Subscription statuses that block access to the app (redirect to /pagamento)
+const BLOCKED_STATUSES = ["suspended", "trial_expired", "no_subscription"];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
     const router = useRouter();

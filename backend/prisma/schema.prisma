@@ -362,6 +362,7 @@ model VariacaoProduto {
   faturasLinhasImportacao FaturaLinhaImportacao[]
   matchingHistorico   MatchingHistorico[]
 
+  @@index([tenant_id, ativo])
   @@map("variacoes_produto")
 }
 
@@ -576,6 +577,7 @@ model Compra {
   faturaImportacao    FaturaImportacao? @relation(fields: [fatura_importacao_id], references: [id])
 
   @@index([fornecedor_id])
+  @@index([tenant_id, data_compra])
   @@map("compras")
 }
 
@@ -718,6 +720,7 @@ model Receita {
   comboCategoriaOpcoes ComboCategoriaOpcao[]
 
   @@unique([tenant_id, nome])
+  @@index([tenant_id, ativa])
   @@map("receitas")
 }
 
@@ -795,6 +798,7 @@ model MenuItem {
   vendasLinhasImportacao VendaLinhaImportacao[]
   salesMatchingHistorico SalesMatchingHistorico[]
 
+  @@index([tenant_id, ativo])
   @@map("menu")
 }
 
@@ -832,6 +836,7 @@ model Venda {
   vendaImportacao     VendaImportacao? @relation(fields: [venda_importacao_id], references: [id])
 
   @@index([tenant_id, data_venda]) // Performance: Consumption reports
+  @@index([tenant_id, menu_item_id, data_venda]) // Performance: Item sales over time
   @@map("vendas")
 }
 

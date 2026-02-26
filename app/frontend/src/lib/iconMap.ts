@@ -14,6 +14,7 @@ export const iconMap: Record<string, any> = {
     'PackageOpen': Icons.PackageOpen,
     'MenuSquare': Icons.MenuSquare,
     'TrendingUp': Icons.TrendingUp,
+    'TrendingDown': Icons.TrendingDown,
     'ShoppingCart': Icons.ShoppingCart,
     'Calculator': Icons.Calculator,
     'FileText': Icons.FileText,

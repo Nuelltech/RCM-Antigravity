@@ -14,6 +14,7 @@ async function main() {
         { key: 'sales', name: 'Vendas', href: '/sales', icon: 'BarChart3', sort_order: 30, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager', 'operador'] },
         { key: 'sales-import', name: 'Importar Vendas', href: '/sales/importacoes', icon: 'BarChart3', sort_order: 40, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager'] },
         { key: 'menu-engineering', name: 'Menu Engineering', href: '/menu-analysis', icon: 'TrendingUp', sort_order: 90, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager'] },
+        { key: 'hemorragia-financeira', name: 'Hemorragia Financeira', href: '/hemorragia-financeira', icon: 'TrendingDown', sort_order: 91, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager'] },
         { key: 'products', name: 'Produtos', href: '/products', icon: 'Package', sort_order: 50, required_feature: 'products_recipes', group: 'products', roles: ['owner', 'admin', 'manager', 'operador'] },
         { key: 'recipes', name: 'Receitas', href: '/recipes', icon: 'ChefHat', sort_order: 60, required_feature: 'products_recipes', group: 'products', roles: ['owner', 'admin', 'manager', 'operador', 'visualizador'] },
         { key: 'combos', name: 'Combos', href: '/combos', icon: 'Package2', sort_order: 70, required_feature: 'products_recipes', group: 'products', roles: ['owner', 'admin', 'manager'] },

@@ -223,6 +223,73 @@ export async function sendWelcomeEmail(
     await sendMail(user.email, 'Bem-vindo ao Restaurante Manager! 🚀', emailHtml, emailText);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared HTML layout builder for subscription lifecycle emails
+// ─────────────────────────────────────────────────────────────────────────────
+function buildEmailHtml(opts: {
+    userName: string;
+    badgeColor: string;
+    badgeLabel: string;
+    headline: string;
+    body: string;
+    ctaHref: string;
+    ctaLabel: string;
+    footerNote?: string;
+}): string {
+    const logoUrl = `${process.env.FRONTEND_URL || 'https://rcm-app.com'}/images/logo-sidebar.png`;
+    const { userName, badgeColor, badgeLabel, headline, body, ctaHref, ctaLabel, footerNote } = opts;
+
+    return `
+<!DOCTYPE html>
+<html lang="pt">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr><td align="center" style="padding:40px 16px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.07);overflow:hidden;">
+        <tr>
+          <td style="background:#1f2937;padding:24px 40px;text-align:center;">
+            <img src="${logoUrl}" alt="RCM" height="44" style="height:44px;max-width:180px;object-fit:contain;" />
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px 40px 0;text-align:center;">
+            <span style="display:inline-block;background:${badgeColor}1a;color:${badgeColor};font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 14px;border-radius:999px;border:1px solid ${badgeColor}40;">${badgeLabel}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 40px 0;text-align:center;">
+            <h1 style="margin:0;font-size:22px;font-weight:800;color:#111827;line-height:1.3;">${headline}</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px 0;color:#4b5563;font-size:15px;line-height:1.7;">
+            <p style="margin:0 0 8px;">Ol&aacute; <strong>${userName}</strong>,</p>
+            ${body}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 40px;text-align:center;">
+            <a href="${ctaHref}" style="display:inline-block;background:#f97316;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;">&#128279;&nbsp; ${ctaLabel}</a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 40px 32px;">
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px;" />
+            ${footerNote ? `<p style="margin:0 0 12px;font-size:13px;color:#6b7280;text-align:center;">${footerNote}</p>` : ''}
+            <p style="margin:0;font-size:12px;color:#9ca3af;text-align:center;">
+              Restaurante Cost Manager &bull;
+              <a href="${process.env.FRONTEND_URL || 'https://rcm-app.com'}" style="color:#9ca3af;">rcm-app.com</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 /**
  * Send warning that trial is expiring soon (3 days)
  */
@@ -231,10 +298,24 @@ export async function sendTrialExpiringEmail(
     daysRemaining: number,
     expiryDate: Date
 ): Promise<void> {
-    const formattedDate = expiryDate.toLocaleDateString('pt-PT');
-    const subject = `⚠️ O teu período de teste termina em ${daysRemaining} dias`;
-    const html = `<p>Olá ${user.name},</p><p>Aviso que o teu período de teste termina no dia <strong>${formattedDate}</strong>.</p><p>Para garantir que não perdes acesso, subscreve um plano agora.</p>`;
-    // TODO: Create React Template
+    const formattedDate = expiryDate.toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' });
+    const subscriptionLink = `${process.env.FRONTEND_URL}/settings/subscription`;
+    const subject = `⏳ O teu trial termina em ${daysRemaining} dia(s) — age agora!`;
+
+    const html = buildEmailHtml({
+        userName: user.name,
+        badgeColor: '#eab308',
+        badgeLabel: `Trial expira em ${daysRemaining} dia(s)`,
+        headline: 'O teu acesso está prestes a terminar',
+        body: `
+            <p style="margin:0 0 12px;">O teu período de teste gratuito termina a <strong>${formattedDate}</strong>. Depois disso, o acesso ao Restaurante Cost Manager será interrompido.</p>
+            <p style="margin:0 0 12px;">Para continuares a usar todas as funcionalidades &mdash; dashboard, faturas, vendas e mais &mdash; escolhe um plano antes que o prazo expire.</p>
+            <p style="margin:0;">Leva menos de 2 minutos. &#128526;</p>
+        `,
+        ctaHref: subscriptionLink,
+        ctaLabel: 'Ver planos e subscrever',
+        footerNote: 'Se já subscreveste, podes ignorar este email.',
+    });
 
     await sendMail(user.email, subject, html);
 }
@@ -245,9 +326,82 @@ export async function sendTrialExpiringEmail(
 export async function sendAccountSuspendedEmail(
     user: EmailUser
 ): Promise<void> {
-    const subject = `🚫 Conta Suspensa - Ação Necessária`;
-    const html = `<p>Olá ${user.name},</p><p>O teu período de teste expirou há mais de 3 dias e a tua conta foi suspensa.</p><p>Para recuperar o acesso aos teus dados, por favor renova a tua subscrição.</p>`;
+    const subscriptionLink = `${process.env.FRONTEND_URL}/settings/subscription`;
+    const subject = `🚫 A tua conta foi suspensa`;
+
+    const html = buildEmailHtml({
+        userName: user.name,
+        badgeColor: '#ef4444',
+        badgeLabel: 'Conta Suspensa',
+        headline: 'O acesso à tua conta foi interrompido',
+        body: `
+            <p style="margin:0 0 12px;">O período de carência terminou sem que o pagamento fosse regularizado. Por este motivo, a tua conta foi <strong>suspensa</strong> e o acesso às funcionalidades está bloqueado.</p>
+            <p style="margin:0 0 12px;">Os teus dados estão seguros. Para recuperar o acesso, subscreve um plano &mdash; o processo demora menos de 2 minutos.</p>
+            <p style="margin:0;">Precisas de ajuda? Contacta-nos em <a href="mailto:suporte@rcm-app.com" style="color:#f97316;">suporte@rcm-app.com</a></p>
+        `,
+        ctaHref: subscriptionLink,
+        ctaLabel: 'Reativar a minha conta',
+        footerNote: 'Os teus dados são mantidos por 30 dias após a suspensão.',
+    });
 
     await sendMail(user.email, subject, html);
 }
 
+/**
+ * Send notification that trial has just expired (no payment yet)
+ */
+export async function sendTrialExpiredEmail(
+    user: EmailUser
+): Promise<void> {
+    const subscriptionLink = `${process.env.FRONTEND_URL}/settings/subscription`;
+    const subject = `⏰ O teu trial expirou &mdash; tens 3 dias para subscrever`;
+
+    const html = buildEmailHtml({
+        userName: user.name,
+        badgeColor: '#f97316',
+        badgeLabel: 'Trial Expirado',
+        headline: 'O teu período de teste gratuito terminou',
+        body: `
+            <p style="margin:0 0 12px;">O teu trial chegou ao fim. Para não perderes o acesso aos teus dados e às funcionalidades do RCM, precisas de escolher um plano.</p>
+            <p style="margin:0 0 12px;">Tens um período de carência de <strong>3 dias</strong> para subscrever. Após esse prazo, a conta será suspensa automaticamente.</p>
+            <p style="margin:0;">Não deixes para depois! &#128072;</p>
+        `,
+        ctaHref: subscriptionLink,
+        ctaLabel: 'Escolher o meu plano agora',
+        footerNote: 'A partir de &euro;65/mês. Cancela quando quiseres.',
+    });
+
+    await sendMail(user.email, subject, html);
+}
+
+/**
+ * Send notification that a payment failed and grace period has started
+ */
+export async function sendPaymentFailedEmail(
+    user: EmailUser,
+    gracePeriodDays: number,
+    gracePeriodEnd: Date
+): Promise<void> {
+    const subscriptionLink = `${process.env.FRONTEND_URL}/settings/subscription`;
+    const formattedDate = gracePeriodEnd.toLocaleDateString('pt-PT', {
+        day: 'numeric', month: 'long', year: 'numeric'
+    });
+    const subject = `❌ Falha no pagamento &mdash; regulariza até ${gracePeriodEnd.toLocaleDateString('pt-PT')}`;
+
+    const html = buildEmailHtml({
+        userName: user.name,
+        badgeColor: '#ef4444',
+        badgeLabel: 'Pagamento Falhado',
+        headline: 'Não conseguimos processar o teu pagamento',
+        body: `
+            <p style="margin:0 0 12px;">O pagamento da tua subscrição foi recusado. Isto pode acontecer por cartão expirado, fundos insuficientes ou actualização de dados bancários.</p>
+            <p style="margin:0 0 12px;">Tens <strong>${gracePeriodDays} dias</strong> de carência (até <strong>${formattedDate}</strong>) para actualizar o método de pagamento. Após esse prazo, o acesso será suspenso.</p>
+            <p style="margin:0;">Acede ao portal seguro do Stripe para actualizar o cartão em segundos. &#128179;</p>
+        `,
+        ctaHref: subscriptionLink,
+        ctaLabel: 'Actualizar método de pagamento',
+        footerNote: 'O Stripe gere os teus dados de pagamento com segurança. Nós nunca têmos acesso ao número do teu cartão.',
+    });
+
+    await sendMail(user.email, subject, html);
+}

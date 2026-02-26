@@ -32,9 +32,11 @@ import { invoicesRoutes } from '../modules/invoices/invoices.module';
 import { usersRoutes } from '../modules/users/users.routes';
 import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
 import { menuAnalysisRoutes } from '../modules/menu-analysis/menu-analysis.module';
+import { hemorragiaRoutes } from '../modules/hemorragia-financeira/hemorragia-financeira.module';
 import { proxyRoutes } from '../modules/proxy/proxy.routes';
 import { navigationRoutes } from '../modules/navigation/navigation.module';
 import { subscriptionsRoutes } from '../modules/subscriptions/subscriptions.module';
+import { stripeWebhookModule } from '../modules/subscriptions/stripe-webhook.module';
 import { onboardingRoutes } from '../modules/onboarding/onboarding.module';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
@@ -145,6 +147,10 @@ async function main() {
     // Public routes (NO AUTH REQUIRED) - must be registered BEFORE auth middleware
     // server.register(leadsRoutes, { prefix: '/api/public' });
 
+    // ── Stripe Webhook (BEFORE auth — needs raw body + no JWT check) ──────────
+    // Must be registered before the authMiddleware hook below.
+    server.register(stripeWebhookModule, { prefix: '/api/webhooks' });
+
     // Internal auth routes (NO CUSTOMER AUTH REQUIRED)
     const { internalAuthRoutes } = await import('../modules/internal-auth/internal-auth.routes');
     server.register(internalAuthRoutes, { prefix: '/api/internal/auth' });
@@ -222,6 +228,13 @@ async function main() {
     });
     server.addHook('onRequest', tenantMiddleware);
 
+    // ── Subscription Guard (AFTER auth + tenant middleware) ───────────────────
+    // Blocks requests from suspended or unpaid tenants.
+    server.addHook('onRequest', async (req, reply) => {
+        const { subscriptionGuard } = await import('./middleware/subscription-guard');
+        await subscriptionGuard(req, reply);
+    });
+
     // Global Error Logger (Phase 4)
     server.setErrorHandler(async (error, req, reply) => {
         // const { errorLogger } = await import('./middleware/error-logger');
@@ -268,6 +281,7 @@ async function main() {
     server.register(usersRoutes, { prefix: '/api/users' });
     server.register(purchasesDashboardRoutes, { prefix: '/api/purchases' });  // Dashboard analytics
     server.register(menuAnalysisRoutes, { prefix: '/api/menu' });  // Menu Engineering Analysis
+    server.register(hemorragiaRoutes, { prefix: '/api/hemorragia' });  // Financial Hemorrhage Analysis
     server.register(subscriptionsRoutes, { prefix: '/api/subscriptions' });  // Subscription Management
     server.register(navigationRoutes, { prefix: '/api/navigation' });  // Dynamic Navigation Menu
     server.register(onboardingRoutes, { prefix: '/api/onboarding' });

@@ -287,7 +287,7 @@ class SubscriptionsService {
      */
     async handlePaymentFailed(tenantId: number) {
         const gracePeriodEnd = new Date();
-        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 5); // 5 days grace
+        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 3); // 3 days grace
 
         await prisma.tenantSubscription.update({
             where: { tenant_id: tenantId },
@@ -305,14 +305,16 @@ class SubscriptionsService {
     }
 
     /**
-     * Suspend account after grace period
+     * Suspend account after grace period (payment failure path).
+     * Use cancelAccount() for voluntary Stripe cancellations.
      */
     async suspendAccount(tenantId: number, reason: string) {
         await prisma.tenantSubscription.update({
             where: { tenant_id: tenantId },
             data: {
                 status: 'suspended',
-                suspension_date: new Date()
+                suspension_date: new Date(),
+                suspension_reason: reason,
             }
         });
 
@@ -332,7 +334,40 @@ class SubscriptionsService {
     }
 
     /**
-     * Reactivate account after payment success
+     * Cancel account — called when Stripe subscription is voluntarily cancelled
+     * (customer.subscription.deleted webhook).
+     * Different from suspendAccount: cancellation is intentional, not a payment failure.
+     */
+    async cancelAccount(tenantId: number, reason: string) {
+        await prisma.tenantSubscription.update({
+            where: { tenant_id: tenantId },
+            data: {
+                status: 'cancelled',
+                cancellation_date: new Date(),
+                // Clear payment failure fields — this is a clean cancel, not a payment issue
+                payment_failed_at: null,
+                grace_period_end: null,
+            }
+        });
+
+        // Update tenant status
+        await prisma.tenant.update({
+            where: { id: tenantId },
+            data: {
+                status: 'cancelled',
+                suspended_at: null,
+                suspension_reason: reason
+            }
+        });
+
+        await this.invalidateTenantCache(tenantId);
+
+        console.log(`❌ Account cancelled: Tenant ${tenantId} - ${reason}`);
+    }
+
+    /**
+     * Reactivate account after payment success or manual reactivation.
+     * Clears all suspension, cancellation and payment failure fields.
      */
     async reactivateAccount(tenantId: number) {
         await prisma.tenantSubscription.update({
@@ -341,7 +376,9 @@ class SubscriptionsService {
                 status: 'active',
                 payment_failed_at: null,
                 grace_period_end: null,
-                suspension_date: null
+                suspension_date: null,
+                suspension_reason: null,
+                cancellation_date: null,
             }
         });
 
