@@ -498,7 +498,19 @@ export async function subscriptionsRoutes(app: FastifyInstance) {
                 stripeCustomerId = customer.id;
             }
 
-            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            let frontendUrl = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:3000';
+            // Clean up the URL (remove trailing slashes, ensure protocol exists, and remove internal paths like /dashboard if accidentally set in env)
+            if (!frontendUrl.startsWith('http')) {
+                frontendUrl = `https://${frontendUrl}`;
+            }
+            try {
+                const parsedUrl = new URL(frontendUrl);
+                frontendUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
+            } catch (e) {
+                // If it fails to parse even after adding https, fallback to a safe default
+                frontendUrl = 'https://rcm-staging.vercel.app';
+            }
+
             const { createCheckoutSession } = await import('../../core/stripe.service');
             const session = await createCheckoutSession({
                 stripeCustomerId,
