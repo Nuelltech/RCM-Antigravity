@@ -40,12 +40,20 @@ class SubscriptionsService {
 
         // Try cache first (skip if Redis unavailable)
         try {
-            const cached = await redis.get(cacheKey);
+            const timeoutPromise = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('Redis GET timeout (500ms)')), 500)
+            );
+
+            const cached = await Promise.race([
+                redis.get(cacheKey),
+                timeoutPromise
+            ]) as string | null;
+
             if (cached) {
                 return JSON.parse(cached);
             }
         } catch (error) {
-            // Redis unavailable - continue without cache
+            // Redis unavailable or timeout - continue without cache
         }
 
         // Cache miss - query database
@@ -98,12 +106,20 @@ class SubscriptionsService {
 
         // Try cache (skip if Redis unavailable)
         try {
-            const cached = await redis.get(cacheKey);
+            const timeoutPromise = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('Redis GET timeout (500ms)')), 500)
+            );
+
+            const cached = await Promise.race([
+                redis.get(cacheKey),
+                timeoutPromise
+            ]) as string | null;
+
             if (cached) {
                 return JSON.parse(cached);
             }
         } catch (error) {
-            // Redis unavailable - continue without cache
+            // Redis unavailable or timeout - continue without cache
         }
 
         const subscription = await prisma.tenantSubscription.findUnique({

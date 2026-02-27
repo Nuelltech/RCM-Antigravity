@@ -6,6 +6,7 @@ import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -441,8 +442,7 @@ export default function EditRecipePage() {
                         <div className="grid grid-cols-3 gap-4">
                             <div>
                                 <label className="block text-sm font-medium mb-2">Nº de Porções *</label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.01"
                                     lang="en"
                                     inputMode="decimal"
@@ -453,8 +453,7 @@ export default function EditRecipePage() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-2">Tempo de Preparação (min)</label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     lang="en"
                                     inputMode="decimal"
                                     value={tempoPreparacao || ""}
@@ -463,8 +462,7 @@ export default function EditRecipePage() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium mb-2">Qtd Total Produzida</label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.01"
                                     lang="en"
                                     inputMode="decimal"
@@ -580,8 +578,7 @@ export default function EditRecipePage() {
                                                 </select>
                                             </td>
                                             <td className="p-2">
-                                                <Input
-                                                    type="number"
+                                                <DecimalInput
                                                     step="0.001"
                                                     lang="en"
                                                     inputMode="decimal"
@@ -594,8 +591,7 @@ export default function EditRecipePage() {
                                                 />
                                             </td>
                                             <td className="p-2">
-                                                <Input
-                                                    type="number"
+                                                <DecimalInput
                                                     step="0.001"
                                                     lang="en"
                                                     inputMode="decimal"
@@ -607,8 +603,7 @@ export default function EditRecipePage() {
                                                 />
                                             </td>
                                             <td className="p-2">
-                                                <Input
-                                                    type="number"
+                                                <DecimalInput
                                                     step="0.01"
                                                     value={ing.rentabilidade.toFixed(2)}
                                                     className="w-20 bg-gray-50"
@@ -624,8 +619,7 @@ export default function EditRecipePage() {
                                                 />
                                             </td>
                                             <td className="p-2">
-                                                <Input
-                                                    type="number"
+                                                <DecimalInput
                                                     step="0.01"
                                                     value={ing.preco_unitario}
                                                     className="w-24 bg-gray-50"
@@ -716,8 +710,7 @@ export default function EditRecipePage() {
                                                     </select>
                                                 </td>
                                                 <td className="p-2">
-                                                    <Input
-                                                        type="number"
+                                                    <DecimalInput
                                                         step="0.01"
                                                         lang="en"
                                                         inputMode="decimal"
@@ -737,8 +730,7 @@ export default function EditRecipePage() {
                                                     />
                                                 </td>
                                                 <td className="p-2">
-                                                    <Input
-                                                        type="number"
+                                                    <DecimalInput
                                                         step="0.01"
                                                         value={ing.preco_unitario}
                                                         className="w-24 bg-gray-50"

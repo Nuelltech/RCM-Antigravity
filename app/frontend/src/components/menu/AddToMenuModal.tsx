@@ -5,6 +5,7 @@ import { X, Calculator, TrendingUp, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
 import { Label } from "@/components/ui/label";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import type { AvailableRecipe } from "@/types/menu";
 
 interface AvailableProduct {
@@ -258,8 +259,7 @@ export function AddToMenuModal({ onClose, onSuccess }: AddToMenuModalProps) {
                             <Label>Preço de Venda (PVP)</Label>
                             <div className="relative">
                                 <span className="absolute left-3 top-2.5 text-gray-500">€</span>
-                                <input
-                                    type="number"
+                                <DecimalInput
                                     step="0.01"
                                     min="0"
                                     lang="en"

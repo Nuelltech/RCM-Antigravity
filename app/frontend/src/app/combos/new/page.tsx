@@ -6,6 +6,7 @@ import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, ArrowLeft, Package2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -395,8 +396,7 @@ export default function NewComboPage() {
                                                         </td>
                                                         <td className="px-3 py-2 font-medium">{item.nome}</td>
                                                         <td className="px-3 py-2">
-                                                            <Input
-                                                                type="number"
+                                                            <DecimalInput
                                                                 step="0.01"
                                                                 lang="en"
                                                                 inputMode="decimal"

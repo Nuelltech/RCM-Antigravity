@@ -6,6 +6,7 @@ import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, ArrowLeft, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -325,8 +326,7 @@ export default function NewRecipePage() {
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Nº de Porções *</label>
-                                    <Input
-                                        type="number"
+                                    <DecimalInput
                                         step="0.01"
                                         lang="en"
                                         inputMode="decimal"
@@ -339,8 +339,7 @@ export default function NewRecipePage() {
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Tempo de Preparação (min)</label>
-                                    <Input
-                                        type="number"
+                                    <DecimalInput
                                         lang="en"
                                         inputMode="decimal"
                                         value={tempoPreparacao || ""}
@@ -351,8 +350,7 @@ export default function NewRecipePage() {
 
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Quantidade Total Produzida</label>
-                                    <Input
-                                        type="number"
+                                    <DecimalInput
                                         step="0.01"
                                         lang="en"
                                         inputMode="decimal"
@@ -567,8 +565,7 @@ export default function NewRecipePage() {
                                                         </select>
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        <Input
-                                                            type="number"
+                                                        <DecimalInput
                                                             step="0.001"
                                                             lang="en"
                                                             inputMode="decimal"
@@ -578,8 +575,7 @@ export default function NewRecipePage() {
                                                         />
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        <Input
-                                                            type="number"
+                                                        <DecimalInput
                                                             step="0.001"
                                                             lang="en"
                                                             inputMode="decimal"
@@ -668,8 +664,7 @@ export default function NewRecipePage() {
                                                         </select>
                                                     </td>
                                                     <td className="px-2 py-2">
-                                                        <Input
-                                                            type="number"
+                                                        <DecimalInput
                                                             step="0.01"
                                                             lang="en"
                                                             inputMode="decimal"

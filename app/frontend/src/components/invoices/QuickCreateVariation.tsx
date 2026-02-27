@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2 } from 'lucide-react';
 import { fetchClient } from '@/lib/api';
+import { DecimalInput } from "@/components/ui/decimal-input";
 
 interface QuickCreateVariationProps {
     open: boolean;
@@ -103,8 +104,7 @@ export function QuickCreateVariation({
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Nº de Itens na Embalagem *</Label>
-                            <Input
-                                type="number"
+                            <DecimalInput
                                 step="0.001"
                                 placeholder="Ex: 6, 12, 24..."
                                 value={formData.unidades_por_compra || ''}
@@ -123,8 +123,7 @@ export function QuickCreateVariation({
 
                         <div className="space-y-2">
                             <Label>Volume/Qtd por Unidade</Label>
-                            <Input
-                                type="number"
+                            <DecimalInput
                                 step="0.001"
                                 placeholder="Ex: 0.33 para 33cl"
                                 value={formData.quantidade_embalagem || ''}

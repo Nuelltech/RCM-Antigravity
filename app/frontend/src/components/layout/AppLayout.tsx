@@ -13,12 +13,6 @@ import { TrialBanner } from "./TrialBanner";
 
 export function AppLayout({ children }: AppLayoutProps) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const { startPolling } = useInvoiceNotifications();
-
-    // Start global notification polling when app mounts
-    useEffect(() => {
-        startPolling();
-    }, [startPolling]);
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+"use client";
+
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { fetchClient } from '@/lib/api';
 
 interface Alert {
     id: string;
@@ -62,53 +62,7 @@ function AlertItem({ alert }: { alert: Alert }) {
     );
 }
 
-export function SystemAlerts() {
-    const [alerts, setAlerts] = useState<Alert[]>([]);
-
-    // ✅ FIX: Track tenantId to reload when it changes
-    const [tenantId, setTenantId] = useState<string | null>(null);
-
-    useEffect(() => {
-        const currentTenantId = localStorage.getItem('tenantId');
-        setTenantId(currentTenantId);
-    }, []);
-
-    useEffect(() => {
-        if (!tenantId) return;
-
-        const controller = new AbortController();
-
-        // ✅ FIX: Reset alerts before loading
-        setAlerts([]);
-        loadAlerts(controller.signal);
-
-        return () => {
-            controller.abort();
-        };
-    }, [tenantId]); // ✅ FIX: Reload when tenant changes
-
-    async function loadAlerts(signal?: AbortSignal) {
-        try {
-            // Check signal before fetch
-            if (signal?.aborted) return;
-
-            const data = await fetchClient('/alerts');
-
-            if (signal?.aborted) return;
-
-            if (Array.isArray(data)) {
-                setAlerts(data);
-            } else {
-                console.warn('Alerts data is not an array:', data);
-                setAlerts([]);
-            }
-        } catch (error) {
-            if (signal?.aborted) return;
-            console.error('Erro ao carregar alertas:', error);
-            setAlerts([]);
-        }
-    }
-
+export function SystemAlerts({ alerts }: { alerts: Alert[] }) {
     return (
         <Card>
             <CardHeader>

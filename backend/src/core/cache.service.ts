@@ -23,10 +23,19 @@ export class CacheService {
      */
     async get<T>(key: string): Promise<T | null> {
         try {
-            const data = await redis.get(this.prefix + key);
+            // Add a strict 500ms timeout so a dead Redis doesn't block the API for seconds
+            const timeoutPromise = new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('Redis GET timeout (500ms)')), 500)
+            );
+
+            const data = await Promise.race([
+                redis.get(this.prefix + key),
+                timeoutPromise
+            ]) as string | null;
+
             return data ? JSON.parse(data) : null;
         } catch (error) {
-            console.error(`Cache GET error for ${this.prefix}${key}:`, error);
+            console.warn(`Cache GET timeout/error for ${this.prefix}${key}:`, (error as Error).message);
             return null;
         }
     }

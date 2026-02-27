@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -664,7 +665,6 @@ export default function EditProductPage() {
                                     <Label htmlFor="create-quantidade">Quantidade Vendida</Label>
                                     <Input
                                         id="create-quantidade"
-                                        type="number"
                                         step="0.001"
                                         lang="en"
                                         inputMode="decimal"
@@ -694,7 +694,6 @@ export default function EditProductPage() {
                                 <Label htmlFor="create-preco">Preço de Venda (€)</Label>
                                 <Input
                                     id="create-preco"
-                                    type="number"
                                     step="0.01"
                                     lang="en"
                                     inputMode="decimal"
@@ -765,7 +764,6 @@ export default function EditProductPage() {
                                     <Label htmlFor="edit-quantidade">Quantidade (decimal)</Label>
                                     <Input
                                         id="edit-quantidade"
-                                        type="number"
                                         step="0.001"
                                         lang="en"
                                         inputMode="decimal"
@@ -795,7 +793,6 @@ export default function EditProductPage() {
                                 <Label htmlFor="edit-preco">Preço de Venda (€)</Label>
                                 <Input
                                     id="edit-preco"
-                                    type="number"
                                     step="0.01"
                                     lang="en"
                                     inputMode="decimal"
@@ -809,7 +806,6 @@ export default function EditProductPage() {
                                 <Label htmlFor="edit-custo">Custo Unitário (€) - Opcional</Label>
                                 <Input
                                     id="edit-custo"
-                                    type="number"
                                     step="0.01"
                                     lang="en"
                                     inputMode="decimal"

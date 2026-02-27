@@ -310,7 +310,7 @@ export default function DashboardPage() {
                             )}
                         </div>
                         <div className="col-span-3">
-                            <SystemAlerts />
+                            <SystemAlerts alerts={alerts} />
                         </div>
                     </div>
 
