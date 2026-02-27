@@ -259,13 +259,13 @@ export default function NewRecipePage() {
             const payload = {
                 nome,
                 numero_porcoes: numeroPorcoes,
-                tempo_preparacao: tempoPreparacao,
-                quantidade_total_produzida: quantidadeProduzida,
+                tempo_preparacao: tempoPreparacao ?? null,
+                quantidade_total_produzida: quantidadeProduzida ?? null,
                 unidade_medida: unidadeMedida,
                 tipo,
-                descricao: descricao || undefined,
-                imagem_url: imagemUrl || undefined,
-                video_url: videoUrl || undefined,
+                descricao: descricao || null,
+                imagem_url: imagemUrl || null,
+                video_url: videoUrl || null,
                 ingredientes: ingredients.map((ing) => ({
                     produto_id: ing.tipo === 'produto' ? ing.produto_id! : undefined,
                     receita_preparo_id: ing.tipo === 'preparo' ? ing.receita_preparo_id! : undefined,
