@@ -79,7 +79,7 @@ export default function UploadSalesPage() {
 
             // Redirect after 2 seconds
             setTimeout(() => {
-                router.push(`/sales/importacoes/${data.id}`);
+                router.push(`/sales/importacoes`);
             }, 2000);
         } catch (err: any) {
             console.error(err);
@@ -208,15 +208,7 @@ export default function UploadSalesPage() {
                             </div>
                         )}
 
-                        {/* Success */}
-                        {success && (
-                            <Alert className="border-green-500 bg-green-50">
-                                <CheckCircle className="h-4 w-4 text-green-600" />
-                                <AlertDescription className="text-green-800">
-                                    Relatório enviado com sucesso! A extrair dados com IA... Será redirecionado em breve.
-                                </AlertDescription>
-                            </Alert>
-                        )}
+
 
                         {/* Error */}
                         {error && (

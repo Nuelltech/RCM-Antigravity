@@ -17,6 +17,7 @@ const registerSchema = z.object({
     nome_restaurante: z.string().min(3, 'Nome do restaurante deve ter pelo menos 3 caracteres'),
     nif: z.string().min(9, 'NIF deve ter 9 dígitos').max(9, 'NIF deve ter 9 dígitos'),
     morada: z.string().min(5, 'Morada deve ter pelo menos 5 caracteres'),
+    telefone: z.string().min(9, 'Telefone deve ter 9 dígitos').optional(), // Optional for now to avoid breaking but encouraged
     nome_usuario: z.string().min(3, 'Seu nome deve ter pelo menos 3 caracteres'),
     email: z.string().email('Email inválido'),
     password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
@@ -39,13 +40,18 @@ export default function RegisterPage() {
         setError(null);
 
         try {
-            await fetchClient('/auth/register', {
+            const response = await fetchClient('/auth/register', {
                 method: 'POST',
                 body: JSON.stringify(data),
             });
 
-            // Redirect to verify page with email as query param
-            router.push(`/auth/verify?email=${encodeURIComponent(data.email)}`);
+            // If user already exists, we don't need verification. Redirect to login.
+            if (response && response.loginRequired) {
+                router.push('/auth/login?message=Restaurant added to your account. Please login with your existing credentials.');
+            } else {
+                // New user, verification email sent
+                router.push(`/auth/verify?email=${encodeURIComponent(data.email)}`);
+            }
         } catch (err: any) {
             setError(err.message || 'Ocorreu um erro ao registar');
         } finally {
@@ -81,9 +87,15 @@ export default function RegisterPage() {
                                 {errors.nif && <p className="text-sm text-red-500">{errors.nif.message}</p>}
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="slug">Slug (Opcional)</Label>
-                                <Input id="slug" {...register('slug')} placeholder="ex: meu-restaurante" />
+                                <Label htmlFor="telefone">Telefone</Label>
+                                <Input id="telefone" {...register('telefone')} maxLength={9} />
+                                {errors.telefone && <p className="text-sm text-red-500">{errors.telefone.message}</p>}
                             </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="slug">Slug (Opcional)</Label>
+                            <Input id="slug" {...register('slug')} placeholder="ex: meu-restaurante" />
                         </div>
 
                         <div className="space-y-2">

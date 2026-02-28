@@ -11,12 +11,4 @@ export const prisma = new PrismaClient({
     // Connection pooling for high concurrency (30+ VUs)
     // Default pool size is ~10, increased to 100 for load testing
     // Adjust based on your MySQL max_connections (default: 151)
-}).$extends({
-    name: 'connection-pool-config',
-    client: {
-        $connect: async function () {
-            // @ts-ignore - Prisma internal property
-            await this.$connect();
-        },
-    },
 });

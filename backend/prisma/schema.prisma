@@ -1,7 +1,7 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
 }
-
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
@@ -24,6 +24,17 @@ model Tenant {
   plano               String    @default("trial") // trial, basico, profissional, enterprise
   data_expiracao_plano DateTime?
   ativo               Boolean   @default(true)
+  
+  // Support & Management fields
+  status              String?   @default("active") // active, trial, suspended, cancelled, payment_overdue
+  trial_ends_at       DateTime?
+  suspended_at        DateTime?
+  suspension_reason   String?   @db.Text
+  
+  // Usage limits
+  monthly_limit_invoices Int?  @default(50)
+  monthly_limit_sales    Int?  @default(100)
+  storage_limit_mb       Int?  @default(1000)
   configuracoes       Json?     // targets margem, moeda, timezone
   metadata            Json?
   createdAt           DateTime  @default(now())
@@ -78,6 +89,12 @@ model Tenant {
   vendasLinhasImportacao VendaLinhaImportacao[]
   salesMatchingHistorico SalesMatchingHistorico[]
   salesProcessingMetrics SalesProcessingMetrics[]
+  errorLogs              ErrorLog[]
+  performanceMetrics     PerformanceMetric[]
+  tenantNotes            TenantNote[]
+  tenantEvents           TenantEvent[]
+  integrationLogs        IntegrationLog[]
+  tenantSubscription     TenantSubscription?  // Active subscription
 
   @@map("tenants")
 }
@@ -123,6 +140,8 @@ model User {
   demoRequests        DemoRequest[]   // Demo requests from this user
   salesMatchingHistorico SalesMatchingHistorico[]
   salesProcessingMetrics SalesProcessingMetrics[]
+  errorLogs              ErrorLog[]
+  performanceMetrics     PerformanceMetric[]
 
 
 
@@ -161,6 +180,7 @@ model Session {
   refresh_token_hash  String    @db.VarChar(64)
   ip_address          String?
   user_agent          String?
+  push_token          String?
   expires_at          DateTime
   refresh_expires_at  DateTime
   revoked             Boolean   @default(false)
@@ -238,7 +258,7 @@ model AuditLog {
 }
 
 // -----------------------------------------------------------------------------
-// PRODUTOS & INVENTÁRIO
+// PRODUTOS & INVENTÃƒÂRIO
 // -----------------------------------------------------------------------------
 
 model Familia {
@@ -317,7 +337,7 @@ model VariacaoProduto {
   tenant_id           Int
   produto_id          Int
   tipo_unidade_compra String   // ex: "Caixa 12un"
-  unidades_por_compra Decimal  @db.Decimal(10, 4)
+  unidades_por_compra Decimal?  @db.Decimal(10, 4)
   volume_por_unidade  Decimal? @db.Decimal(10, 4) // Optional: volume/quantity per individual unit (e.g., 0.33 for 33cl bottle)
   preco_compra        Decimal  @db.Decimal(10, 2)
   preco_unitario      Decimal  @db.Decimal(10, 4) // Computed in app, stored for cache
@@ -342,6 +362,7 @@ model VariacaoProduto {
   faturasLinhasImportacao FaturaLinhaImportacao[]
   matchingHistorico   MatchingHistorico[]
 
+  @@index([tenant_id, ativo])
   @@map("variacoes_produto")
 }
 
@@ -556,6 +577,7 @@ model Compra {
   faturaImportacao    FaturaImportacao? @relation(fields: [fatura_importacao_id], references: [id])
 
   @@index([fornecedor_id])
+  @@index([tenant_id, data_compra])
   @@map("compras")
 }
 
@@ -584,7 +606,7 @@ model CompraTemporaria {
 }
 
 // -----------------------------------------------------------------------------
-// COMPRAS - Faturação (Invoice-based Purchases)
+// COMPRAS - FaturaÃƒÂ§ÃƒÂ£o (Invoice-based Purchases)
 // -----------------------------------------------------------------------------
 
 model CompraFatura {
@@ -681,7 +703,7 @@ model Receita {
   imagem_url          String?
   video_url           String?
   descricao           String?  @db.Text
-  dificuldade         String?  // Fácil, Média, Difícil
+  dificuldade         String?  // FÃƒÂ¡cil, MÃƒÂ©dia, DifÃƒÂ­cil
   categoria           String?
   ativa               Boolean  @default(true)
   criado_por          Int?
@@ -698,6 +720,7 @@ model Receita {
   comboCategoriaOpcoes ComboCategoriaOpcao[]
 
   @@unique([tenant_id, nome])
+  @@index([tenant_id, ativa])
   @@map("receitas")
 }
 
@@ -709,8 +732,8 @@ model IngredienteReceita {
   produto_id          Int?
   receita_preparo_id  Int?
   quantidade_bruta    Decimal  @db.Decimal(10, 4) // Quantidade retirada do armazenamento
-  quantidade_liquida  Decimal? @db.Decimal(10, 4) // Quantidade útil após preparação
-  rentabilidade       Decimal? @db.Decimal(5, 2)  // (Qtd Líquida / Qtd Bruta) * 100 - calculado
+  quantidade_liquida  Decimal? @db.Decimal(10, 4) // Quantidade ÃƒÂºtil apÃƒÂ³s preparaÃƒÂ§ÃƒÂ£o
+  rentabilidade       Decimal? @db.Decimal(5, 2)  // (Qtd LÃƒÂ­quida / Qtd Bruta) * 100 - calculado
   unidade             String
   custo_ingrediente   Decimal  @default(0) @db.Decimal(10, 4)
   ordem               Int      @default(0)
@@ -775,6 +798,7 @@ model MenuItem {
   vendasLinhasImportacao VendaLinhaImportacao[]
   salesMatchingHistorico SalesMatchingHistorico[]
 
+  @@index([tenant_id, ativo])
   @@map("menu")
 }
 
@@ -812,11 +836,13 @@ model Venda {
   vendaImportacao     VendaImportacao? @relation(fields: [venda_importacao_id], references: [id])
 
   @@index([tenant_id, data_venda]) // Performance: Consumption reports
+  @@index([tenant_id, menu_item_id, data_venda]) // Performance: Item sales over time
+  @@index([tenant_id, data_venda, menu_item_id]) // Performance: Analytics GroupBy & Filtering
   @@map("vendas")
 }
 
 // -----------------------------------------------------------------------------
-// INVENTÁRIO
+// INVENTÃƒÂRIO
 // -----------------------------------------------------------------------------
 
 model Localizacao {
@@ -921,19 +947,19 @@ model StockTeorico {
 }
 
 // -----------------------------------------------------------------------------
-// AI & INTEGRAÇÕES
+// AI & INTEGRAÃƒâ€¡Ãƒâ€¢ES
 // -----------------------------------------------------------------------------
 
 model AlertaAi {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   uuid                String   @default(uuid())
-  tipo_alerta         String   // Margem Baixa, Preço Subiu...
+  tipo_alerta         String   // Margem Baixa, PreÃƒÂ§o Subiu...
   titulo              String
   mensagem            String   @db.Text
   entidade_tipo       String?
   entidade_id         String?
-  severidade          String   // Info, Atenção, Crítico
+  severidade          String   // Info, AtenÃƒÂ§ÃƒÂ£o, CrÃƒÂ­tico
   acoes_sugeridas     Json?
   dados_contexto      Json?
   lido                Boolean  @default(false)
@@ -1005,7 +1031,7 @@ model MapeamentoPos {
 }
 
 // -----------------------------------------------------------------------------
-// COMBOS - Combinações de Receitas e Produtos
+// COMBOS - CombinaÃƒÂ§ÃƒÂµes de Receitas e Produtos
 // -----------------------------------------------------------------------------
 
 model Combo {
@@ -1054,7 +1080,7 @@ model ComboCategoria {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   combo_id            Int
-  categoria           String   // "Sopa", "Prato Principal", "Sobremesa", "Bebida", "Café"
+  categoria           String   // "Sopa", "Prato Principal", "Sobremesa", "Bebida", "CafÃƒÂ©"
   ordem               Int      @default(0)
   obrigatoria         Boolean  @default(true)
   custo_max_calculado Decimal  @default(0) @db.Decimal(10, 4)
@@ -1074,8 +1100,8 @@ model ComboCategoriaOpcao {
   id                  Int      @id @default(autoincrement())
   tenant_id           Int
   categoria_id        Int
-  receita_id          Int?     // Opção de receita
-  formato_venda_id    Int?     // Opção de formato de venda (bebida)
+  receita_id          Int?     // OpÃƒÂ§ÃƒÂ£o de receita
+  formato_venda_id    Int?     // OpÃƒÂ§ÃƒÂ£o de formato de venda (bebida)
   custo_unitario      Decimal  @db.Decimal(10, 4)
   ordem               Int      @default(0)
   
@@ -1127,7 +1153,7 @@ model CustoEstrutura {
   uuid                String   @default(uuid())
   
   descricao           String
-  classificacao       String   // Salário, Eletricidade, Água, Marketing, Contabilidade, Sistemas, Internet, Veículos, Renda, Gestão, Outros
+  classificacao       String   // SalÃƒÂ¡rio, Eletricidade, ÃƒÂgua, Marketing, Contabilidade, Sistemas, Internet, VeÃƒÂ­culos, Renda, GestÃƒÂ£o, Outros
   valor_mensal        Decimal  @db.Decimal(10, 2)
   
   ativo               Boolean  @default(true)
@@ -1388,7 +1414,7 @@ model InvoiceProcessingMetrics {
   
   // Duration Metrics (milliseconds)
   total_duration_ms       Int       // Worker processing time only
-  end_to_end_duration_ms  Int?      // Upload → Reviewing/Error (TOTAL for UX/SLA)
+  end_to_end_duration_ms  Int?      // Upload Ã¢â€ â€™ Reviewing/Error (TOTAL for UX/SLA)
   ocr_duration_ms         Int?
   parsing_duration_ms     Int?
   
@@ -1448,6 +1474,19 @@ model Lead {
   
   // Lead status
   status              String    @default("new")  // new, contacted, qualified, demo_scheduled, converted, rejected
+  status_history      Json?     // Array of status changes
+  
+  // Pipeline/Sales Tracking (Phase 3)
+  last_contacted_at   DateTime?
+  qualified_at        DateTime?
+  proposal_sent_at    DateTime?
+  won_at              DateTime?
+  lost_at             DateTime?
+  lost_reason         String?   @db.Text
+  internal_notes      String?   @db.Text
+  
+  assigned_to         Int?
+  assignedUser        InternalUser? @relation(fields: [assigned_to], references: [id])
   
   // Conversion tracking
   converted_to_user_id Int?
@@ -1464,6 +1503,7 @@ model Lead {
   @@index([email])
   @@index([status, createdAt])
   @@index([business_type])
+  @@index([assigned_to])
   @@map("leads")
 }
 
@@ -1515,6 +1555,48 @@ model DemoRequest {
 // INTERNAL USERS - Team Members (Admin, Marketing, Sales, Support)
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// INTERNAL AUTH: Admin & Support Users (RBAC)
+// -----------------------------------------------------------------------------
+
+model InternalRole {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique // e.g., 'ADMIN', 'SALES'
+  description String?
+  
+  permissions InternalRolePermission[]
+  users       InternalUser[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("internal_roles")
+}
+
+model InternalPermission {
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique // e.g., 'users.list', 'leads.manage'
+  description String?
+  module      String    // e.g., 'users', 'leads', 'tenants'
+
+  roles       InternalRolePermission[]
+
+  @@map("internal_permissions")
+}
+
+model InternalRolePermission {
+  role_id       Int
+  permission_id Int
+  
+  role          InternalRole       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    InternalPermission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  assignedAt    DateTime @default(now())
+
+  @@id([role_id, permission_id])
+  @@map("internal_role_permissions")
+}
+
 model InternalUser {
   id                  Int       @id @default(autoincrement())
   uuid                String    @unique @default(uuid())
@@ -1525,8 +1607,11 @@ model InternalUser {
   name                String
   
   // Role & Permissions
-  role                String    // Admin, Marketing, Sales, Support
-  permissions         Json?     // Additional granular permissions if needed
+  role                String    // Deprecated: Keeping for migration. Use internalRole instead.
+  internal_role_id    Int?
+  internalRole        InternalRole? @relation(fields: [internal_role_id], references: [id])
+  
+  permissions         Json?     // Custom permissions (overrides role)
   
   // Status
   active              Boolean   @default(true)
@@ -1540,6 +1625,8 @@ model InternalUser {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   
+  assignedLeads       Lead[]
+
   @@index([email])
   @@index([role, active])
   @@map("internal_users")
@@ -1618,6 +1705,7 @@ model VendaLinhaImportacao {
   status                String    // pending, matched, manual_review, approved
   
   // Metadata
+  metadata              Json?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   
@@ -1657,6 +1745,7 @@ model SalesMatchingHistorico {
   @@map("sales_matching_historico")
 }
 
+
 model SalesProcessingMetrics {
   id                      Int       @id @default(autoincrement())
   tenant_id               Int
@@ -1687,3 +1776,421 @@ model SalesProcessingMetrics {
   @@index([sales_import_id])
   @@map("sales_processing_metrics")
 }
+
+
+// -----------------------------------------------------------------------------
+// MONITORING & DIAGNOSTICS (PHASE 4)
+// -----------------------------------------------------------------------------
+
+model ErrorLog {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  level         String   // ERROR, WARN, INFO, CRITICAL
+  source        String   // API, WORKER, DATABASE, CLIENT
+  message       String   @db.Text
+  stack_trace   String?  @db.Text
+  tenant_id     Int?
+  user_id       Int?
+  endpoint      String?
+  method        String?
+  status_code   Int?
+  metadata      Json?
+  resolved      Boolean  @default(false)
+  resolved_at   DateTime?
+  resolved_by   Int?
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp, level])
+  @@index([tenant_id])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
+
+model PerformanceMetric {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  type          String   // API_REQUEST, DB_QUERY, WORKER_JOB
+  name          String   // "GET /api/v1/users", "CalculoCustos"
+  duration_ms   Int
+  status        String   // SUCCESS, ERROR
+  status_code   Int?
+  tenant_id     Int?
+  user_id       Int?
+  metadata      Json?    // { queryParams, workerJobId }
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp])
+  @@index([type, name])
+  @@map("performance_metrics")
+}
+
+
+model WorkerMetric {
+  id            BigInt   @id @default(autoincrement())
+  queue_name    String
+  job_name      String
+  job_id        String?
+  duration_ms   Int
+  status        String   // COMPLETED, FAILED
+  error_message String?  @db.Text
+  processed_at  DateTime @default(now())
+  attempts      Int      @default(1)
+  
+  @@index([queue_name, processed_at])
+  @@map("worker_metrics")
+}
+
+// -----------------------------------------------------------------------------
+// INTERNAL SUPPORT: Tenant Notes & Events
+// -----------------------------------------------------------------------------
+
+model TenantNote {
+  id                BigInt   @id @default(autoincrement())
+  tenant_id         Int
+  internal_user_id  String   // ID do utilizador interno (InternalUser)
+  content           String   @db.Text
+  created_at        DateTime @default(now())
+  
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id])
+  @@index([created_at])
+  @@map("tenant_notes")
+}
+
+model TenantEvent {
+  id            BigInt   @id @default(autoincrement())
+  tenant_id     Int
+  event_type    String   // account_created, first_invoice, first_error, plan_changed, suspended, reactivated
+  description   String
+  metadata_json String?  @db.Text
+  created_at    DateTime @default(now())
+  
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id, created_at])
+  @@index([event_type])
+  @@map("tenant_events")
+}
+
+
+model SystemHealth {
+  id            Int      @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  service       String   // DATABASE, REDIS, WORKERS, API, AI
+  status        String   // UP, DOWN, DEGRADED
+  response_ms   Int?
+  details       Json?
+  
+  @@index([timestamp, service])
+  @@map("system_health")
+}
+
+// -----------------------------------------------------------------------------
+// REPORTS & LOGS
+// -----------------------------------------------------------------------------
+
+model IntegrationLog {
+  id              Int       @id @default(autoincrement())
+  tenant_id       Int
+  fatura_id       Int?
+  user_id         Int?
+  started_at      DateTime  @default(now())
+  completed_at    DateTime?
+  status          String    // 'processing', 'completed', 'verified', 'error'
+  
+  tenant          Tenant    @relation(fields: [tenant_id], references: [id])
+  items           IntegrationLogItem[]
+
+  @@map("integration_logs")
+}
+
+model IntegrationLogItem {
+  id              Int       @id @default(autoincrement())
+  log_id          Int
+  entity_type     String    // 'PRODUCT', 'RECIPE', 'COMBO', 'MENU_ITEM'
+  entity_id       Int
+  entity_name     String
+  field_changed   String    // 'cost', 'price', 'margin'
+  old_value       Decimal   @db.Decimal(10, 4)
+  new_value       Decimal   @db.Decimal(10, 4)
+  
+  log             IntegrationLog @relation(fields: [log_id], references: [id], onDelete: Cascade)
+
+  @@map("integration_log_items")
+}
+
+// -----------------------------------------------------------------------------
+// SUBSCRIPTION & BILLING SYSTEM
+// -----------------------------------------------------------------------------
+
+// Feature Catalog - Master list of all available features in the system
+model FeatureCatalog {
+  id                    Int       @id @default(autoincrement())
+  feature_key           String    @unique // 'invoices', 'sales', 'inventory', 'stocks_basic'
+  feature_name          String    // 'Invoice Management', 'Sales Tracking'
+  feature_category      String    // 'core', 'advanced', 'addon'
+  description           String?   @db.Text
+  icon                  String?   // Icon name for UI
+  sort_order            Int       @default(0)
+  
+  // Versioning (for future evolution)
+  version               String    @default("1.0")
+  deprecated            Boolean   @default(false)
+  replacement_feature   String?   // If deprecated, what replaces it
+  
+  active                Boolean   @default(true)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  planFeatures          SubscriptionFeature[]
+  addonFeatures         AddonFeature[]
+  
+  @@index([feature_category, active])
+  @@index([deprecated, active])
+  @@map("feature_catalog")
+}
+
+// -----------------------------------------------------------------------------
+// MENU SYSTEM: Dynamic Menu Configuration
+// -----------------------------------------------------------------------------
+
+// Navigation Menu Items - Sidebar navigation configuration
+model NavigationMenuItem {
+  id                Int       @id @default(autoincrement())
+  key               String    @unique           // 'dashboard', 'sales', 'products'
+  name              String                      // 'Dashboard', 'Vendas', 'Produtos'
+  href              String                      // '/dashboard', '/sales'
+  icon              String                      // 'LayoutDashboard', 'BarChart3'
+  sort_order        Int       @default(0)       // Display order in menu
+  
+  // Feature requirement (subscription)
+  required_feature  String?                     // 'dashboard', 'sales', null
+  
+  // Visual grouping (optional)
+  group             String?                     // 'analytics', 'operations', 'settings'
+  
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  permissions       NavigationPermission[]
+  
+  @@index([active, sort_order])
+  @@map("navigation_menu_items")
+}
+
+// Navigation Permissions - Role-based access to navigation items
+model NavigationPermission {
+  id                        Int                   @id @default(autoincrement())
+  navigation_menu_item_id   Int
+  role                      String                // 'admin', 'gestor', 'operador'
+  
+  navigationMenuItem        NavigationMenuItem  @relation(fields: [navigation_menu_item_id], references: [id], onDelete: Cascade)
+  
+  @@unique([navigation_menu_item_id, role])
+  @@index([role])
+  @@map("navigation_permissions")
+}
+
+
+// Subscription Plans - Available pricing tiers
+model SubscriptionPlan {
+  id                    Int       @id @default(autoincrement())
+  name                  String    @unique // 'base', 'standard', 'plus'
+  display_name          String    // 'Base Plan', 'Standard Plan'
+  description           String?   @db.Text
+  price_monthly         Decimal   @db.Decimal(10, 2)
+  price_yearly          Decimal?  @db.Decimal(10, 2)
+  
+  // Stripe integration
+  stripe_price_id_monthly String?  @unique
+  stripe_price_id_yearly  String?  @unique
+  stripe_product_id     String?   @unique
+  
+  // Limits
+  max_users             Int       @default(5)
+  max_storage_mb        Int       @default(1000)
+  max_invoices_monthly  Int       @default(50)
+  max_sales_monthly     Int?      // null if not available
+  
+  // Features included in this plan
+  features              SubscriptionFeature[]
+  
+  active                Boolean   @default(true)
+  sort_order            Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  tenantSubscriptions   TenantSubscription[]
+  
+  @@index([active, sort_order])
+  @@map("subscription_plans")
+}
+
+// Subscription Features - Junction table: Plans <-> Features
+model SubscriptionFeature {
+  id                    Int       @id @default(autoincrement())
+  plan_id               Int
+  feature_id            Int
+  included_by_default   Boolean   @default(true)
+  
+  plan                  SubscriptionPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+  feature               FeatureCatalog @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  
+  @@unique([plan_id, feature_id])
+  @@index([plan_id])
+  @@index([feature_id])
+  @@map("subscription_features")
+}
+
+// Tenant Subscriptions - Active subscription for each tenant
+model TenantSubscription {
+  id                    Int       @id @default(autoincrement())
+  tenant_id             Int       @unique
+  plan_id               Int
+  
+  // Stripe integration
+  stripe_customer_id    String?   @unique
+  stripe_subscription_id String?  @unique
+  
+  // Billing
+  status                String    @default("active") // trial, active, past_due, canceled, suspended
+  billing_period        String    @default("monthly") // monthly, yearly
+  current_period_start  DateTime?
+  current_period_end    DateTime?
+  next_billing_date     DateTime?
+  
+  // Trial
+  trial_start           DateTime?
+  trial_end             DateTime?
+  
+  // Payment failure handling
+  payment_failed_at     DateTime?
+  grace_period_end      DateTime?
+  suspension_date       DateTime?
+  suspension_reason     String?   @db.Text
+  cancellation_date     DateTime?
+  
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  plan                  SubscriptionPlan @relation(fields: [plan_id], references: [id])
+  paymentHistory        PaymentHistory[]
+  tenantAddons          TenantAddon[]
+  
+  @@index([status])
+  @@index([next_billing_date])
+  @@index([grace_period_end])
+  @@index([trial_end])
+  @@map("tenant_subscriptions")
+}
+
+// Add-ons - Optional modular features
+model Addon {
+  id                    Int       @id @default(autoincrement())
+  name                  String    @unique // 'stocks_module', 'ai_forecasting'
+  display_name          String    // 'Advanced Stock Management'
+  description           String?   @db.Text
+  price_monthly         Decimal   @db.Decimal(10, 2)
+  price_yearly          Decimal?  @db.Decimal(10, 2)
+  
+  // Stripe integration
+  stripe_price_id_monthly String?  @unique
+  stripe_price_id_yearly  String?  @unique
+  stripe_product_id     String?   @unique
+  
+  // Features unlocked by this addon
+  features              AddonFeature[]
+  
+  // Compatibility (can be added to which plans?)
+  compatible_plans      String?   @db.Text // JSON array: ["base", "standard", "plus"] or null = all
+  
+  active                Boolean   @default(true)
+  sort_order            Int       @default(0)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  tenantAddons          TenantAddon[]
+  
+  @@index([active, sort_order])
+  @@map("addons")
+}
+
+// Addon Features - Junction table: Addons <-> Features
+model AddonFeature {
+  id                    Int       @id @default(autoincrement())
+  addon_id              Int
+  feature_id            Int
+  
+  addon                 Addon @relation(fields: [addon_id], references: [id], onDelete: Cascade)
+  feature               FeatureCatalog @relation(fields: [feature_id], references: [id], onDelete: Cascade)
+  
+  @@unique([addon_id, feature_id])
+  @@index([addon_id])
+  @@index([feature_id])
+  @@map("addon_features")
+}
+
+// Tenant Add-ons - Active add-ons for each tenant
+model TenantAddon {
+  id                    Int       @id @default(autoincrement())
+  tenant_id             Int
+  addon_id              Int
+  
+  stripe_subscription_id String?  @unique
+  status                String    @default("active") // active, canceled
+  
+  activated_at          DateTime  @default(now())
+  canceled_at           DateTime?
+  
+  subscription          TenantSubscription @relation(fields: [tenant_id], references: [tenant_id], onDelete: Cascade)
+  addon                 Addon @relation(fields: [addon_id], references: [id])
+  
+  @@unique([tenant_id, addon_id])
+  @@index([status])
+  @@index([tenant_id])
+  @@map("tenant_addons")
+}
+
+// Payment History - Track all billing transactions
+model PaymentHistory {
+  id                    BigInt    @id @default(autoincrement())
+  subscription_id       Int
+  
+  // Payment details
+  stripe_invoice_id     String?   @unique
+  stripe_payment_intent_id String? @unique
+  amount                Decimal   @db.Decimal(10, 2)
+  currency              String    @default("EUR")
+  status                String    // succeeded, failed, pending, refunded
+  
+  // Timestamps
+  billing_date          DateTime
+  paid_at               DateTime?
+  failed_at             DateTime?
+  
+  // Failure details
+  failure_reason        String?   @db.Text
+  failure_code          String?
+  
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  
+  subscription          TenantSubscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  
+  @@index([subscription_id, billing_date])
+  @@index([status])
+  @@index([billing_date])
+  @@map("payment_history")
+}
+

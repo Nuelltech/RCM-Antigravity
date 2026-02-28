@@ -6,6 +6,7 @@ import { Plus, Edit2, Trash2, Search } from 'lucide-react';
 import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { fetchClient } from '@/lib/api';
+import { DecimalInput } from "@/components/ui/decimal-input";
 
 interface TemplateFormatoVenda {
     id: number;
@@ -279,8 +280,7 @@ export default function TemplateFormatosVendaPage() {
                                             <label className="block text-sm font-medium text-gray-700 mb-1">
                                                 Quantidade *
                                             </label>
-                                            <input
-                                                type="number"
+                                            <DecimalInput
                                                 step="0.001"
                                                 value={quantidade}
                                                 onChange={(e) => setQuantidade(e.target.value)}

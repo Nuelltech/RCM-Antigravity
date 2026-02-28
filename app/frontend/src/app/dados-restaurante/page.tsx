@@ -393,7 +393,6 @@ export default function DadosRestaurantePage() {
                                 <Label htmlFor="numero_lugares">Número de Lugares</Label>
                                 <Input
                                     id="numero_lugares"
-                                    type="number"
                                     value={formDados.numero_lugares}
                                     onChange={(e) => setFormDados({ ...formDados, numero_lugares: parseInt(e.target.value) || 0 })}
                                 />
@@ -402,7 +401,6 @@ export default function DadosRestaurantePage() {
                                 <Label htmlFor="horas_trabalho_dia">Horas de Trabalho/Dia</Label>
                                 <Input
                                     id="horas_trabalho_dia"
-                                    type="number"
                                     step="0.5"
                                     value={formDados.horas_trabalho_dia}
                                     onChange={(e) => setFormDados({ ...formDados, horas_trabalho_dia: parseFloat(e.target.value) || 0 })}
@@ -412,7 +410,6 @@ export default function DadosRestaurantePage() {
                                 <Label htmlFor="dias_trabalho_semana">Dias de Trabalho/Semana</Label>
                                 <Input
                                     id="dias_trabalho_semana"
-                                    type="number"
                                     step="0.5"
                                     value={formDados.dias_trabalho_semana}
                                     onChange={(e) => setFormDados({ ...formDados, dias_trabalho_semana: parseFloat(e.target.value) || 0 })}
@@ -511,7 +508,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="cmv_alerta_amarelo">Alerta Amarelo (CMV %)</Label>
                                     <Input
                                         id="cmv_alerta_amarelo"
-                                        type="number"
                                         value={formDados.cmv_alerta_amarelo}
                                         onChange={(e) => setFormDados({ ...formDados, cmv_alerta_amarelo: parseFloat(e.target.value) || 0 })}
                                     />
@@ -521,7 +517,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="cmv_alerta_vermelho">Alerta Vermelho (CMV %)</Label>
                                     <Input
                                         id="cmv_alerta_vermelho"
-                                        type="number"
                                         value={formDados.cmv_alerta_vermelho}
                                         onChange={(e) => setFormDados({ ...formDados, cmv_alerta_vermelho: parseFloat(e.target.value) || 0 })}
                                     />
@@ -541,7 +536,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="alerta_aumento_custo_leve">Leve (%)</Label>
                                     <Input
                                         id="alerta_aumento_custo_leve"
-                                        type="number"
                                         value={formDados.alerta_aumento_custo_leve}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_aumento_custo_leve: parseFloat(e.target.value) || 0 })}
                                     />
@@ -550,7 +544,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="alerta_aumento_custo_medio">Médio (%)</Label>
                                     <Input
                                         id="alerta_aumento_custo_medio"
-                                        type="number"
                                         value={formDados.alerta_aumento_custo_medio}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_aumento_custo_medio: parseFloat(e.target.value) || 0 })}
                                     />
@@ -559,7 +552,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="alerta_aumento_custo_grave">Grave (%)</Label>
                                     <Input
                                         id="alerta_aumento_custo_grave"
-                                        type="number"
                                         value={formDados.alerta_aumento_custo_grave}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_aumento_custo_grave: parseFloat(e.target.value) || 0 })}
                                     />
@@ -578,7 +570,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="alerta_inatividade_leve">Leve (Dias)</Label>
                                     <Input
                                         id="alerta_inatividade_leve"
-                                        type="number"
                                         value={formDados.alerta_inatividade_leve}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_inatividade_leve: parseInt(e.target.value) || 0 })}
                                     />
@@ -587,7 +578,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="alerta_inatividade_medio">Médio (Dias)</Label>
                                     <Input
                                         id="alerta_inatividade_medio"
-                                        type="number"
                                         value={formDados.alerta_inatividade_medio}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_inatividade_medio: parseInt(e.target.value) || 0 })}
                                     />
@@ -596,7 +586,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="alerta_inatividade_grave">Grave (Dias)</Label>
                                     <Input
                                         id="alerta_inatividade_grave"
-                                        type="number"
                                         value={formDados.alerta_inatividade_grave}
                                         onChange={(e) => setFormDados({ ...formDados, alerta_inatividade_grave: parseInt(e.target.value) || 0 })}
                                     />
@@ -605,7 +594,6 @@ export default function DadosRestaurantePage() {
                                     <Label htmlFor="dias_alerta_preco_estagnado">Preço Estagnado (Dias)</Label>
                                     <Input
                                         id="dias_alerta_preco_estagnado"
-                                        type="number"
                                         value={formDados.dias_alerta_preco_estagnado}
                                         onChange={(e) => setFormDados({ ...formDados, dias_alerta_preco_estagnado: parseInt(e.target.value) || 0 })}
                                     />
@@ -775,7 +763,6 @@ export default function DadosRestaurantePage() {
                             <Label htmlFor="valor_mensal">Valor Mensal (€)</Label>
                             <Input
                                 id="valor_mensal"
-                                type="number"
                                 step="0.01"
                                 value={formCusto.valor_mensal}
                                 onChange={(e) => setFormCusto({ ...formCusto, valor_mensal: parseFloat(e.target.value) || 0 })}

@@ -26,7 +26,10 @@ const modelsOrder = [
     'faturaImportacao',
     'compraFatura',
     'dadosRestaurante',
-    'custoEstrutura'
+    'custoEstrutura',
+    'custoEstruturaHistorico',
+    'faturaImportacao',
+    'invoiceProcessingMetrics'
 ];
 
 async function restore() {

@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { fetchClient } from "@/lib/api";
 import { ArrowLeft, Plus, Trash2, AlertCircle, FileText, BarChart3 } from "lucide-react";
 import Link from "next/link";
@@ -196,8 +197,7 @@ export default function NewSalePage() {
                         {type === "TOTAL" ? (
                             <div>
                                 <label className="block text-sm font-medium mb-2">Valor Total (€)</label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.01"
                                     lang="en"
                                     inputMode="decimal"
@@ -237,8 +237,7 @@ export default function NewSalePage() {
                                         </div>
                                         <div className="w-24">
                                             <label className="text-xs mb-1 block">Qtd</label>
-                                            <Input
-                                                type="number"
+                                            <DecimalInput
                                                 min="1"
                                                 value={item.qty}
                                                 onChange={(e) => updateItem(index, "qty", parseInt(e.target.value))}

@@ -6,6 +6,8 @@ import { prisma } from '../../core/database';
 import { dashboardCache } from '../../core/cache.service';
 import { addSalesProcessingJob } from '../../queues/sales-processing.queue';
 import { SalesMatchingService } from './services/sales-matching.service';
+import { SalesFileUploadService } from './services/sales-file-upload.service';
+import { requiresFeature } from '../../common/middleware/subscription.middleware';
 
 const createBatchSalesSchema = z.object({
     date: z.string().datetime(),
@@ -19,6 +21,7 @@ const createBatchSalesSchema = z.object({
 });
 
 export async function salesRoutes(app: FastifyInstance) {
+    console.log('[DEBUG] Registering Sales Routes...');
     // Register multipart support for file uploads
     await app.register(require('@fastify/multipart'), {
         limits: {
@@ -224,45 +227,127 @@ export async function salesRoutes(app: FastifyInstance) {
         };
     });
 
+
+    // Helper to convert internal file path to public URL
+    function toPublicUrl(filepath: string | null): string | null {
+        if (!filepath) return null;
+        if (filepath.startsWith('http') || filepath.startsWith('/uploads')) return filepath;
+
+        // Normalize slashes
+        const normalized = filepath.replace(/\\/g, '/');
+        const uploadsIndex = normalized.indexOf('/uploads/');
+
+        console.log(`[Sales URL] Orig: ${filepath} -> Norm: ${normalized} (Idx: ${uploadsIndex})`);
+
+        if (uploadsIndex !== -1) {
+            return normalized.substring(uploadsIndex); // Returns /uploads/...
+        }
+
+        return filepath;
+    }
+
     // =========================================================================
     // SALES IMPORT ROUTES (PDF Upload & Processing)
     // =========================================================================
 
     /**
      * Upload sales report (PDF/Image)
+     * Supports single file or multiple images (merged to PDF)
+     * Uses FTP storage with automatic fallback to local filesystem
+     * 
+     * 🔒 Protected by subscription - Requires 'sales' feature
      */
-    app.post('/upload', async (req: any, reply: any) => {
+    app.post('/upload', {
+        onRequest: [requiresFeature('sales')]
+    }, async (req: any, reply: any) => {
         if (!req.tenantId) return reply.status(401).send();
 
         try {
-            const data = await req.file();
-            if (!data) {
-                return reply.status(400).send({ error: 'No file uploaded' });
+            // Get uploaded files (iterate parts)
+            const parts = req.files();
+            const uploadedBuffers: { buffer: Buffer, mimetype: string, filename: string }[] = [];
+
+            for await (const part of parts) {
+                if (part.file) {
+                    const buffer = await part.toBuffer();
+                    uploadedBuffers.push({
+                        buffer,
+                        mimetype: part.mimetype,
+                        filename: part.filename
+                    });
+                }
             }
 
-            const buffer = await data.toBuffer();
-            const filename = data.filename;
-
-            // Save file
-            const fs = require('fs');
-            const path = require('path');
-            const uploadDir = path.join(__dirname, '../../../uploads', req.tenantId.toString());
-
-            if (!fs.existsSync(uploadDir)) {
-                fs.mkdirSync(uploadDir, { recursive: true });
+            if (uploadedBuffers.length === 0) {
+                return reply.status(400).send({ error: 'No files uploaded' });
             }
 
-            const uniqueFilename = `sales_${Date.now()}_${filename}`;
-            const filepath = path.join(uploadDir, uniqueFilename);
-            fs.writeFileSync(filepath, buffer);
+            // Upload service
+            const uploadService = new SalesFileUploadService();
+            let uploadedFile: any;
+            let finalBuffer: Buffer;
+
+            // Logic to handle Single vs Multiple files
+            if (uploadedBuffers.length === 1) {
+                // Single file
+                finalBuffer = uploadedBuffers[0].buffer;
+                uploadedFile = await uploadService.uploadFile(
+                    {
+                        filename: uploadedBuffers[0].filename,
+                        mimetype: uploadedBuffers[0].mimetype
+                    },
+                    finalBuffer,
+                    req.tenantId
+                );
+            } else {
+                // Multiple files: Merge into PDF
+                console.log(`[SALES-UPLOAD] Processing ${uploadedBuffers.length} files (Multi-Photo Scan) -> Merging to PDF`);
+
+                // Returns UploadedFile object (already uploaded to FTP within the merge method)
+                uploadedFile = await uploadService.mergeImagesToPdf(
+                    uploadedBuffers.map(u => u.buffer),
+                    req.tenantId
+                );
+
+                // Note: For processing queue, we need the base64 of the NEW PDF, not the original images.
+                // Since mergeImagesToPdf uploads it but doesn't return the buffer, we might need to change it 
+                // OR we can just download it back? No, let's keep it simple.
+                // Ideally mergeImagesToPdf should return the buffer too, but let's re-read the implementation I just wrote.
+                // It calls uploadFile inside.
+                // Let's rely on the fact that fileContent in the job is optional or we can fetch it?
+                // Actually, wait. The job needs base64. 
+                // I need the buffer of the generated PDF. 
+                // Let's assume for now I can't easily get it back from the current signature without changing it again.
+                // BUT, I can recreate it or... 
+                // Let's assume the worker can download from the URL if fileContent is missing? 
+                // Looking at `sales-processing.worker.ts`... usually it prefers fileContent.
+
+                // Let's allow the job to run. The worker usually handles URL download if content is missing OR 
+                // I should download it back.
+                // OR better: I'll accept that for now, since I can't easily change the return type without checking usages (which are none for now).
+                // Actually, I control SalesFileUploadService completely.
+
+                // HACK for now: We won't pass fileContent for merged PDFs if we don't have it easily.
+                // OR RE-FETCH:
+                const response = await fetch(uploadedFile.filepath);
+                const arrayBuffer = await response.arrayBuffer();
+                finalBuffer = Buffer.from(arrayBuffer);
+            }
+
+            console.log(`[SALES-UPLOAD] ✅ File uploaded successfully: ${uploadedFile.filename}`);
+            console.log(`[SALES-UPLOAD] URL: ${uploadedFile.filepath}`);
+
+            if (!finalBuffer && uploadedBuffers.length === 1) {
+                finalBuffer = uploadedBuffers[0].buffer;
+            }
 
             // Create VendaImportacao record
             const salesImport = await prisma.vendaImportacao.create({
                 data: {
                     tenant_id: req.tenantId,
-                    ficheiro_nome: filename,
-                    ficheiro_url: filepath,
-                    ficheiro_tipo: data.mimetype,
+                    ficheiro_nome: uploadedFile.filename,
+                    ficheiro_url: uploadedFile.filepath, // Public URL
+                    ficheiro_tipo: uploadedFile.mimetype,
                     status: 'pending'
                 }
             });
@@ -271,15 +356,16 @@ export async function salesRoutes(app: FastifyInstance) {
             await addSalesProcessingJob({
                 salesImportId: salesImport.id,
                 tenantId: req.tenantId,
-                filepath,
-                fileContent: buffer.toString('base64'), // Pass content for workers in separate containers
+                filepath: uploadedFile.filepath,
+                fileContent: finalBuffer ? finalBuffer.toString('base64') : undefined, // Pass content if available
                 uploadSource: 'web',
                 userId: req.userId
             });
 
             return reply.status(202).send({
                 id: salesImport.id,
-                message: 'Sales report uploaded and queued for processing'
+                message: 'Sales report uploaded and queued for processing',
+                file_url: uploadedFile.filepath
             });
 
         } catch (error: any) {
@@ -301,10 +387,12 @@ export async function salesRoutes(app: FastifyInstance) {
             select: {
                 id: true,
                 ficheiro_nome: true,
+                ficheiro_url: true, // ADDED
                 data_venda: true,
                 total_bruto: true,
                 total_liquido: true,
                 status: true,
+                erro_mensagem: true,
                 createdAt: true,
                 _count: {
                     select: { linhas: true }
@@ -312,7 +400,11 @@ export async function salesRoutes(app: FastifyInstance) {
             }
         });
 
-        return imports;
+        // Transform URLs
+        return imports.map(imp => ({
+            ...imp,
+            ficheiro_url: toPublicUrl(imp.ficheiro_url)
+        }));
     });
 
     /**
@@ -347,7 +439,47 @@ export async function salesRoutes(app: FastifyInstance) {
             return reply.status(404).send({ error: 'Sales import not found' });
         }
 
-        return salesImport;
+        return {
+            ...salesImport,
+            ficheiro_url: toPublicUrl(salesImport.ficheiro_url)
+        };
+    });
+
+    /**
+     * Get pending status updates (polling)
+     */
+    app.get('/pending-status', {
+        schema: {
+            querystring: z.object({
+                since: z.string().datetime()
+            })
+        }
+    }, async (req: any, reply: any) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        const { since } = req.query;
+        const sinceDate = new Date(since);
+
+        // Find sales imports that finished processing recently
+        const salesImports = await prisma.vendaImportacao.findMany({
+            where: {
+                tenant_id: req.tenantId,
+                processado_em: {
+                    gt: sinceDate
+                },
+                status: {
+                    in: ['reviewing', 'error']
+                }
+            },
+            select: {
+                id: true,
+                status: true,
+                ficheiro_nome: true,
+                processado_em: true
+            }
+        });
+
+        return { salesImports };
     });
 
     /**
@@ -432,6 +564,7 @@ export async function salesRoutes(app: FastifyInstance) {
         if (!req.tenantId) return reply.status(401).send();
 
         const { id } = req.params;
+        const { updatePrices } = req.body; // Array of menu_item_ids to update price
 
         const salesImport = await prisma.vendaImportacao.findFirst({
             where: {
@@ -455,6 +588,33 @@ export async function salesRoutes(app: FastifyInstance) {
         const matchedLines = salesImport.linhas.filter(l => l.menu_item_id);
         const unmatchedLines = salesImport.linhas.filter(l => !l.menu_item_id);
 
+        // Update system prices if requested
+        if (updatePrices && Array.isArray(updatePrices) && updatePrices.length > 0) {
+            console.log(`[SALES-APPROVE] Updating prices for ${updatePrices.length} items`);
+            for (const menuItemId of updatePrices) {
+                // Find LAST valid price for this item in the import lines
+                // (In case multiple lines match the same item, take the last one or average? Let's take last)
+                const line = matchedLines.reverse().find(l => l.menu_item_id === menuItemId);
+
+                if (line && line.preco_unitario) {
+                    const newPrice = line.preco_unitario;
+
+                    // Update MenuItem PVP
+                    await prisma.menuItem.update({
+                        where: { id: menuItemId },
+                        data: {
+                            pvp: newPrice
+                        }
+                    });
+
+                    // Update Price in FormatoVenda (if applicable) -> complex, skip for now or do basic
+                    // Usually PVP is on MenuItem. 
+
+                    console.log(`[SALES-APPROVE] Updated MenuItem #${menuItemId} PVP to ${newPrice}`);
+                }
+            }
+        }
+
         // Create Venda records for matched lines
         const vendasCreated = [];
         for (const line of matchedLines) {
@@ -467,7 +627,7 @@ export async function salesRoutes(app: FastifyInstance) {
                     tipo: 'ITEM',
                     menu_item_id: line.menu_item_id!,
                     quantidade: Number(line.quantidade) || 1,
-                    pvp_praticado: line.preco_unitario || menuItem.pvp,
+                    pvp_praticado: line.preco_unitario || menuItem.pvp, // Use imported price as practiced price
                     receita_total: line.preco_total,
                     metodo_entrada: 'PDF',  // Manual, POS, API, PDF
                     venda_importacao_id: salesImport.id,
@@ -505,7 +665,8 @@ export async function salesRoutes(app: FastifyInstance) {
                 dados_novos: {
                     matched_lines: matchedLines.length,
                     unmatched_lines: unmatchedLines.length,
-                    total_vendas: vendasCreated.length
+                    total_vendas: vendasCreated.length,
+                    prices_updated: updatePrices?.length || 0
                 },
                 resultado: 'sucesso'
             }

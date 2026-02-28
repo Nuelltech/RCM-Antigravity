@@ -37,8 +37,37 @@ async function main() {
         },
     ];
 
+    // 1. Seed Roles
+    const roles = [
+        { name: 'ADMIN', description: 'Administrator' },
+        { name: 'SALES', description: 'Sales Team' },
+        { name: 'MARKETING', description: 'Marketing Team' },
+        { name: 'SUPPORT', description: 'Support Team' }
+    ];
+
+    const roleMap = new Map<string, number>();
+
+    for (const r of roles) {
+        const role = await prisma.internalRole.upsert({
+            where: { name: r.name },
+            update: {},
+            create: r,
+        });
+        roleMap.set(r.name, role.id);
+        console.log(`✅ Role ready: ${r.name}`);
+    }
+
+    // 2. Seed Users
     for (const userData of users) {
-        // Check if user already exists
+        // Map simplified role string to DB Role Name
+        const roleName = userData.role.toUpperCase();
+        const roleId = roleMap.get(roleName);
+
+        if (!roleId) {
+            console.warn(`⚠️ Role ${roleName} not found for user ${userData.email}, skipping.`);
+            continue;
+        }
+
         const existing = await prisma.internalUser.findUnique({
             where: { email: userData.email },
         });
@@ -52,17 +81,18 @@ async function main() {
         const password_hash = await bcrypt.hash(userData.password, 10);
 
         // Create user
-        const user = await prisma.internalUser.create({
+        await prisma.internalUser.create({
             data: {
                 email: userData.email,
                 password_hash,
                 name: userData.name,
-                role: userData.role,
+                role: userData.role, // Keep for legacy if needed
+                internal_role_id: roleId,
                 email_verified: userData.email_verified,
+                active: true
             },
         });
-
-        console.log(`✅ Created ${userData.role}: ${userData.email}`);
+        console.log(`✅ Created user: ${userData.email} (${roleName})`);
     }
 
     console.log('✨ Internal users seeded successfully!');

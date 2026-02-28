@@ -31,10 +31,10 @@ function getDefaultRouteForRole(role: string): string {
         case "admin":
         case "manager":  // includes converted "gestor"
             return "/dashboard";
-        case "operador":
-            return "/recipes";
-        case "visualizador":
-            return "/menu";
+        case "operator":
+            return "/recipes"; // Operators go to recipes
+        case "viewer":
+            return "/menu"; // Read-only dashboard
         default:
             return "/recipes";
     }
@@ -88,13 +88,16 @@ export function TenantSwitcher() {
                 // Notify components about role update (e.g., Sidebar)
                 window.dispatchEvent(new Event("userRoleUpdated"));
 
+                // Also trigger storage event for hooks listening to it
+                window.dispatchEvent(new Event("storage"));
+
                 // Determine where to redirect based on new role
                 const redirectPath = getDefaultRouteForRole(response.user.role);
 
                 console.log(`[Tenant Switch] Switched to tenant ${response.tenant.nome_restaurante}, role: ${response.user.role}, redirecting to: ${redirectPath}`);
 
-                // Navigate to appropriate page for the new role
-                window.location.href = redirectPath;
+                // Navigate to appropriate page without reloading
+                router.push(redirectPath);
             }
         } catch (error: any) {
             console.error("Failed to switch tenant:", error);

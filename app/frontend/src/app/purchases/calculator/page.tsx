@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, Calculator, ShoppingCart, Save } from "lucide-react";
+import { DecimalInput } from "@/components/ui/decimal-input";
 
 interface AvailableItem {
     id: number;
@@ -277,8 +278,7 @@ export default function PurchaseCalculatorPage() {
                                                     {item.tipo === 'formato_venda' ? 'Produto' : item.tipo}
                                                 </div>
                                             </div>
-                                            <input
-                                                type="number"
+                                            <DecimalInput
                                                 min="0"
                                                 value={item.quantidade}
                                                 onChange={(e) => updateQuantity(index, parseFloat(e.target.value) || 0)}

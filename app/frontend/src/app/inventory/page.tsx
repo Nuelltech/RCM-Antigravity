@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { fetchClient } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -461,8 +462,7 @@ export default function InventoryPage() {
                                         />
                                     </TableCell>
                                     <TableCell>
-                                        <Input
-                                            type="number"
+                                        <DecimalInput
                                             className="h-8"
                                             value={item.quantidade_contada}
                                             onChange={(e: any) => updateItem(item.id, { quantidade: Number(e.target.value) })}

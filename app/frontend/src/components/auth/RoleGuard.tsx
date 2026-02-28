@@ -23,16 +23,21 @@ export function RoleGuard({ children, allowedRoles, redirectTo }: RoleGuardProps
     const { user, loading, hasRole } = useUser();
 
     useEffect(() => {
-        if (loading) return;
+        if (!loading && user) {
+            console.warn(`[RoleGuard] Checking access for ${user.email} (Role: ${user.role}) on ${pathname}`);
+        }
 
-        if (!user) {
-            // Not logged in - redirect to login
+        if (!loading && !user) {
+            console.warn("[RoleGuard] No user found (not loading). Redirecting to login.");
             router.push("/auth/login");
             return;
         }
 
+        if (loading) return;
+
         if (!hasRole(allowedRoles)) {
             // User doesn't have required role - redirect based on their role
+            if (!user) return; // Should be handled by top-level check but satisfies TS
             const destination = redirectTo || getDefaultRouteForRole(user.role);
 
             // Only redirect if not already on the destination
@@ -70,12 +75,13 @@ export function RoleGuard({ children, allowedRoles, redirectTo }: RoleGuardProps
  */
 function getDefaultRouteForRole(role: UserRole): string {
     switch (role) {
+        case "owner":
         case "admin":
         case "manager":
             return "/dashboard";
-        case "operador":
+        case "operator":
             return "/recipes"; // Operators go to recipes
-        case "visualizador":
+        case "viewer":
             return "/menu"; // Viewers go to menu
         default:
             return "/recipes";

@@ -3,14 +3,15 @@ import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { IntelligentParserRouter } from '../modules/invoices/services/intelligent-parser-router.service';
 import { prisma } from '../core/database';
+import { notificationService } from '../services/notification.service';
+import { env } from '../core/env';
+import { redisOptions } from '../core/redis';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
 // const prisma = new PrismaClient();
-const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
-});
+const redisConnection = new Redis(env.REDIS_URL, redisOptions);
 
 interface InvoiceProcessingJob {
     invoiceId: number;
@@ -58,9 +59,34 @@ const worker = new Worker<InvoiceProcessingJob>(
                     tempFileCreated = true;
                 } catch (err: any) {
                     console.error('[Worker] Failed to recreate file from Base64:', err);
-                    // We might continue and hope the original filepath works? 
-                    // But likely it won't if we depend on this fix. 
-                    // Let's log and proceed, maybe the error handler catches it later.
+                }
+            } else if (filepath && filepath.startsWith('http')) {
+                try {
+                    console.log(`[Worker] 📥 Downloading file from: ${filepath}`);
+
+                    // Download file via HTTPS
+                    const response = await fetch(filepath);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const arrayBuffer = await response.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+
+                    // Create temp path
+                    const tempDir = os.tmpdir();
+                    const ext = mimetype === 'application/pdf' ? '.pdf' : path.extname(filepath) || '.jpg';
+                    const tempFilename = `invoice_${invoiceId}_${Date.now()}${ext}`;
+                    const tempFilePath = path.join(tempDir, tempFilename);
+
+                    await fs.writeFile(tempFilePath, buffer);
+
+                    console.log(`[Worker] ✅ File downloaded to: ${tempFilePath}`);
+                    filepath = tempFilePath; // Override filepath to use local temp file
+                    tempFileCreated = true;
+                } catch (err: any) {
+                    console.error('[Worker] Failed to download file from URL:', err);
+                    throw new Error(`Failed to download invoice file: ${err.message}`);
                 }
             }
             // ------------------------------------------------------------------
@@ -109,7 +135,7 @@ const worker = new Worker<InvoiceProcessingJob>(
             const lineItemsData = result.lineItems.map((item, index) => ({
                 fatura_importacao_id: invoiceId,
                 tenant_id: tenantId,
-                linha_numero: item.linhaNumero || index + 1,
+                linha_numero: typeof item.linhaNumero === 'string' ? parseInt(item.linhaNumero, 10) : (item.linhaNumero || index + 1),
                 descricao_original: item.descricaoOriginal,
                 descricao_limpa: item.descricaoLimpa,
                 quantidade: item.quantidade || undefined,
@@ -147,7 +173,7 @@ const worker = new Worker<InvoiceProcessingJob>(
             console.log(`[Worker] ✅ Invoice #${invoiceId} processed successfully in ${duration}ms (${result.lineItems.length} items, method: ${result.method})`);
 
             // Phase 4: Generic Worker Metric - SKIPPED FOR PROD HOTFIX
-            /*
+
             try {
                 // @ts-ignore - Stale Prisma types legacy workaround
                 await prisma.workerMetric.create({
@@ -162,7 +188,22 @@ const worker = new Worker<InvoiceProcessingJob>(
                     }
                 });
             } catch (err) { console.error('Failed to log worker metric', err); }
-            */
+
+            // Send Push Notification
+            try {
+                if (userId) {
+                    await notificationService.sendToUser(
+                        userId,
+                        'Fatura Processada',
+                        `A fatura #${invoiceId} foi processada com sucesso. Toque para validar.`,
+                        // @ts-ignore
+                        { schema: `rcm://financial/invoices/${invoiceId}`, invoiceId }
+                    );
+                }
+            } catch (notifError) {
+                console.error('Failed to send push notification', notifError);
+            }
+
 
             return {
                 success: true,
@@ -200,7 +241,7 @@ const worker = new Worker<InvoiceProcessingJob>(
             });
 
             // Phase 4: Generic Worker Metric - SKIPPED FOR PROD HOTFIX
-            /*
+
             try {
                 // @ts-ignore - Stale Prisma types legacy workaround
                 await prisma.workerMetric.create({
@@ -215,7 +256,22 @@ const worker = new Worker<InvoiceProcessingJob>(
                     }
                 });
             } catch (err) { console.error('Failed to log worker metric', err); }
-            */
+            // Log to System Errors (ErrorLog) for Dashboard visibility
+            await prisma.errorLog.create({
+                data: {
+                    level: 'ERROR',
+                    source: 'WORKER',
+                    message: `Invoice #${invoiceId} failed: ${error.message}`,
+                    stack_trace: error.stack,
+                    tenant_id: tenantId,
+                    metadata: {
+                        jobId: job.id,
+                        uploadSource,
+                        method: isGeminiUnavailable ? 'gemini_unavailable' : 'failed'
+                    }
+                }
+            });
+
 
             // Save error metrics
             await prisma.invoiceProcessingMetrics.create({
@@ -246,7 +302,7 @@ const worker = new Worker<InvoiceProcessingJob>(
         }
     },
     {
-        connection: redisConnection,
+        connection: redisConnection as any,
         concurrency: 5,  // Process up to 5 invoices in parallel
         limiter: {
             max: 10,  // Max 10 jobs

@@ -73,54 +73,54 @@ class MenuAnalysisService {
             }
         });
 
-        // 2. For each item, calculate metrics
+        // 1b. Fetch all sales aggregations to avoid N+1 query loops
+        const salesAgg = await prisma.venda.groupBy({
+            by: ['menu_item_id'],
+            where: {
+                tenant_id: this.tenantId,
+                menu_item_id: { in: menuItems.map(i => i.id) },
+                data_venda: {
+                    gte: startDate,
+                    lte: endDate
+                }
+            },
+            _sum: {
+                quantidade: true,
+                receita_total: true,
+                custo_total: true
+            }
+        });
+
+        const salesMap = new Map<number, { quantidade: number, receita_total: number, custo_total: number }>();
+        for (const agg of salesAgg) {
+            if (agg.menu_item_id) {
+                salesMap.set(agg.menu_item_id, {
+                    quantidade: Number(agg._sum.quantidade || 0),
+                    receita_total: Number(agg._sum.receita_total || 0),
+                    custo_total: Number(agg._sum.custo_total || 0)
+                });
+            }
+        }
+
+        // 2. For each item, calculate metrics in-memory
         const itemsWithMetrics: MenuAnalysisItem[] = [];
 
         for (const item of menuItems) {
-            // Fetch sales for this item in the period
-            const sales = await prisma.venda.findMany({
-                where: {
-                    tenant_id: this.tenantId,
-                    menu_item_id: item.id,
-                    data_venda: {
-                        gte: startDate,
-                        lte: endDate
-                    }
-                },
-                select: {
-                    quantidade: true,
-                    receita_total: true,
-                    custo_total: true,
-                    pvp_praticado: true  // IMPORTANT: Historical price
-                }
-            });
+            const itemSales = salesMap.get(item.id);
+            const volumeVendas = itemSales ? itemSales.quantidade : 0;
+            const receitaTotal = itemSales ? itemSales.receita_total : 0;
 
-            // Calculate metrics
-            const volumeVendas = sales.reduce((sum, sale) => sum + sale.quantidade, 0);
-            const receitaTotal = Number(sales.reduce((sum, sale) => sum + Number(sale.receita_total), 0));
-
-            // Calculate margin using HISTORICAL prices (pvp_praticado) and costs
+            // Calculate margin using HISTORICAL prices and costs if available
             let margemContribuicao = 0;
             let pvpMedio = Number(item.pvp); // Fallback to current PVP
 
-            if (sales.length > 0 && sales.some(s => s.custo_total)) {
+            if (itemSales && itemSales.quantidade > 0 && itemSales.custo_total > 0) {
                 // Calculate weighted average margin from actual sales
-                const totalMargin = sales.reduce((sum, sale) => {
-                    const pvpSale = Number(sale.pvp_praticado);
-                    const custoUnitario = Number(sale.custo_total || 0) / sale.quantidade;
-                    const margemSale = pvpSale - custoUnitario;
-                    return sum + (margemSale * sale.quantidade); // weighted by quantity
-                }, 0);
-
-                // Weighted average PVP
-                const totalPvpWeighted = sales.reduce((sum, sale) => {
-                    return sum + (Number(sale.pvp_praticado) * sale.quantidade);
-                }, 0);
-
-                margemContribuicao = volumeVendas > 0 ? totalMargin / volumeVendas : 0;
-                pvpMedio = volumeVendas > 0 ? totalPvpWeighted / volumeVendas : Number(item.pvp);
+                const totalMargin = itemSales.receita_total - itemSales.custo_total;
+                margemContribuicao = totalMargin / itemSales.quantidade;
+                pvpMedio = itemSales.receita_total / itemSales.quantidade;
             } else {
-                // Fallback: no sales with cost data, use current item data
+                // Fallback: no sales with cost data, use current theoretical cost
                 let custoMedio = 0;
                 if (item.receita) {
                     custoMedio = Number(item.receita.custo_por_porcao);
@@ -129,8 +129,12 @@ class MenuAnalysisService {
                 } else if (item.formatoVenda) {
                     custoMedio = Number(item.formatoVenda.custo_unitario);
                 }
-                margemContribuicao = Number(item.pvp) - custoMedio;
-                pvpMedio = Number(item.pvp);
+
+                if (itemSales && itemSales.quantidade > 0) {
+                    pvpMedio = itemSales.receita_total / itemSales.quantidade;
+                }
+
+                margemContribuicao = pvpMedio - custoMedio;
             }
 
             const margemPercentual = pvpMedio > 0 ? (margemContribuicao / pvpMedio) * 100 : 0;

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, Trash2, Star, Plus, Package } from "lucide-react";
@@ -347,8 +348,7 @@ export function PurchaseVariationsModal({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Unidades por Compra</Label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.001"
                                     value={formData.unidades_por_compra}
                                     onChange={(e) =>
@@ -362,8 +362,7 @@ export function PurchaseVariationsModal({
 
                             <div className="space-y-2">
                                 <Label>Volume/Qtd por Unidade</Label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.001"
                                     placeholder="Ex: 0.33 para 33cl"
                                     value={formData.volume_por_unidade || ""}
@@ -382,8 +381,7 @@ export function PurchaseVariationsModal({
 
                         <div className="space-y-2">
                             <Label>Preço de Compra (€)</Label>
-                            <Input
-                                type="number"
+                            <DecimalInput
                                 step="0.01"
                                 value={formData.preco_compra}
                                 onChange={(e) =>
@@ -515,8 +513,7 @@ export function PurchaseVariationsModal({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Unidades por Compra *</Label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.001"
                                     value={formData.unidades_por_compra || ""}
                                     onChange={(e) =>
@@ -530,8 +527,7 @@ export function PurchaseVariationsModal({
 
                             <div className=" space-y-2">
                                 <Label>Volume/Qtd por Unidade</Label>
-                                <Input
-                                    type="number"
+                                <DecimalInput
                                     step="0.001"
                                     placeholder="Ex: 0.33 para 33cl"
                                     value={formData.volume_por_unidade || ""}
@@ -550,8 +546,7 @@ export function PurchaseVariationsModal({
 
                         <div className="space-y-2">
                             <Label>Preço de Compra (€) *</Label>
-                            <Input
-                                type="number"
+                            <DecimalInput
                                 step="0.01"
                                 value={formData.preco_compra || ""}
                                 onChange={(e) =>

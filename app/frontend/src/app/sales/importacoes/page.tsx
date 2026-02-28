@@ -34,6 +34,7 @@ interface SalesImport {
     total_bruto: number | null;
     total_liquido: number | null;
     status: string;
+    erro_mensagem: string | null;
     createdAt: string;
     _count: {
         linhas: number;
@@ -60,6 +61,16 @@ export default function SalesImportsListPage() {
         }
     };
 
+    // Auto-refresh if there are pending items
+    useEffect(() => {
+        const hasPendingItems = imports.some(i => ['processing', 'pending'].includes(i.status));
+
+        if (hasPendingItems) {
+            const interval = setInterval(fetchImports, 5000);
+            return () => clearInterval(interval);
+        }
+    }, [imports]); // Re-run effect when imports change (to check if we still need to poll)
+
     const formatCurrency = (value: number | null) => {
         if (!value) return '-';
         return new Intl.NumberFormat('pt-PT', {
@@ -77,7 +88,15 @@ export default function SalesImportsListPage() {
         });
     };
 
-    const getStatusBadge = (status: string) => {
+    const getFriendlyErrorMessage = (error: string | null) => {
+        if (!error) return 'Erro desconhecido';
+        if (error.includes('overloaded') || error.includes('503')) return 'Sistema temporariamente ocupado. Tente novamente.';
+        if (error.includes('timeout')) return 'Tempo limite excedido. Tente novamente.';
+        if (error.includes('PDF')) return 'Erro ao ler PDF. Verifique o ficheiro.';
+        return error; // Fallback to original message
+    };
+
+    const getStatusBadge = (status: string, errorMessage: string | null) => {
         switch (status) {
             case 'approved':
                 return (
@@ -94,6 +113,7 @@ export default function SalesImportsListPage() {
                     </Badge>
                 );
             case 'pending':
+            case 'processing':
                 return (
                     <Badge variant="secondary">
                         <Loader2 className="h-3 w-3 mr-1 animate-spin" />
@@ -102,10 +122,17 @@ export default function SalesImportsListPage() {
                 );
             case 'error':
                 return (
-                    <Badge variant="destructive">
-                        <XCircle className="h-3 w-3 mr-1" />
-                        Erro
-                    </Badge>
+                    <div className="flex flex-col items-start gap-1">
+                        <Badge variant="destructive" title={errorMessage || 'Erro desconhecido'}>
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Erro
+                        </Badge>
+                        {errorMessage && (
+                            <span className="text-xs text-red-500 max-w-[200px] truncate" title={errorMessage}>
+                                {getFriendlyErrorMessage(errorMessage)}
+                            </span>
+                        )}
+                    </div>
                 );
             case 'rejected':
                 return (
@@ -200,7 +227,7 @@ export default function SalesImportsListPage() {
                                             <TableCell className="text-center">
                                                 <Badge variant="outline">{imp._count.linhas}</Badge>
                                             </TableCell>
-                                            <TableCell>{getStatusBadge(imp.status)}</TableCell>
+                                            <TableCell>{getStatusBadge(imp.status, imp.erro_mensagem)}</TableCell>
                                             <TableCell className="text-sm text-muted-foreground">
                                                 {formatDate(imp.createdAt)}
                                             </TableCell>

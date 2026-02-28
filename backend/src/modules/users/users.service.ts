@@ -212,6 +212,16 @@ export class UsersService {
                 where: { id: this.tenantId },
             });
 
+            // Map role to Portuguese for display
+            const roleMap: Record<string, string> = {
+                'owner': 'Proprietário',
+                'admin': 'Administrador',
+                'manager': 'Gestor',
+                'operator': 'Operador',
+                'viewer': 'Visualizador'
+            };
+            const roleDisplay = roleMap[input.role] || input.role;
+
             if (tenant) {
                 await sendUserInvite(
                     {
@@ -219,7 +229,8 @@ export class UsersService {
                         name: user.nome,
                     },
                     tenant.nome_restaurante,
-                    inviteToken
+                    inviteToken,
+                    roleDisplay
                 );
             }
         } catch (error) {
@@ -233,6 +244,7 @@ export class UsersService {
             email: user.email,
             role: input.role,
             message: 'Convite enviado com sucesso',
+            inviteLink: `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`, // Debug/Backup
         };
     }
 
@@ -590,6 +602,16 @@ export class UsersService {
                 where: { id: this.tenantId },
             });
 
+            // Map role to Portuguese for display - using user.role from loaded user object
+            const roleMap: Record<string, string> = {
+                'owner': 'Proprietário',
+                'admin': 'Administrador',
+                'manager': 'Gestor',
+                'operator': 'Operador',
+                'viewer': 'Visualizador'
+            };
+            const roleDisplay = roleMap[user.role] || user.role;
+
             if (tenant) {
                 await sendUserInvite(
                     {
@@ -597,7 +619,8 @@ export class UsersService {
                         name: user.nome,
                     },
                     tenant.nome_restaurante,
-                    inviteToken
+                    inviteToken,
+                    roleDisplay
                 );
             }
         } catch (error) {
@@ -607,6 +630,7 @@ export class UsersService {
 
         return {
             message: 'Convite reenviado com sucesso',
+            inviteLink: `${process.env.FRONTEND_URL}/accept-invite?token=${inviteToken}`, // Debug/Backup
         };
     }
 }

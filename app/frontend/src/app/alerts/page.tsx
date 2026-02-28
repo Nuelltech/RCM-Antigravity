@@ -71,7 +71,7 @@ export default function AlertsPage() {
                 method: 'POST',
                 body: JSON.stringify({})
             });
-            setAlerts(data);
+            setAlerts(Array.isArray(data) ? data : []);
             toast({ description: "Alertas atualizados com sucesso." });
         } catch (error) {
             console.error('Erro ao carregar alertas:', error);
@@ -113,10 +113,11 @@ export default function AlertsPage() {
         }
     }
 
-    const cmvAlerts = alerts.filter(a => a.type === 'cmv');
-    const costAlerts = alerts.filter(a => a.type === 'cost_increase');
-    const inactivityAlerts = alerts.filter(a => a.type === 'inactivity');
-    const stalePriceAlerts = alerts.filter(a => a.type === 'stale_price');
+    const safeAlerts = Array.isArray(alerts) ? alerts : [];
+    const cmvAlerts = safeAlerts.filter(a => a.type === 'cmv');
+    const costAlerts = safeAlerts.filter(a => a.type === 'cost_increase');
+    const inactivityAlerts = safeAlerts.filter(a => a.type === 'inactivity');
+    const stalePriceAlerts = safeAlerts.filter(a => a.type === 'stale_price');
 
     return (
         <AppLayout>

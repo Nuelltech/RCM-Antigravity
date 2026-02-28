@@ -127,4 +127,14 @@ export class ApiService {
         const response = await api.get(`/api/products/${productId}/variations`);
         return response.data;
     }
+
+    /**
+     * NOTIFICATIONS API
+     */
+    static async registerPushToken(token: string) {
+        // Register push token with backend
+        // Route defined in auth.routes.ts: POST /api/auth/push-token
+        const response = await api.post('/api/auth/push-token', { token });
+        return response.data;
+    }
 }

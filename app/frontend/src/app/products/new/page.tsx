@@ -7,6 +7,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchClient } from "@/lib/api";
 import { ArrowLeft } from "lucide-react";
@@ -346,8 +347,7 @@ export default function NewProductPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium">Preço de Venda (€) (Opcional)</label>
-                                        <Input
-                                            type="number"
+                                        <DecimalInput
                                             step="0.01"
                                             placeholder="0.00"
                                             {...register("formato_preco", { valueAsNumber: true })}
@@ -358,8 +358,7 @@ export default function NewProductPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium">Quantidade Vendida</label>
-                                        <Input
-                                            type="number"
+                                        <DecimalInput
                                             step="0.001"
                                             {...register("formato_quantidade", { valueAsNumber: true })}
                                         />
@@ -396,20 +395,20 @@ export default function NewProductPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Unidades por Compra</label>
-                                    <Input type="number" step="0.001" lang="en" inputMode="decimal" {...register("unidades_por_compra", { valueAsNumber: true })} />
+                                    <DecimalInput step="0.001" lang="en" inputMode="decimal" {...register("unidades_por_compra", { valueAsNumber: true })} />
                                     {errors.unidades_por_compra && <p className="text-xs text-red-500">{errors.unidades_por_compra.message}</p>}
                                     <p className="text-xs text-gray-500">Opcional. Para produtos embalados (ex: 24 garrafas × 0.33L)</p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Volume/Qtd por Unidade</label>
-                                    <Input type="number" step="0.001" lang="en" inputMode="decimal" placeholder="Ex: 0.33 para 33cl" {...register("volume_por_unidade", { valueAsNumber: true })} />
+                                    <DecimalInput step="0.001" lang="en" inputMode="decimal" placeholder="Ex: 0.33 para 33cl" {...register("volume_por_unidade", { valueAsNumber: true })} />
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-sm font-medium">Preço de Compra (€)</label>
-                                    <Input type="number" step="0.01" lang="en" inputMode="decimal" {...register("preco_compra", { valueAsNumber: true })} />
+                                    <DecimalInput step="0.01" lang="en" inputMode="decimal" {...register("preco_compra", { valueAsNumber: true })} />
                                     {errors.preco_compra && <p className="text-xs text-red-500">{errors.preco_compra.message}</p>}
                                 </div>
                                 <div className="space-y-2">

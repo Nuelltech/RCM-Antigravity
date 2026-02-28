@@ -8,7 +8,12 @@ export interface Invoice {
     ficheiro_url: string;
     ficheiro_tipo: string;
     status: InvoiceStatus;
+    // Backend can return fornecedor_nome directly or a relation
     fornecedor_nome?: string;
+    fornecedor?: {
+        nome: string;
+        nif?: string;
+    };
     fornecedor_nif?: string;
     numero_fatura?: string;
     data_fatura?: string;
@@ -61,6 +66,9 @@ export interface MatchSuggestion {
         unidades_por_compra: number;
         preco_compra: number;
         preco_unitario: number;
+        template?: {
+            nome: string;
+        };
     }[];
 }
 

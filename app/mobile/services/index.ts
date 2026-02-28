@@ -9,3 +9,4 @@ export { CameraService } from './camera.service';
 export { FileService } from './file.service';
 export { NotificationService } from './notification.service';
 export { ApiService } from './api.service';
+export { BiometricService } from './biometric.service';

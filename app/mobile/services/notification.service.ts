@@ -22,6 +22,8 @@ export class NotificationService {
                 shouldShowAlert: true,
                 shouldPlaySound: true,
                 shouldSetBadge: true,
+                shouldShowBanner: true,
+                shouldShowList: true,
             }),
         });
 

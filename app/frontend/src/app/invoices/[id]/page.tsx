@@ -47,6 +47,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { AppLayout } from '@/components/layout/AppLayout';
 import { SelectVariationModal } from '@/components/invoices/SelectVariationModal';
 import { translateInvoiceError, getErrorAlertVariant } from '@/lib/invoice-error-translator';
+import { IntegrationReportModal } from '@/components/invoices/IntegrationReportModal';
+import { FileBarChart, Loader } from 'lucide-react';
 
 interface InvoiceLine {
     id: number;
@@ -121,6 +123,9 @@ export default function InvoiceReviewPage() {
     const [quickCreateLineId, setQuickCreateLineId] = useState<number | null>(null);
     const [quickCreateLine, setQuickCreateLine] = useState<InvoiceLine | undefined>(undefined);
 
+    // Report State
+    const [showReport, setShowReport] = useState(false);
+
     const searchInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -128,6 +133,30 @@ export default function InvoiceReviewPage() {
             fetchInvoice();
         }
     }, [invoiceId]);
+
+    // Poll for integration status
+    useEffect(() => {
+        if (!invoiceId || (invoice?.status !== 'approved' && invoice?.status !== 'completed')) return;
+
+        const checkIntegrationStatus = async () => {
+            try {
+                const log = await fetchClient(`/invoices/${invoiceId}/integration-log`);
+                if (log && log.status === 'completed') {
+                    // Stop polling if completed?
+                    // actually we might want to just keep this simple
+                }
+            } catch (e) {
+                // ignore 404
+            }
+        };
+
+        // Initial check
+        checkIntegrationStatus();
+
+        // Poll every 5 seconds
+        const interval = setInterval(checkIntegrationStatus, 5000);
+        return () => clearInterval(interval);
+    }, [invoiceId, invoice?.status]);
 
     // Manual search with debounce
     useEffect(() => {
@@ -557,6 +586,12 @@ export default function InvoiceReviewPage() {
                                 ) : (
                                     <Badge variant="secondary" className="mt-1">{invoice.status}</Badge>
                                 )}
+                                {(invoice.status === 'approved' || invoice.status === 'approved_partial' || invoice.status === 'completed') && (
+                                    <Button size="sm" variant="outline" className="mt-2 h-7" onClick={() => setShowReport(true)}>
+                                        <FileBarChart className="h-3 w-3 mr-1" />
+                                        Relatório
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </CardContent>
@@ -790,6 +825,13 @@ export default function InvoiceReviewPage() {
                         lineData={matchingLine || undefined}
                     />
                 )}
+
+                {/* Integration Report Modal */}
+                <IntegrationReportModal
+                    invoiceId={parseInt(invoiceId)}
+                    open={showReport}
+                    onClose={() => setShowReport(false)}
+                />
             </div>
         </AppLayout>
     );

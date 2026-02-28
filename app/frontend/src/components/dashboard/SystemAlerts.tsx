@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+"use client";
+
 import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { fetchClient } from '@/lib/api';
 
 interface Alert {
     id: string;
@@ -62,33 +62,7 @@ function AlertItem({ alert }: { alert: Alert }) {
     );
 }
 
-export function SystemAlerts() {
-    const [alerts, setAlerts] = useState<Alert[]>([]);
-
-    // ✅ FIX: Track tenantId to reload when it changes
-    const [tenantId, setTenantId] = useState<string | null>(null);
-
-    useEffect(() => {
-        const currentTenantId = localStorage.getItem('tenantId');
-        setTenantId(currentTenantId);
-    }, []);
-
-    useEffect(() => {
-        if (!tenantId) return;
-        // ✅ FIX: Reset alerts before loading
-        setAlerts([]);
-        loadAlerts();
-    }, [tenantId]); // ✅ FIX: Reload when tenant changes
-
-    async function loadAlerts() {
-        try {
-            const data = await fetchClient('/alerts');
-            setAlerts(data);
-        } catch (error) {
-            console.error('Erro ao carregar alertas:', error);
-        }
-    }
-
+export function SystemAlerts({ alerts }: { alerts: Alert[] }) {
     return (
         <Card>
             <CardHeader>

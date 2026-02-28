@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-export type UserRole = "admin" | "manager" | "operador" | "visualizador";
+export type UserRole = "owner" | "admin" | "manager" | "operator" | "viewer";
 
 interface User {
     id: string;
@@ -14,19 +14,24 @@ interface User {
 }
 
 /**
- * Normalize role from backend (Portuguese) to frontend (English)
- * Backend uses: admin, gestor, operador, visualizador
- * Frontend uses: admin, manager, operador, visualizador
+ * Normalize role from backend (Portuguese/Mixed) to frontend (English)
+ * Backend now standardizes on: admin, manager, operator, viewer
+ * But we keep mapping for legacy/safety:
+ * gestor -> manager
+ * operador -> operator
+ * visualizador -> viewer
  */
 function normalizeRole(role: string | null): UserRole {
-    if (!role) return "operador";
+    if (!role) return "operator";
 
-    // Map Portuguese "gestor" to English "manager"
+    // Map Portuguese to English
     if (role === "gestor") return "manager";
+    if (role === "operador") return "operator";
+    if (role === "visualizador") return "viewer";
 
     // Validate and return as UserRole
-    const validRoles: UserRole[] = ["admin", "manager", "operador", "visualizador"];
-    return validRoles.includes(role as UserRole) ? (role as UserRole) : "operador";
+    const validRoles: UserRole[] = ["owner", "admin", "manager", "operator", "viewer"];
+    return validRoles.includes(role as UserRole) ? (role as UserRole) : "operator";
 }
 
 export function useUser() {
@@ -43,9 +48,19 @@ export function useUser() {
                 const tenantId = localStorage.getItem("tenantId");
                 const restaurantName = localStorage.getItem("restaurantName");
 
+                // Debug logs
+                console.warn("[useUser] Loading user from storage:", { userId, userRoleRaw, tenantId });
+
                 if (userId && userRoleRaw && tenantId) {
                     // Normalize role (gestor → manager)
                     const userRole = normalizeRole(userRoleRaw);
+                    console.warn(`[useUser] Normalized role: ${userRoleRaw} -> ${userRole}`);
+
+                    // Normalize roles (backend uses Portuguese 'gestor', frontend uses 'manager')
+                    // The normalizeRole function already handles this mapping.
+                    // The following lines are redundant and syntactically incorrect in this context.
+                    // const role = user.role === 'gestor' ? 'manager' : (user.role as UserRole);
+                    // setUser({ ...user, role: role });
 
                     setUser({
                         id: userId,
@@ -55,6 +70,8 @@ export function useUser() {
                         tenantId: tenantId,
                         restaurantName: restaurantName || "Meu Restaurante",
                     });
+                } else {
+                    console.warn("[useUser] Missing required fields in localStorage. User set to null.");
                 }
             } catch (error) {
                 console.error("Error loading user from localStorage:", error);
@@ -67,19 +84,27 @@ export function useUser() {
 
         // Listen for storage changes (multi-tab support)
         window.addEventListener("storage", loadUser);
-        return () => window.removeEventListener("storage", loadUser);
+        // Listen for same-tab updates (login, profile updates)
+        window.addEventListener("userRoleUpdated", loadUser);
+
+        return () => {
+            window.removeEventListener("storage", loadUser);
+            window.removeEventListener("userRoleUpdated", loadUser);
+        };
     }, []);
 
     const hasRole = (requiredRoles: UserRole[]) => {
         if (!user) return false;
+        // Owner has access to everything
+        if (user.role === 'owner') return true;
         return requiredRoles.includes(user.role);
     };
 
-    const isAdmin = user?.role === "admin";
-    const isManager = user?.role === "manager" || user?.role === "admin";
-    const canManageTeam = user?.role === "admin";
-    const canEditProducts = user?.role !== "visualizador";
-    const canViewFinancials = user?.role === "admin" || user?.role === "manager";
+    const isAdmin = user?.role === "admin" || user?.role === "owner";
+    const isManager = user?.role === "manager" || user?.role === "admin" || user?.role === "owner";
+    const canManageTeam = user?.role === "admin" || user?.role === "owner";
+    const canEditProducts = user?.role !== "viewer";
+    const canViewFinancials = user?.role === "admin" || user?.role === "manager" || user?.role === "owner";
 
     return {
         user,

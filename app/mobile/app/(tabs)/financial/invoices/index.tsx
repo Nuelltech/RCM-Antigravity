@@ -1,26 +1,20 @@
-import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text, Card, ActivityIndicator, FAB } from 'react-native-paper';
+import { View, ScrollView, StyleSheet, RefreshControl, Linking } from 'react-native';
+import { Text, Card, ActivityIndicator, FAB, Button } from 'react-native-paper';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { ApiService } from '../../../../services';
+import api from '../../../../lib/api';
 import { theme } from '../../../../ui/theme';
 import { spacing } from '../../../../ui/spacing';
 import { typography } from '../../../../ui/typography';
 
-interface Invoice {
-    id: number;
-    numero_fatura?: string;
-    fornecedor?: { nome: string };
-    data_fatura?: string;
-    total?: number;
-    status: string;
-    created_at: string;
-}
+import { Invoice } from '../../../../types/invoice';
 
 export default function InvoicesIndexScreen() {
     const router = useRouter();
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         fetchInvoices();
@@ -34,7 +28,13 @@ export default function InvoicesIndexScreen() {
             console.error('Failed to fetch invoices:', error);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
+    };
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchInvoices();
     };
 
     const formatCurrency = (value?: number) => {
@@ -60,6 +60,34 @@ export default function InvoicesIndexScreen() {
         }
     };
 
+    const handleViewFile = async (url?: string) => {
+        if (!url) {
+            alert('Não há ficheiro associado a esta fatura.');
+            return;
+        }
+
+        try {
+            let fullUrl = url;
+            // If relative URL (starts with /), prepend API URL
+            if (url.startsWith('/')) {
+                const baseUrl = api.defaults.baseURL || '';
+                // Remove trailing slash from base if present and leading from url if present to avoid double, 
+                // but usually axios baseUrl doesn't have trailing slash.
+                fullUrl = `${baseUrl}${url}`;
+            }
+
+            const supported = await Linking.canOpenURL(fullUrl);
+            if (supported) {
+                await Linking.openURL(fullUrl);
+            } else {
+                alert(`Não é possível abrir este URL: ${fullUrl}`);
+            }
+        } catch (error) {
+            console.error('Error opening URL:', error);
+            alert('Erro ao abrir o ficheiro.');
+        }
+    };
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -76,7 +104,12 @@ export default function InvoicesIndexScreen() {
                 <Text style={styles.subtitle}>{invoices.length} faturas registadas</Text>
             </View>
 
-            <ScrollView style={styles.list}>
+            <ScrollView
+                style={styles.list}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                }
+            >
                 {invoices.length === 0 ? (
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyIcon}>📄</Text>
@@ -104,15 +137,45 @@ export default function InvoicesIndexScreen() {
                                     </View>
                                 </View>
                                 <Text style={styles.supplier}>
-                                    {invoice.fornecedor?.nome || 'Fornecedor desconhecido'}
+                                    {invoice.fornecedor?.nome || invoice.fornecedor_nome || 'Fornecedor desconhecido'}
                                 </Text>
                                 <View style={styles.invoiceFooter}>
-                                    <Text style={styles.date}>{formatDate(invoice.data_fatura)}</Text>
-                                    {invoice.total && (
-                                        <Text style={styles.total}>{formatCurrency(invoice.total)}</Text>
-                                    )}
+                                    <View>
+                                        <Text style={styles.date}>{formatDate(invoice.data_fatura)}</Text>
+                                        <Text style={styles.itemCount}>
+                                            {invoice.linhas?.length || 0} artigos
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.total}>
+                                        {formatCurrency(invoice.total_com_iva || invoice.total_sem_iva || 0)}
+                                    </Text>
                                 </View>
                             </Card.Content>
+                            <Card.Actions style={{ justifyContent: 'flex-end', paddingTop: 0 }}>
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <Button
+                                        mode="text"
+                                        compact
+                                        icon="eye"
+                                        onPress={(e: any) => {
+                                            e.stopPropagation();
+                                            handleViewFile(invoice.ficheiro_url);
+                                        }}
+                                    >
+                                        Ver Ficheiro
+                                    </Button>
+                                    {(invoice.status === 'reviewing' || invoice.status === 'pending') && (
+                                        <Button
+                                            mode="contained-tonal"
+                                            compact
+                                            icon="check-circle-outline"
+                                            onPress={() => router.push(`/financial/invoices/${invoice.id}`)}
+                                        >
+                                            Validar
+                                        </Button>
+                                    )}
+                                </View>
+                            </Card.Actions>
                         </Card>
                     ))
                 )}
@@ -125,7 +188,7 @@ export default function InvoicesIndexScreen() {
                 onPress={() => router.push('/financial/invoices/new')}
                 color={theme.colors.textInverse}
             />
-        </View>
+        </View >
     );
 }
 
@@ -198,6 +261,11 @@ const styles = StyleSheet.create({
     date: {
         color: theme.colors.textLight,
         fontSize: 12,
+    },
+    itemCount: {
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        marginTop: 2,
     },
     total: {
         color: theme.colors.primary,

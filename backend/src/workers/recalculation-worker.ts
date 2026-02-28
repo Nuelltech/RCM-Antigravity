@@ -1,5 +1,7 @@
 import { Worker, Job } from 'bullmq';
-import redis from '../core/redis';
+import { redisOptions } from '../core/redis';
+import { env } from '../core/env';
+import Redis from 'ioredis';
 import { RecalculationJobData } from '../core/queue';
 import { recalculationService } from '../modules/produtos/recalculation.service';
 import { dashboardCache } from '../core/cache.service';
@@ -21,7 +23,9 @@ import { dashboardCache } from '../core/cache.service';
 async function processRecalculationJob(job: Job<RecalculationJobData>) {
     console.log(`🔧 Processing ${job.name} [${job.id}]`, job.data);
 
-    const { type, produtoId, receitaId, comboId, tenantId } = job.data;
+    const { type, produtoId, receitaId, comboId, tenantId, logId } = job.data;
+
+    const start = Date.now();
 
     try {
         let result;
@@ -31,11 +35,11 @@ async function processRecalculationJob(job: Job<RecalculationJobData>) {
                 if (!produtoId) {
                     throw new Error('produtoId is required for price-change job');
                 }
-                await job.updateProgress(10);
-                result = await recalculationService.recalculateAfterPriceChange(produtoId);
+                // await job.updateProgress(10);
+                result = await recalculationService.recalculateAfterPriceChange(produtoId, logId);
                 await job.updateProgress(100);
                 console.log(`✅ Price change recalculation complete:`, result);
-                return result;
+                break;
 
             case 'recipe-change':
                 if (!receitaId) {
@@ -45,7 +49,7 @@ async function processRecalculationJob(job: Job<RecalculationJobData>) {
                 result = await recalculationService.recalculateAfterRecipeChange(receitaId);
                 await job.updateProgress(100);
                 console.log(`✅ Recipe change recalculation complete:`, result);
-                return result;
+                break;
 
             case 'combo-change':
                 if (!comboId) {
@@ -55,13 +59,69 @@ async function processRecalculationJob(job: Job<RecalculationJobData>) {
                 result = await recalculationService.recalculateAfterComboChange(comboId);
                 await job.updateProgress(100);
                 console.log(`✅ Combo change recalculation complete:`, result);
-                return result;
+                break;
 
             default:
                 throw new Error(`Unknown job type: ${type}`);
         }
+
+        // Log Success Metric
+        const duration = Date.now() - start;
+        try {
+            const { prisma } = await import('../core/database');
+            // @ts-ignore - Stale Prisma types legacy workaround
+            await prisma.workerMetric.create({
+                data: {
+                    queue_name: 'recalculation',
+                    job_name: type,
+                    job_id: job.id,
+                    duration_ms: duration,
+                    status: 'COMPLETED',
+                    processed_at: new Date(),
+                    attempts: job.attemptsMade + 1
+                }
+            });
+        } catch (logErr) {
+            console.error('[WorkerLogger] Failed to log success metric:', logErr);
+        }
+
+        return result;
+
     } catch (error: any) {
+        const duration = Date.now() - start;
         console.error(`❌ Recalculation job failed [${job.id}]:`, error);
+
+        // Log Error Metric & Error Log
+        try {
+            const { prisma } = await import('../core/database');
+
+            await prisma.workerMetric.create({
+                data: {
+                    queue_name: 'recalculation',
+                    job_name: type || 'unknown',
+                    job_id: job.id,
+                    duration_ms: duration,
+                    status: 'FAILED',
+                    error_message: error.message,
+                    processed_at: new Date(),
+                    attempts: job.attemptsMade + 1
+                }
+            });
+
+            // @ts-ignore - Stale Prisma types legacy workaround
+            await prisma.errorLog.create({
+                data: {
+                    level: 'ERROR',
+                    source: 'WORKER',
+                    message: error.message,
+                    stack_trace: error.stack,
+                    metadata: { jobId: job.id, jobData: job.data, queue: 'recalculation' } as any
+                }
+            });
+        } catch (logErr) {
+            console.error('[WorkerLogger] Failed to log error metrics:', logErr);
+        }
+
         throw error; // BullMQ will retry based on attempts config
     }
 }
@@ -71,7 +131,7 @@ const recalculationWorker = new Worker<RecalculationJobData>(
     'recalculation',
     processRecalculationJob,
     {
-        connection: redis,
+        connection: new Redis(env.REDIS_URL, redisOptions) as any,
         concurrency: 5, // Process up to 5 jobs concurrently
         limiter: {
             max: 10, // Max 10 jobs

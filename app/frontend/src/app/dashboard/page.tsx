@@ -10,12 +10,15 @@ import { SkeletonKPICard } from '@/components/dashboard/SkeletonKPICard';
 import { SkeletonChart } from '@/components/dashboard/SkeletonChart';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { fetchClient } from '@/lib/api';
+import { useUser } from '@/hooks/useUser';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle, Building2, FileDown } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { DashboardPDF } from '@/components/pdf/DashboardPDF';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExportPDFModal } from '@/components/dashboard/ExportPDFModal';
+import { CmvAlertCard } from '@/components/dashboard/CmvAlertCard';
 
 interface DashboardStats {
     vendasMes: number;
@@ -32,7 +35,10 @@ interface DashboardStats {
     lucroBruto: number;
 }
 
+import { useRouter } from 'next/navigation';
+
 export default function DashboardPage() {
+    const router = useRouter();
     const [stats, setStats] = useState<DashboardStats>({
         vendasMes: 0,
         custoMercadoria: 0,
@@ -46,6 +52,8 @@ export default function DashboardPage() {
     });
     const [loading, setLoading] = useState(true);
     const [activeAlerts, setActiveAlerts] = useState(0);
+    const [alerts, setAlerts] = useState<any[]>([]);
+    const [salesData, setSalesData] = useState<any[]>([]);
     const [exportModalOpen, setExportModalOpen] = useState(false);
 
     // Date range for export
@@ -55,15 +63,15 @@ export default function DashboardPage() {
     });
 
     // Restaurant info for PDF
-    const [restaurantName, setRestaurantName] = useState('');
-    const [userName, setUserName] = useState('');
+    // ✅ FIX: Use useUser hook to reactively track tenant/user changes
+    const { user, loading: userLoading } = useUser();
 
-    // Data for PDF
-    const [alerts, setAlerts] = useState<any[]>([]);
-    const [salesData, setSalesData] = useState<any[]>([]);
+    // Derived state from user hook
+    const tenantId = user?.tenantId;
+    const restaurantName = user?.restaurantName || 'Meu Restaurante';
+    const userName = user?.name || 'Sistema';
 
-    // ✅ FIX: Track tenantId to reload data when it changes
-    const [tenantId, setTenantId] = useState<string | null>(null);
+    const { status, daysRemaining } = useSubscription();
 
     useEffect(() => {
         // Set dates on client only to avoid hydration mismatch
@@ -71,31 +79,48 @@ export default function DashboardPage() {
             from: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
             to: format(new Date(), 'yyyy-MM-dd'),
         });
-
-        // Get restaurant and user info
-        setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
-        setUserName(localStorage.getItem('userName') || 'Sistema');
-
-        // Get current tenantId from localStorage
-        const currentTenantId = localStorage.getItem('tenantId');
-        setTenantId(currentTenantId);
     }, []);
 
     useEffect(() => {
+        if (userLoading) return;
         if (!tenantId) return; // Don't load if no tenant selected
 
-        // Don't reset stats to zero - keep previous values during loading
-        setLoading(true);
+        // Check onboarding status
+        const checkOnboarding = async () => {
+            try {
+                // Use role from user object
+                const role = user?.role;
+                if (role === 'owner' || role === 'admin' || role === 'manager') {
+                    const res = await fetchClient('/onboarding/check');
+                    if (!res.seeded) {
+                        router.push('/onboarding');
+                        return; // Stop loading dashboard
+                    }
+                }
+
+                // If seeded or not owner, load stats
+                setLoading(true);
+                loadStats();
+                loadAlerts();
+                loadSalesChart();
+
+            } catch (error) {
+                console.error('Failed to check onboarding status', error);
+                // Fallback to loading stats
+                setLoading(true);
+                loadStats();
+                loadAlerts();
+                loadSalesChart();
+            }
+        };
 
         // Debounced loading
         const timeoutId = setTimeout(() => {
-            loadStats();
-            loadAlerts();
-            loadSalesChart();
+            checkOnboarding();
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [tenantId, dateRange]); // ✅ FIX: Reload when tenant or date changes
+    }, [tenantId, userLoading, dateRange, router, user?.role]); // ✅ FIX: Reload when tenant or date changes
 
     async function loadStats() {
         if (!dateRange.from || !dateRange.to) return;
@@ -121,6 +146,7 @@ export default function DashboardPage() {
             setLoading(false);
         }
     }
+
 
     async function loadAlerts() {
         try {
@@ -186,6 +212,8 @@ export default function DashboardPage() {
                             </Button>
                         </div>
                     </div>
+
+
 
                     {/* First row: 4 KPI cards */}
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -259,19 +287,30 @@ export default function DashboardPage() {
                         )}
                     </div>
 
+                    {/* CMV Hemorragia Alert Card */}
+                    {!loading && dateRange.from && dateRange.to && (
+                        <div className="mb-4">
+                            <CmvAlertCard
+                                startDate={dateRange.from}
+                                endDate={dateRange.to}
+                            />
+                        </div>
+                    )}
+
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
                         <div className="col-span-4">
-                            {loading ? (
+                            {loading || !dateRange.from || !dateRange.to ? (
                                 <SkeletonChart />
                             ) : (
                                 <SalesChart
-                                    startDate={dateRange.from ? new Date(dateRange.from) : new Date()}
-                                    endDate={dateRange.to ? new Date(dateRange.to) : new Date()}
+                                    // Pass strings directly.
+                                    startDate={dateRange.from}
+                                    endDate={dateRange.to}
                                 />
                             )}
                         </div>
                         <div className="col-span-3">
-                            <SystemAlerts />
+                            <SystemAlerts alerts={alerts} />
                         </div>
                     </div>
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { fetchClient } from "@/lib/api";
 import { X, TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import type { MenuItemWithRecipe } from "@/types/menu";
 
 interface EditPVPModalProps {
@@ -157,8 +158,7 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
                         </label>
                         <div className="relative">
                             <span className="absolute left-3 top-2 text-gray-500">€</span>
-                            <input
-                                type="number"
+                            <DecimalInput
                                 step="0.01"
                                 lang="en"
                                 inputMode="decimal"

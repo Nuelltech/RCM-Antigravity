@@ -1,8 +1,21 @@
-
 import './recalculation-worker';
 import './invoice-processing.worker';
 import './sales-processing.worker';
 import './invoice-retry.worker';
+import './seed-data.worker';
+import { subscriptionCheckWorker, scheduleSubscriptionChecks } from './subscription-check.worker';
+import { recoveryService } from './recovery.service';
+
+// Run recovery on startup (after a slight delay to ensure connections)
+setTimeout(() => {
+    recoveryService.recoverStuckInvoices().catch(err =>
+        console.error('[WORKER-MANAGER] Failed to run recovery:', err)
+    );
+    // Schedule daily subscription checks
+    scheduleSubscriptionChecks().catch(err =>
+        console.error('[WORKER-MANAGER] Failed to schedule subscription checks:', err)
+    );
+}, 5000);
 
 console.log('=================================================');
 console.log('[WORKER-MANAGER] 🚀 All workers have been initialized');

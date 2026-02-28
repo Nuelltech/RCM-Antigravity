@@ -745,9 +745,8 @@ export async function productRoutes(app: FastifyInstance) {
             }
 
             // Calculate new unit price
-            const novoPrecoUnitario = new Decimal(req.body.preco_compra).dividedBy(
-                variacao.unidades_por_compra
-            );
+            const totalUnits = variacao.unidades_por_compra || new Decimal(1);
+            const novoPrecoUnitario = new Decimal(req.body.preco_compra).dividedBy(totalUnits);
 
             // Update variation with new price FIRST
             const updated = await prisma.variacaoProduto.update({

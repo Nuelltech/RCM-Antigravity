@@ -11,7 +11,7 @@ const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:63
  * Main queue for processing uploaded invoices
  */
 export const invoiceProcessingQueue = new Queue('invoice-processing', {
-    connection: redisConnection,
+    connection: redisConnection as any,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -19,12 +19,12 @@ export const invoiceProcessingQueue = new Queue('invoice-processing', {
             delay: 2000
         },
         removeOnComplete: {
-            count: 100,  // Keep last 100 completed jobs
-            age: 7 * 24 * 3600  // Keep for 7 days
+            count: 5,  // Keep only last 5 completed jobs (Debug only)
+            age: 3600  // Keep for 1 hour
         },
         removeOnFail: {
-            count: 500,  // Keep last 500 failed jobs
-            age: 30 * 24 * 3600  // Keep for 30 days
+            count: 20,  // Keep last 20 failed jobs for debugging
+            age: 24 * 3600  // Keep for 24 hours
         }
     }
 });
@@ -34,7 +34,7 @@ export const invoiceProcessingQueue = new Queue('invoice-processing', {
  * Queue for manual retries (10 minute delay)
  */
 export const invoiceRetryQueue = new Queue('invoice-retry', {
-    connection: redisConnection,
+    connection: redisConnection as any,
     defaultJobOptions: {
         delay: 10 * 60 * 1000,  // 10 minutes
         attempts: 1,  // Only 1 attempt for retries

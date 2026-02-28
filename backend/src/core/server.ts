@@ -32,6 +32,12 @@ import { invoicesRoutes } from '../modules/invoices/invoices.module';
 import { usersRoutes } from '../modules/users/users.routes';
 import { purchasesDashboardRoutes } from '../modules/purchases-dashboard/purchases-dashboard.module';
 import { menuAnalysisRoutes } from '../modules/menu-analysis/menu-analysis.module';
+import { hemorragiaRoutes } from '../modules/hemorragia-financeira/hemorragia-financeira.module';
+import { proxyRoutes } from '../modules/proxy/proxy.routes';
+import { navigationRoutes } from '../modules/navigation/navigation.module';
+import { subscriptionsRoutes } from '../modules/subscriptions/subscriptions.module';
+import { stripeWebhookModule } from '../modules/subscriptions/stripe-webhook.module';
+import { onboardingRoutes } from '../modules/onboarding/onboarding.module';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
@@ -68,7 +74,10 @@ async function main() {
                     'file://',
                     'http://localhost',
                     'http://10.0.2.2', // Android Emulator
-                    'http://localhost:8081'
+                    'http://localhost:8081',
+                    'https://rcm-internal-staging-91ex9n9pv-nuelltechs-projects.vercel.app', // Internal Portal Staging
+                    'http://localhost:3000',
+                    'http://127.0.0.1:3000'
                 ];
 
                 const isAllowed = allowedOrigins.some(pattern =>
@@ -95,6 +104,9 @@ async function main() {
 
     await server.register(jwt, {
         secret: env.JWT_SECRET,
+        sign: {
+            expiresIn: '60m' // 60 minutos de inatividade
+        }
     });
 
     await server.register(swagger, {
@@ -135,35 +147,39 @@ async function main() {
     // Public routes (NO AUTH REQUIRED) - must be registered BEFORE auth middleware
     // server.register(leadsRoutes, { prefix: '/api/public' });
 
+    // ── Stripe Webhook (BEFORE auth — needs raw body + no JWT check) ──────────
+    // Must be registered before the authMiddleware hook below.
+    server.register(stripeWebhookModule, { prefix: '/api/webhooks' });
+
     // Internal auth routes (NO CUSTOMER AUTH REQUIRED)
     const { internalAuthRoutes } = await import('../modules/internal-auth/internal-auth.routes');
     server.register(internalAuthRoutes, { prefix: '/api/internal/auth' });
 
     // Internal users management (REQUIRES INTERNAL AUTH - ADMIN)
-    const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
-    server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
+    // const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
+    // server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
 
     // Internal roles management (REQUIRES INTERNAL AUTH - ADMIN)
-    const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
-    server.register(internalRolesRoutes, { prefix: '/api/internal/roles' });
+    // const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
+    // server.register(internalRolesRoutes, { prefix: '/api/internal/roles' });
 
     // Internal leads management routes (REQUIRES INTERNAL AUTH)
     // Fixed leads service schema fields 
-    const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
-    server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+    // const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+    // server.register(internalLeadsRoutes, { prefix: '/api/internal' });
 
     // Internal dashboard stats (REQUIRES INTERNAL AUTH)
-    const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
-    server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
+    // const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
+    // server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
 
 
     // Internal system health (REQUIRES INTERNAL AUTH)
-    const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
-    server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
+    // const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
+    // server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
 
     // Internal tenants management (REQUIRES INTERNAL AUTH)
-    const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
-    server.register(internalTenantsModule);
+    // const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
+    // server.register(internalTenantsModule);
 
 
     // Health Check & Root Route (NO AUTH REQUIRED - must be BEFORE middleware)
@@ -189,13 +205,21 @@ async function main() {
         return { status: 'ok', timestamp: new Date() };
     });
 
+    server.get('/api/debug/version', async () => {
+        return {
+            version: 'debug-v1',
+            timestamp: new Date().toISOString(),
+            generatedAt: '2026-02-19T19:20:00Z' // HARDCODED MARKER
+        };
+    });
+
 
     // Global Middleware (applies to ALL routes registered AFTER this point)
 
     // Performance Tracker (Phase 4)
     server.addHook('onRequest', async (req, reply) => {
-        const { performanceTracker } = await import('./middleware/performance-tracker');
-        await performanceTracker(req, reply);
+        // const { performanceTracker } = await import('./middleware/performance-tracker');
+        // await performanceTracker(req, reply);
     });
 
     server.addHook('onRequest', async (req, reply) => {
@@ -204,12 +228,35 @@ async function main() {
     });
     server.addHook('onRequest', tenantMiddleware);
 
-    // Global Error Logger (Phase 4)
-    server.setErrorHandler(async (error, req, reply) => {
-        const { errorLogger } = await import('./middleware/error-logger');
-        await errorLogger(error, req, reply);
+    // ── Subscription Guard (AFTER auth + tenant middleware) ───────────────────
+    // Blocks requests from suspended or unpaid tenants.
+    server.addHook('onRequest', async (req, reply) => {
+        const { subscriptionGuard } = await import('./middleware/subscription-guard');
+        await subscriptionGuard(req, reply);
     });
 
+    // Global Error Logger (Phase 4)
+    server.setErrorHandler(async (error, req, reply) => {
+        // const { errorLogger } = await import('./middleware/error-logger');
+        // await errorLogger(error, req, reply);
+        console.error(error);
+    });
+
+    // Register Internal Portal Routes
+    const { dashboardStatsRoutes } = await import('../modules/dashboard-stats/dashboard-stats.routes');
+    const { systemHealthRoutes } = await import('../modules/system-health/system-health.routes');
+    const { internalUsersRoutes } = await import('../modules/internal-users/internal-users.routes');
+    const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
+    const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
+    const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+
+    // internalAuthRoutes is already registered above
+    await server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
+    await server.register(systemHealthRoutes, { prefix: '/api/internal/health' });
+    await server.register(internalUsersRoutes, { prefix: '/api/internal/users' });
+    await server.register(internalTenantsModule);
+    await server.register(internalRolesRoutes, { prefix: '/api/internal' }); // Roles now defines /roles inside
+    await server.register(internalLeadsRoutes, { prefix: '/api/internal' });
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });
     server.register(tenantRoutes, { prefix: '/api/tenants' });
@@ -234,12 +281,18 @@ async function main() {
     server.register(usersRoutes, { prefix: '/api/users' });
     server.register(purchasesDashboardRoutes, { prefix: '/api/purchases' });  // Dashboard analytics
     server.register(menuAnalysisRoutes, { prefix: '/api/menu' });  // Menu Engineering Analysis
+    server.register(hemorragiaRoutes, { prefix: '/api/hemorragia' });  // Financial Hemorrhage Analysis
+    server.register(subscriptionsRoutes, { prefix: '/api/subscriptions' });  // Subscription Management
+    server.register(navigationRoutes, { prefix: '/api/navigation' });  // Dynamic Navigation Menu
+    server.register(onboardingRoutes, { prefix: '/api/onboarding' });
+    server.register(proxyRoutes, { prefix: '/api/proxy' });
 
 
 
     try {
         await server.listen({ port: parseInt(env.PORT), host: '0.0.0.0' });
         console.log(`Server running on port ${env.PORT}`);
+        console.log(`[DEBUG] Server started with LATEST changes (Timestamp: ${new Date().toISOString()})`);
     } catch (err) {
         server.log.error(err);
         process.exit(1);

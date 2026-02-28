@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "106118612316",
+    "project_id": "rcm-app-e686b",
+    "storage_bucket": "rcm-app-e686b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:106118612316:android:692f798995bd04c6136d99",
+        "android_client_info": {
+          "package_name": "com.nuelltech.rcm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB76-JUQR0I4IqLDv3Q4PQclLEDcZG0-RQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

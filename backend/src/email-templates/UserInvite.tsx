@@ -16,12 +16,14 @@ interface UserInviteProps {
     userName: string;
     restaurantName: string;
     inviteLink: string;
+    roleName: string;
 }
 
 export default function UserInvite({
     userName,
     restaurantName,
     inviteLink,
+    roleName,
 }: UserInviteProps) {
     return (
         <Html>
@@ -33,7 +35,7 @@ export default function UserInvite({
 
                     <Text style={text}>
                         Foi convidado para aceder ao sistema de gestão do restaurante{' '}
-                        <strong>{restaurantName}</strong>.
+                        <strong>{restaurantName}</strong> com o perfil de <strong>{roleName}</strong>.
                     </Text>
 
                     <Text style={text}>

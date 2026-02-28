@@ -129,4 +129,34 @@ export async function authRoutes(app: FastifyInstance) {
             return reply.status(400).send({ error: err.message });
         }
     });
+
+    // Register Push Token
+    app.post('/push-token', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Register Expo Push Token for notifications',
+            body: z.object({
+                token: z.string(),
+            }),
+        },
+    }, async (req, reply) => {
+        try {
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                return reply.status(401).send({ error: 'No token provided' });
+            }
+
+            // Simple decode to get userId
+            const token = authHeader.substring(7);
+            const decoded = await app.jwt.verify(token) as { userId: number };
+
+            console.log(`[PushToken] Request from User ${decoded.userId}. Token: ${(req.body as { token: string }).token}`);
+
+            await service.registerPushToken(decoded.userId, (req.body as { token: string }).token);
+
+            return reply.send({ success: true });
+        } catch (err: any) {
+            return reply.status(400).send({ error: err.message });
+        }
+    });
 }

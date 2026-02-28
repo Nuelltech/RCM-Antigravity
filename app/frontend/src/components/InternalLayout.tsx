@@ -2,7 +2,7 @@
 
 import { useInternalAuth } from "@/contexts/InternalAuthContext";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, Users, LineChart, Settings } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, LineChart, Settings, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -15,6 +15,7 @@ export default function InternalLayout({ children }: { children: React.ReactNode
         { name: "Leads", href: "/internal/leads", icon: Users },
         { name: "Analytics", href: "/internal/analytics", icon: LineChart },
         { name: "Settings", href: "/internal/settings", icon: Settings },
+        { name: "Subscription", href: "/internal/settings/subscription", icon: CreditCard, adminOnly: true },
     ];
 
     return (
@@ -56,22 +57,24 @@ export default function InternalLayout({ children }: { children: React.ReactNode
                 {/* Sidebar */}
                 <aside className="w-64 bg-white border-r border-slate-200 min-h-[calc(100vh-64px)]">
                     <nav className="p-4 space-y-2">
-                        {navigation.map((item) => {
-                            const isActive = pathname === item.href;
-                            return (
-                                <Link
-                                    key={item.name}
-                                    href={item.href}
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
+                        {navigation
+                            .filter(item => !item.adminOnly || user?.role === 'admin')
+                            .map((item) => {
+                                const isActive = pathname === item.href;
+                                return (
+                                    <Link
+                                        key={item.name}
+                                        href={item.href}
+                                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
                                             ? "bg-orange-50 text-orange-600 font-medium"
                                             : "text-slate-700 hover:bg-slate-50"
-                                        }`}
-                                >
-                                    <item.icon className="w-5 h-5" />
-                                    {item.name}
-                                </Link>
-                            );
-                        })}
+                                            }`}
+                                    >
+                                        <item.icon className="w-5 h-5" />
+                                        {item.name}
+                                    </Link>
+                                );
+                            })}
                     </nav>
                 </aside>
 

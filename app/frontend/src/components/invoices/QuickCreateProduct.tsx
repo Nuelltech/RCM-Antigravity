@@ -249,7 +249,6 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
                                 <Label htmlFor="unidades">Nº de Itens na Embalagem *</Label>
                                 <Input
                                     id="unidades"
-                                    type="number"
                                     step="0.001"
                                     placeholder="Ex: 6, 12, 24..."
                                     value={unidadesPorCompra || ''}
@@ -265,7 +264,6 @@ export function QuickCreateProduct({ open, onClose, onSuccess, lineData }: Quick
                                 <Label htmlFor="volume">Volume/Qtd por Unidade</Label>
                                 <Input
                                     id="volume"
-                                    type="number"
                                     step="0.001"
                                     placeholder="Ex: 0.33 para 33cl"
                                     value={volumePorUnidade || ""}

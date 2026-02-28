@@ -123,26 +123,6 @@ export async function invoicesRoutes(app: FastifyInstance) {
                 // Continue - multimodal in worker will handle the file directly
             }
 
-            // ------------------------------------------------------------------
-            // FIX: Pass file content to worker via Redis (Base64)
-            // This bypasses the need for shared storage between API and Worker
-            // ------------------------------------------------------------------
-            let finalBuffer: Buffer;
-            if (uploadedBuffers.length === 1) {
-                finalBuffer = uploadedBuffers[0].buffer;
-            } else {
-                // If merged, we need to read the merged file back or (better) just trust the file exists for now?
-                // Actually, fileUploadService.mergeImagesToPdf returns the file info but not the buffer directly unless we asked.
-                // For simplicity and robustness given the "no shared fs" issue, we re-read the merged file here? 
-                // OR better, we know the previous step wrote it to disk. 
-                // Since this API process WROTE it, it CAN read it from disk to send to worker.
-                const fs = await import('fs/promises');
-                finalBuffer = await fs.readFile(uploadedFile.filepath);
-            }
-
-            const fileContentBase64 = finalBuffer.toString('base64');
-            // [PROD-FIX] Base64 file transfer enabled for worker compatibility
-            // ------------------------------------------------------------------
 
             // Add to processing queue (async via BullMQ)
             const { invoiceProcessingQueue } = await import('../../queues/invoice-processing.queue');
@@ -151,15 +131,13 @@ export async function invoicesRoutes(app: FastifyInstance) {
                 invoiceId: fatura.id,
                 tenantId: req.tenantId,
                 ocrText: ocrText,  // May be empty if OCR failed
-                filepath: uploadedFile.filepath, // Keep original path for reference/URL
+                filepath: uploadedFile.filepath, // Public URL to file on Hostinger
                 uploadSource: 'web',
                 userId: req.userId,
-                // NEW: Pass content directly
-                fileContent: fileContentBase64,
                 mimetype: uploadedFile.mimetype
             });
 
-            console.log(`[Upload] Invoice ${fatura.id} created and queued for processing (with Base64 content)`);
+            console.log(`[Upload] Invoice ${fatura.id} created and queued for processing`);
 
             // Return 202 Accepted (processing async)
             return reply.status(202).send({
@@ -221,16 +199,26 @@ export async function invoicesRoutes(app: FastifyInstance) {
                             id: true,
                             status: true
                         }
+                    },
+                    fornecedorRel: {
+                        select: {
+                            nome: true,
+                            nif: true
+                        }
                     }
                 }
             }),
             prisma.faturaImportacao.count({ where })
         ]);
 
-        // Transform file URLs
+        // Transform file URLs and Provider
         const transformedInvoices = invoices.map(inv => ({
             ...inv,
-            ficheiro_url: toPublicUrl(inv.ficheiro_url)
+            ficheiro_url: toPublicUrl(inv.ficheiro_url),
+            fornecedor: inv.fornecedorRel ? {
+                nome: inv.fornecedorRel.nome,
+                nif: inv.fornecedorRel.nif
+            } : undefined
         }));
 
         return {
@@ -315,7 +303,8 @@ export async function invoicesRoutes(app: FastifyInstance) {
                         variacao: true
                     }
                 },
-                compras: true
+                compras: true,
+                fornecedorRel: true
             }
         });
 
@@ -325,7 +314,12 @@ export async function invoicesRoutes(app: FastifyInstance) {
 
         return {
             ...fatura,
-            ficheiro_url: toPublicUrl(fatura.ficheiro_url)
+            ficheiro_url: toPublicUrl(fatura.ficheiro_url),
+            fornecedor: fatura.fornecedorRel ? {
+                nome: fatura.fornecedorRel.nome,
+                nif: fatura.fornecedorRel.nif,
+                // ...fatura.fornecedorRel // spread other fields if needed
+            } : undefined
         };
     });
 
@@ -417,14 +411,19 @@ export async function invoicesRoutes(app: FastifyInstance) {
                         where: {
                             produto_id: s.produtoId,
                             tenant_id: req.tenantId,
-                            ativo: true
+                            // ativo: true // Include inactive to show correct names
                         },
                         select: {
                             id: true,
                             tipo_unidade_compra: true,
                             unidades_por_compra: true,
                             preco_compra: true,
-                            preco_unitario: true
+                            preco_unitario: true,
+                            template: {
+                                select: {
+                                    nome: true
+                                }
+                            }
                         },
                         orderBy: {
                             id: 'asc'  // First variation created = default
@@ -436,11 +435,15 @@ export async function invoicesRoutes(app: FastifyInstance) {
                     })
                 ]);
 
-                return {
+                const result = {
                     ...s,
                     unidadeMedida: produto?.unidade_medida || 'UN',
                     variations
                 };
+                console.log(`[API Suggestion] ${s.produtoNome}:`, variations.map(v =>
+                    `ID=${v.id} Type=${v.tipo_unidade_compra} Template=${v.template?.nome}`
+                ));
+                return result;
             })
         );
 
@@ -488,6 +491,72 @@ export async function invoicesRoutes(app: FastifyInstance) {
             console.error('Approval error:', error);
             return reply.status(400).send({ success: false });
         }
+    });
+
+    // Get Integration Log
+    app.withTypeProvider<ZodTypeProvider>().get('/:id/integration-log', {
+        schema: {
+            tags: ['Invoices'],
+            security: [{ bearerAuth: [] }],
+            params: z.object({
+                id: z.string().transform(Number)
+            }),
+            response: {
+                200: z.object({
+                    log: z.any().nullable()
+                })
+            }
+        }
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const { id } = req.params;
+
+        const log = await prisma.integrationLog.findFirst({
+            where: { fatura_id: id, tenant_id: req.tenantId },
+            include: {
+                // Include summary counts if needed, but for now just the log
+            }
+        });
+
+        return { log };
+    });
+
+    // Get Integration Log Items
+    app.withTypeProvider<ZodTypeProvider>().get('/:id/integration-log/items', {
+        schema: {
+            tags: ['Invoices'],
+            security: [{ bearerAuth: [] }],
+            params: z.object({
+                id: z.string().transform(Number)
+            }),
+            querystring: z.object({
+                type: z.string().optional() // Filter by PRODUCT, RECIPE, MENU_ITEM
+            }),
+            response: {
+                200: z.array(z.any())
+            }
+        }
+    }, async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+        const { id } = req.params;
+        const { type } = req.query;
+
+        const log = await prisma.integrationLog.findFirst({
+            where: { fatura_id: id, tenant_id: req.tenantId },
+            select: { id: true }
+        });
+
+        if (!log) return [];
+
+        const items = await prisma.integrationLogItem.findMany({
+            where: {
+                log_id: log.id,
+                ...(type ? { entity_type: type } : {})
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        return items;
     });
 
     // Get invoices that recently completed processing (for frontend polling)

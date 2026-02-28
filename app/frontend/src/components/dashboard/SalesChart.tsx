@@ -14,8 +14,8 @@ interface SalesTrendData {
 type Period = '7d' | '30d' | '3m' | '6m' | '1y';
 
 interface SalesChartProps {
-    startDate: Date;
-    endDate: Date;
+    startDate: string;
+    endDate: string;
 }
 
 export function SalesChart({ startDate, endDate }: SalesChartProps) {
@@ -32,18 +32,36 @@ export function SalesChart({ startDate, endDate }: SalesChartProps) {
 
     useEffect(() => {
         if (!tenantId || !startDate || !endDate) return;
+
+        const controller = new AbortController();
+
         // ✅ FIX: Reset data before loading
         setData([]);
         setLoading(true);
-        loadSalesData();
-    }, [startDate, endDate, tenantId]); // ✅ FIX: Added dependencies
 
-    async function loadSalesData() {
+        loadSalesData(controller.signal);
+
+        return () => {
+            controller.abort();
+        };
+    }, [startDate, endDate, tenantId]); // Primitives (strings) are stable dependencies
+
+    async function loadSalesData(signal?: AbortSignal) {
         setLoading(true);
         try {
+            // Convert to ISO string for backend if needed, or pass as is if backend handles YYYY-MM-DD
+            // But existing logic used toISOString(). Let's assume input is YYYY-MM-DD
+            const startISO = new Date(startDate).toISOString();
+            const endISO = new Date(endDate).toISOString();
+
+            // Note: fetchClient might not support signal, but if it uses fetch internally it should be passed.
+            // If fetchClient doesn't support it, we check signal.aborted before setting state.
             const response = await fetchClient(
-                `/dashboard/sales-chart?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`
+                `/dashboard/sales-chart?startDate=${startISO}&endDate=${endISO}`
             );
+
+            if (signal?.aborted) return;
+
             // API now returns: [{ date: '...', vendas: 0, custos: 0 }, ... ]
             const rawData = Array.isArray(response) ? response : [];
             const mappedData = rawData.map((item: any) => ({
@@ -53,10 +71,13 @@ export function SalesChart({ startDate, endDate }: SalesChartProps) {
             }));
             setData(mappedData);
         } catch (error) {
+            if (signal?.aborted) return;
             console.error('Erro ao carregar dados de vendas:', error);
             setData([]);
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }
 

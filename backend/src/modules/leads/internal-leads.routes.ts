@@ -16,6 +16,16 @@ import { z } from 'zod';
 export async function internalLeadsRoutes(app: FastifyInstance) {
     const service = new LeadsService(app);
 
+    // Helper for permission checking
+    const checkPermission = (req: any, permission: string) => {
+        const user = req.user;
+        if (!user) return false;
+        // Admin matches everything
+        if (user.role?.toUpperCase() === 'ADMIN') return true;
+        // Check permissions array
+        return user.permissions?.includes('*') || user.permissions?.includes(permission);
+    };
+
     // GET /api/internal/leads - List all leads with filters
     app.withTypeProvider<ZodTypeProvider>().get('/leads', {
         schema: {
@@ -24,6 +34,11 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
             summary: 'List all leads with filters (internal)',
             description: 'Get paginated list of leads with optional filters. Requires internal authentication.',
         },
+        preHandler: async (req, reply) => {
+            if (!checkPermission(req, 'leads.list')) {
+                return reply.status(403).send({ error: 'Forbidden: Requires leads.list permission' });
+            }
+        }
     }, async (req, reply) => {
         try {
             const { page, pageSize, status, source, dateFrom, dateTo, search, assignedTo } = req.query;
@@ -54,6 +69,11 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
             summary: 'Get lead statistics (internal)',
             description: 'Get stats like total, new, qualified, won, conversion rate',
         },
+        preHandler: async (req, reply) => {
+            if (!checkPermission(req, 'leads.list')) {
+                return reply.status(403).send({ error: 'Forbidden: Requires leads.list permission' });
+            }
+        }
     }, async (req, reply) => {
         try {
             const { dateFrom, dateTo } = req.query;
@@ -82,6 +102,11 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
             summary: 'Get lead details by ID (internal)',
             description: 'Get full details of a single lead including assigned user and demo requests',
         },
+        preHandler: async (req, reply) => {
+            if (!checkPermission(req, 'leads.list')) {
+                return reply.status(403).send({ error: 'Forbidden: Requires leads.list permission' });
+            }
+        }
     }, async (req, reply) => {
         try {
             const leadId = parseInt(req.params.id);
@@ -125,6 +150,11 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
             summary: 'Update lead status (internal)',
             description: 'Update lead status with optional notes. Status history is automatically tracked.',
         },
+        preHandler: async (req, reply) => {
+            if (!checkPermission(req, 'sales.manage')) {
+                return reply.status(403).send({ error: 'Forbidden: Requires sales.manage permission' });
+            }
+        }
     }, async (req, reply) => {
         try {
             const leadId = parseInt(req.params.id);
@@ -136,10 +166,10 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
                 });
             }
 
-            const { status, notes } = req.body;
+            const { status, notes } = req.body as { status: string; notes?: string };
 
             // Get user ID from internal auth (if available)
-            const userId = (req as any).internalUser?.id;
+            const userId = (req as any).internalUser?.id || (req as any).user?.id;
 
             const updatedLead = await service.updateLeadStatus(leadId, status, notes, userId);
 
@@ -167,6 +197,11 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
             summary: 'Assign lead to team member (internal)',
             description: 'Assign a lead to an internal team member',
         },
+        preHandler: async (req, reply) => {
+            if (!checkPermission(req, 'sales.manage')) {
+                return reply.status(403).send({ error: 'Forbidden: Requires sales.manage permission' });
+            }
+        }
     }, async (req, reply) => {
         try {
             const leadId = parseInt(req.params.id);
@@ -178,7 +213,7 @@ export async function internalLeadsRoutes(app: FastifyInstance) {
                 });
             }
 
-            const { userId } = req.body;
+            const { userId } = req.body as { userId: number };
 
             const updatedLead = await service.assignLead(leadId, userId);
 

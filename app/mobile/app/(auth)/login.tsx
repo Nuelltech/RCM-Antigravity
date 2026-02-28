@@ -1,6 +1,6 @@
-import { View, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Text } from 'react-native-paper';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../lib/auth';
 import { router } from 'expo-router';
 import api from '../../lib/api';
@@ -13,7 +13,45 @@ export default function LoginScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
     const { login } = useAuth();
+
+    // Check biometric availability on mount
+    useEffect(() => {
+        const checkBiometric = async () => {
+            // Dynamically import to avoid crash if package not installed
+            try {
+                const { BiometricService } = require('../../services/biometric.service');
+                const available = await BiometricService.isAvailable();
+                const credentials = await BiometricService.getCredentials();
+                setIsBiometricAvailable(available && !!credentials);
+            } catch (e) {
+                console.log('Biometric check skipped (module likely missing)');
+            }
+        };
+        checkBiometric();
+    }, []);
+
+    const handleBiometricLogin = async () => {
+        try {
+            setLoading(true);
+            const { BiometricService } = require('../../services/biometric.service');
+            const success = await BiometricService.authenticate();
+
+            if (success) {
+                const credentials = await BiometricService.getCredentials();
+                if (credentials) {
+                    await login(credentials.token, credentials.user);
+                    router.replace('/(tabs)/dashboard');
+                    return;
+                }
+            }
+        } catch (e) {
+            alert('Falha no login biométrico');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleLogin = async () => {
         if (!email || !password) {
@@ -34,6 +72,16 @@ export default function LoginScreen() {
 
             await login(token, user);
 
+            // Save for future biometric login
+            try {
+                const { BiometricService } = require('../../services/biometric.service');
+                if (await BiometricService.isAvailable()) {
+                    await BiometricService.saveCredentials(email, token, user);
+                }
+            } catch (e) {
+                // Ignore if biometric service not available
+            }
+
             // Redirect to dashboard after successful login
             router.replace('/(tabs)/dashboard');
         } catch (error: any) {
@@ -53,7 +101,14 @@ export default function LoginScreen() {
             <View style={styles.content}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.logo}>RCM Mobile</Text>
+                    <View style={styles.logoContainer}>
+                        <Image
+                            source={require('../../assets/images/RCM_Short_logo_1000_Laranja-cutout_1x1.png')}
+                            style={styles.logoImage}
+                            resizeMode="contain"
+                        />
+                    </View>
+                    <Text style={styles.appTitle}>Restaurant Cost Management</Text>
                     <Text style={styles.subtitle}>Faça login no seu workspace</Text>
                 </View>
 
@@ -85,6 +140,18 @@ export default function LoginScreen() {
                     >
                         Entrar
                     </Button>
+
+                    {isBiometricAvailable && (
+                        <Button
+                            variant="text"
+                            onPress={handleBiometricLogin}
+                            disabled={loading}
+                            style={styles.bioButton}
+                            icon="fingerprint"
+                        >
+                            Entrar com Biometria
+                        </Button>
+                    )}
                 </View>
             </View>
         </KeyboardAvoidingView>
@@ -104,10 +171,19 @@ const styles = StyleSheet.create({
     header: {
         marginBottom: spacing.xxl,
     },
-    logo: {
-        ...typography.h1,
+    logoContainer: {
+        alignItems: 'center',
+        marginBottom: spacing.md,
+    },
+    logoImage: {
+        width: 100,
+        height: 100,
+    },
+    appTitle: {
+        ...typography.h2,
         color: theme.colors.textInverse,
         textAlign: 'center',
+        fontWeight: 'bold',
     },
     subtitle: {
         color: theme.colors.textLight,
@@ -123,5 +199,8 @@ const styles = StyleSheet.create({
     },
     loginButton: {
         marginTop: spacing.lg,
+    },
+    bioButton: {
+        marginTop: spacing.sm,
     },
 });

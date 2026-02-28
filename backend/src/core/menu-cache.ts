@@ -39,7 +39,7 @@ export const menuCache = {
                 return JSON.parse(cached);
             }
 
-            console.log(`[MENU CACHE MISS] tenant=${tenantId}`);
+            console.log(`[MENU CACHE MISS] tenant=${tenantId} key=${key}`);
             return null;
         } catch (error) {
             console.error('[MENU CACHE] Get error:', error);

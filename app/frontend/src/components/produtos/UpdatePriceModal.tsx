@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, AlertCircle, Loader2 } from 'lucide-react';
 
 import { API_URL } from '@/lib/api';
+import { DecimalInput } from "@/components/ui/decimal-input";
 
 const getAuthHeaders = (): Record<string, string> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -259,8 +260,7 @@ export default function UpdatePriceModal({
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
                                 €
                             </span>
-                            <input
-                                type="number"
+                            <DecimalInput
                                 step="0.01"
                                 value={novoPreco}
                                 onChange={(e) => setNovoPreco(e.target.value)}
