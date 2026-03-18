@@ -204,8 +204,36 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
 
             currentLoss = structuralProblems.reduce((sum, p) => sum + p.loss, 0);
 
-            // Setup overall CMV calculation
-            const overallCmv = totalFaturacaoGlobal > 0 ? (totalCustoGlobal / totalFaturacaoGlobal) * 100 : 0;
+            // Setup overall CMV calculation (Raw Gross Accounting matching Main Dashboard)
+            const allSalesForGlobalCmv = await prisma.venda.findMany({
+                where: {
+                    tenant_id: req.tenantId,
+                    data_venda: { gte: start, lte: now }
+                },
+                include: { menuItem: { select: { pvp: true, margem_bruta: true } } }
+            });
+
+            let globalGrossRevenue = 0;
+            let globalGrossCost = 0;
+
+            for (const sale of allSalesForGlobalCmv) {
+                globalGrossRevenue += Number(sale.receita_total || 0);
+                
+                let custoUnitario = 0;
+                if (sale.menuItem) {
+                    const pvp = Number(sale.menuItem.pvp || 0);
+                    const margemBruta = Number(sale.menuItem.margem_bruta || 0);
+                    custoUnitario = pvp - margemBruta;
+                }
+                
+                const custoTotal = sale.custo_total 
+                    ? Number(sale.custo_total) 
+                    : (custoUnitario * sale.quantidade);
+                    
+                globalGrossCost += custoTotal;
+            }
+
+            const overallCmv = globalGrossRevenue > 0 ? (globalGrossCost / globalGrossRevenue) * 100 : 0;
 
             // 3. Generate Actions List (Combines Top 3 of both)
             const tasks: ActionTask[] = [];
