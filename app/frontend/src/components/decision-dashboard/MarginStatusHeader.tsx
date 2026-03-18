@@ -67,28 +67,43 @@ export function MarginStatusHeader({ currentLoss, currentGain, netBalance, addit
             </div>
 
             {/* Risk Box (Radar) */}
-            <div className={`p-6 rounded-xl border ${hasRisk ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'} flex items-start justify-between`}>
-                <div className="flex items-start gap-4">
-                    <div className={`p-3 rounded-full ${hasRisk ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                        <AlertTriangle className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <h3 className={`text-sm font-medium ${hasRisk ? 'text-orange-800' : 'text-green-800'}`}>RISCO ADICIONAL</h3>
-                        <div className={`text-3xl font-bold mt-1 ${hasRisk ? 'text-orange-600' : 'text-green-600'}`}>
-                            {hasRisk ? `-${formatCurrency(additionalRisk)}` : '0,00 €'}
+            <div className={`p-5 rounded-xl border ${hasRisk ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'} flex flex-col justify-between`}>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${hasRisk ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
+                            <AlertTriangle className="h-5 w-5" />
                         </div>
-                        <p className={`text-sm mt-1 ${hasRisk ? 'text-orange-700/80' : 'text-green-700/80'}`}>
-                            {hasRisk ? '(aumentos de custos recentes em análise)' : '(sem alterações de custo recentes)'}
-                        </p>
+                        <div>
+                            <h3 className={`text-sm font-semibold ${hasRisk ? 'text-orange-900' : 'text-green-900'}`}>RISCO ADICIONAL</h3>
+                            <p className={`text-[10px] uppercase font-bold tracking-wider ${hasRisk ? 'text-orange-700/60' : 'text-green-700/60'}`}>
+                                Alertas Recentes
+                            </p>
+                        </div>
                     </div>
+                    <Link href="/radar-de-risco">
+                        <Button variant="ghost" size="sm" className={`h-8 px-2 text-xs ${hasRisk ? 'text-orange-700 hover:text-orange-800 hover:bg-orange-100' : 'text-green-700 hover:text-green-800 hover:bg-green-100'}`}>
+                            Ver detalhe <ArrowRight className="ml-1 h-3 w-3" />
+                        </Button>
+                    </Link>
                 </div>
 
-                <div className="text-right">
-                    <div className="text-sm font-medium text-slate-500 uppercase">CMV Global</div>
-                    <div className={`text-2xl font-bold ${cmv > targetCmv ? 'text-red-600' : 'text-slate-700'}`}>
-                        {cmv.toFixed(1)}%
+                <div className="flex items-end justify-between mt-4 pt-4 border-t" style={{ borderColor: hasRisk ? '#fed7aa' : '#bbf7d0' }}>
+                    <div>
+                        <div className={`text-lg sm:text-2xl font-bold ${hasRisk ? 'text-orange-600' : 'text-green-600'}`}>
+                            {hasRisk ? `-${formatCurrency(additionalRisk)}` : '0,00 €'}
+                        </div>
+                        <p className={`text-[10px] sm:text-xs mt-1 max-w-[150px] sm:max-w-none ${hasRisk ? 'text-orange-700/80' : 'text-green-700/80'}`}>
+                            {hasRisk ? '(aumentos de custos em análise)' : '(sem aumentos de custos)'}
+                        </p>
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">Alvo: {targetCmv.toFixed(0)}%</div>
+
+                    <div className="text-right">
+                        <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">CMV Global</div>
+                        <div className={`text-xl sm:text-2xl font-bold ${cmv > targetCmv ? 'text-red-600' : 'text-slate-700'}`}>
+                            {cmv.toFixed(1)}%
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-1 uppercase">Alvo: {targetCmv.toFixed(0)}%</div>
+                    </div>
                 </div>
             </div>
         </div>

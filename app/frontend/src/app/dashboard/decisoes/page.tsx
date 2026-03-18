@@ -90,8 +90,14 @@ export default function DecisionDashboardPage() {
                     </Button>
                 </div>
 
+                {/* Section 1 Title */}
+                <div className="mt-8 mb-4">
+                    <h2 className="text-lg font-bold text-slate-800">Cenário Global das Contas</h2>
+                    <p className="text-sm text-slate-500">Resumo da contabilidade e do resultado líquido gerado.</p>
+                </div>
+
                 {/* 0. Macro Financials (30 days) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <div className="p-5 rounded-xl border bg-white shadow-sm flex flex-col justify-between">
                         <div className="text-sm font-medium text-slate-500 mb-2 flex items-center justify-between">
                             Vendas
@@ -125,6 +131,12 @@ export default function DecisionDashboardPage() {
                         </div>
                         <p className={`text-xs mt-1 ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600/70' : 'text-red-600/70'}`}>Vendas - CMV - Estrutura</p>
                     </div>
+                </div>
+
+                {/* Section 2 Title */}
+                <div className="mt-10 mb-6">
+                    <h2 className="text-lg font-bold text-slate-800">Desafios Operacionais a Resolver</h2>
+                    <p className="text-sm text-slate-500">Onde estão as fugas de dinheiro na ementa e como compensá-las.</p>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
