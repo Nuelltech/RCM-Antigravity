@@ -35,7 +35,15 @@ export default function DecisionDashboardPage() {
         );
     }
 
-    const { marginStatus, globalMacro, actionList, structuralProblems, recentChanges } = data;
+    const { marginStatus, actionList, structuralProblems, recentChanges } = data;
+    
+    // Provide a safe fallback if globalMacro is undefined (from stale Redis/SWR cache)
+    const globalMacro = data.globalMacro || {
+        vendas: 0,
+        custosMercadoria: 0,
+        custosEstrutura: 0,
+        resultadoLiquido: 0
+    };
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
