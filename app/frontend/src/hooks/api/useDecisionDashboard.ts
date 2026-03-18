@@ -28,6 +28,12 @@ export interface ActionTask {
 }
 
 export interface DecisionDashboardData {
+    globalMacro: {
+        vendas: number;
+        custosMercadoria: number;
+        custosEstrutura: number;
+        resultadoLiquido: number;
+    };
     marginStatus: {
         currentLoss: number;
         currentGain: number;

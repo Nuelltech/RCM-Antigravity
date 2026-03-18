@@ -235,6 +235,44 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
 
             const overallCmv = globalGrossRevenue > 0 ? (globalGrossCost / globalGrossRevenue) * 100 : 0;
 
+            // ===== NEW: Calculate Structural Costs for the Period =====
+            const historicoCustos = await prisma.custoEstruturaHistorico.findMany({
+                where: { tenant_id: req.tenantId }
+            });
+
+            let totalCustoEstruturaPeriodo = 0;
+            const averageDaysInMonth = 30.44;
+
+            const currentDay = new Date(start);
+            const endLoop = new Date(now);
+            currentDay.setHours(0, 0, 0, 0);
+            endLoop.setHours(0, 0, 0, 0);
+
+            while (currentDay <= endLoop) {
+                const activeCosts = historicoCustos.filter(h => {
+                    const startDate = new Date(h.data_inicio);
+                    const endDate = h.data_fim ? new Date(h.data_fim) : null;
+                    startDate.setHours(0, 0, 0, 0);
+                    if (endDate) endDate.setHours(0, 0, 0, 0);
+                    return startDate.getTime() <= currentDay.getTime() &&
+                        (!endDate || endDate.getTime() >= currentDay.getTime());
+                });
+
+                const monthlyTotal = activeCosts.reduce((sum, h) => sum + Number(h.valor), 0);
+                totalCustoEstruturaPeriodo += (monthlyTotal / averageDaysInMonth);
+                currentDay.setDate(currentDay.getDate() + 1);
+            }
+
+            const custoEstruturaPeriodo = totalCustoEstruturaPeriodo;
+            
+            // Define macro stats to send back
+            const globalGrossStats = {
+                vendas: Math.round(globalGrossRevenue * 100) / 100,
+                custosMercadoria: Math.round(globalGrossCost * 100) / 100,
+                custosEstrutura: Math.round(custoEstruturaPeriodo * 100) / 100,
+                resultadoLiquido: Math.round((globalGrossRevenue - globalGrossCost - custoEstruturaPeriodo) * 100) / 100
+            };
+
             // 3. Generate Actions List (Combines Top 3 of both)
             const tasks: ActionTask[] = [];
             
@@ -262,10 +300,11 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
 
             // Bundle Final Response
             const responseData = {
+                globalMacro: globalGrossStats,
                 marginStatus: {
                     currentLoss,
                     currentGain,
-                    netBalance: currentGain - currentLoss,
+                    netBalance: currentLoss === 0 && currentGain === 0 ? 0 : currentGain - currentLoss,
                     additionalRisk,
                     cmv: overallCmv,
                     targetCmv: globalTargetCmv

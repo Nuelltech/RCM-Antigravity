@@ -35,7 +35,11 @@ export default function DecisionDashboardPage() {
         );
     }
 
-    const { marginStatus, actionList, structuralProblems, recentChanges } = data;
+    const { marginStatus, globalMacro, actionList, structuralProblems, recentChanges } = data;
+
+    const formatCurrency = (value: number) => {
+        return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+    };
 
     const handleTaskComplete = (taskId: string) => {
         // Optimistic UI interaction (for phase 1 V1 test)
@@ -76,6 +80,43 @@ export default function DecisionDashboardPage() {
                         <RefreshCw className={`h-4 w-4 mr-2 ${(isRefreshing || isValidating) ? 'animate-spin' : ''}`} />
                         Atualizar Dados
                     </Button>
+                </div>
+
+                {/* 0. Macro Financials (30 days) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-2">
+                    <div className="p-5 rounded-xl border bg-white shadow-sm flex flex-col justify-between">
+                        <div className="text-sm font-medium text-slate-500 mb-2 flex items-center justify-between">
+                            Vendas
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded">30 Dias</span>
+                        </div>
+                        <div className="text-2xl sm:text-3xl font-bold text-slate-900">
+                            {formatCurrency(globalMacro.vendas)}
+                        </div>
+                    </div>
+                    
+                    <div className="p-5 rounded-xl border bg-white shadow-sm flex flex-col justify-between">
+                        <div className="text-sm font-medium text-slate-500 mb-2 flex items-center justify-between">
+                            Custos Totais
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded">30 Dias</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <div className="text-2xl sm:text-3xl font-bold text-slate-900">
+                                {formatCurrency(globalMacro.custosMercadoria + globalMacro.custosEstrutura)}
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">Mercadoria + Estrutura</p>
+                    </div>
+
+                    <div className={`p-5 rounded-xl border shadow-sm flex flex-col justify-between ${globalMacro.resultadoLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}>
+                        <div className={`text-sm font-medium mb-2 flex items-center justify-between ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                            Resultado Líquido
+                            <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600 bg-emerald-100' : 'text-red-600 bg-red-100'}`}>30 Dias</span>
+                        </div>
+                        <div className={`text-2xl sm:text-3xl font-bold ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {formatCurrency(globalMacro.resultadoLiquido)}
+                        </div>
+                        <p className={`text-xs mt-1 ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600/70' : 'text-red-600/70'}`}>Vendas - CMV - Estrutura</p>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
