@@ -1,0 +1,9 @@
+node_modules/**/*
+.expo/**/*
+.git/**/*
+*.log
+.DS_Store
+android/build/**/*
+ios/build/**/*
+*.keystore
+*.jks

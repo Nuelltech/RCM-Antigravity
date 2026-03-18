@@ -1,0 +1,611 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// CORE: Tenants & Users
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  nome_restaurante    String
+  slug                String    @unique
+  nif                 String?
+  morada              String?
+  telefone            String?
+  email_contacto      String?
+  logo_url            String?
+  plano               String    @default("trial") // trial, basico, profissional, enterprise
+  data_expiracao_plano DateTime?
+  ativo               Boolean   @default(true)
+  configuracoes       Json?     // targets margem, moeda, timezone
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  users               User[]
+  sessions            Session[]
+  tenantLimits        TenantLimits?
+  auditLogs           AuditLog[]
+  familias            Familia[]
+  subfamilias         Subfamilia[]
+  produtos            Produto[]
+  variacoesProduto    VariacaoProduto[]
+  historicoPrecos     HistoricoPreco[]
+  compras             Compra[]
+  comprasTemporarias  CompraTemporaria[]
+  receitas            Receita[]
+  ingredientesReceita IngredienteReceita[]
+  etapasReceita       EtapaReceita[]
+  menuItems           MenuItem[]
+  vendas              Venda[]
+  listasInventario    ListaInventario[]
+  inventarios         Inventario[]
+  stockTeorico        StockTeorico[]
+  alertasAi           AlertaAi[]
+  conversasAi         ConversaAi[]
+  integracoes         Integracao[]
+  mapeamentosPos      MapeamentoPos[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String    @unique @default(uuid())
+  nome                String
+  email               String
+  password_hash       String
+  role                String    @default("operacional") // owner, admin, gestor, operacional, apenas_leitura
+  two_factor_secret   String?
+  two_factor_enabled  Boolean   @default(false)
+  email_verificado    Boolean   @default(false)
+  ultimo_login        DateTime?
+  ativo               Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  tenant              Tenant    @relation(fields: [tenant_id], references: [id])
+  sessions            Session[]
+  twoFactorBackupCodes TwoFactorBackupCode[]
+  auditLogs           AuditLog[]
+  comprasValidadas    Compra[]
+  comprasTempCriadas  CompraTemporaria[]
+  receitasCriadas     Receita[]
+  vendasRegistadas    Venda[]
+  listasInventario    ListaInventario[]
+  inventariosCriados  Inventario[]
+  inventariosValidados Inventario[] @relation("InventarioValidador")
+  conversasAi         ConversaAi[]
+  integracoesCriadas  Integracao[]
+
+  @@unique([tenant_id, email])
+  @@map("users")
+}
+
+model Session {
+  id                  Int       @id @default(autoincrement())
+  user_id             Int
+  tenant_id           Int
+  access_token_hash   String    @db.VarChar(64)
+  refresh_token_hash  String    @db.VarChar(64)
+  ip_address          String?
+  user_agent          String?
+  expires_at          DateTime
+  refresh_expires_at  DateTime
+  revoked             Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+
+  user                User      @relation(fields: [user_id], references: [id])
+  tenant              Tenant    @relation(fields: [tenant_id], references: [id])
+
+  @@map("sessions")
+}
+
+model TwoFactorBackupCode {
+  id        Int      @id @default(autoincrement())
+  user_id   Int
+  code_hash String
+  usado     Boolean  @default(false)
+  data_uso  DateTime?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [user_id], references: [id])
+
+  @@map("two_factor_backup_codes")
+}
+
+model TenantLimits {
+  tenant_id               Int @id
+  max_users               Int @default(5)
+  max_produtos            Int @default(100)
+  max_receitas            Int @default(50)
+  max_storage_mb          Int @default(500)
+  storage_usado_mb        Int @default(0)
+  api_calls_per_day       Int @default(1000)
+  ai_queries_per_month    Int @default(100)
+  ai_queries_usado_mes_atual Int @default(0)
+
+  tenant                  Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@map("tenant_limits")
+}
+
+model AuditLog {
+  id              BigInt   @id @default(autoincrement())
+  tenant_id       Int
+  user_id         Int?
+  acao            String
+  entidade_tipo   String?
+  entidade_id     String?
+  dados_anteriores Json?
+  dados_novos     Json?
+  ip_address      String?
+  user_agent      String?
+  resultado       String   // sucesso, erro, negado
+  timestamp       DateTime @default(now())
+
+  tenant          Tenant   @relation(fields: [tenant_id], references: [id])
+  user            User?    @relation(fields: [user_id], references: [id])
+
+  @@index([tenant_id, timestamp])
+  @@map("audit_log")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUTOS & INVENTÁRIO
+// -----------------------------------------------------------------------------
+
+model Familia {
+  id          Int      @id @default(autoincrement())
+  tenant_id   Int
+  uuid        String   @default(uuid())
+  nome        String
+  descricao   String?
+  icone       String?
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  subfamilias Subfamilia[]
+
+  @@unique([tenant_id, nome])
+  @@map("familias")
+}
+
+model Subfamilia {
+  id          Int      @id @default(autoincrement())
+  tenant_id   Int
+  familia_id  Int
+  nome        String
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  familia     Familia  @relation(fields: [familia_id], references: [id])
+  produtos    Produto[]
+
+  @@unique([tenant_id, familia_id, nome])
+  @@map("subfamilias")
+}
+
+model Produto {
+  id              Int      @id @default(autoincrement())
+  tenant_id       Int
+  uuid            String   @default(uuid())
+  nome            String
+  familia_id      Int?     // Optional mainly for flexibility, but usually required
+  subfamilia_id   Int
+  unidade_medida  String   // KG, L, Unidade
+  descricao       String?  @db.Text
+  imagem_url      String?
+  codigo_interno  String?
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenant_id], references: [id])
+  subfamilia      Subfamilia @relation(fields: [subfamilia_id], references: [id])
+  variacoes       VariacaoProduto[]
+  ingredientesReceita IngredienteReceita[]
+  stockTeorico    StockTeorico[]
+
+  @@unique([tenant_id, subfamilia_id, nome])
+  @@map("produtos")
+}
+
+model VariacaoProduto {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  produto_id          Int
+  tipo_unidade_compra String   // ex: "Caixa 12un"
+  unidades_por_compra Decimal  @db.Decimal(10, 4)
+  preco_compra        Decimal  @db.Decimal(10, 2)
+  preco_unitario      Decimal  @db.Decimal(10, 4) // Computed in app, stored for cache
+  fornecedor          String?
+  codigo_fornecedor   String?
+  data_ultima_compra  DateTime?
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  historicoPrecos     HistoricoPreco[]
+  compras             Compra[]
+  comprasTemporarias  CompraTemporaria[]
+  stockTeorico        StockTeorico[]
+
+  @@map("variacoes_produto")
+}
+
+model HistoricoPreco {
+  id                  BigInt   @id @default(autoincrement())
+  tenant_id           Int
+  variacao_produto_id Int
+  preco_anterior      Decimal  @db.Decimal(10, 2)
+  preco_novo          Decimal  @db.Decimal(10, 2)
+  percentual_mudanca  Decimal  @db.Decimal(5, 2)
+  data_mudanca        DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao            VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
+
+  @@map("historico_precos")
+}
+
+// -----------------------------------------------------------------------------
+// COMPRAS
+// -----------------------------------------------------------------------------
+
+model Compra {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  data_compra         DateTime
+  variacao_produto_id Int
+  quantidade_comprada Decimal  @db.Decimal(10, 4)
+  preco_unitario      Decimal  @db.Decimal(10, 4)
+  preco_total         Decimal  @db.Decimal(10, 2)
+  fornecedor          String?
+  numero_fatura       String?
+  metodo_entrada      String   // Manual, OCR, API
+  documento_url       String?
+  validado            Boolean  @default(true)
+  data_validacao      DateTime?
+  user_id             Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao            VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+
+  @@map("compras")
+}
+
+model CompraTemporaria {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  sessao_id           String   // Grouping ID for the OCR session
+  produto_reconhecido String?
+  variacao_id         Int?
+  quantidade          Decimal? @db.Decimal(10, 4)
+  preco_unitario      Decimal? @db.Decimal(10, 4)
+  preco_total         Decimal? @db.Decimal(10, 2)
+  fornecedor          String?
+  data_compra         DateTime?
+  status              String   @default("Pendente") // Pendente, Validado, Corrigido, Rejeitado
+  confianca_ocr       Int?     // 0-100
+  dados_ocr_raw       Json?
+  user_id             Int?
+  createdAt           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+
+  @@map("compras_temporarias")
+}
+
+// -----------------------------------------------------------------------------
+// RECEITAS & MENU
+// -----------------------------------------------------------------------------
+
+model Receita {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  nome                String
+  tipo                String   // Final, Pre-preparo
+  numero_porcoes      Decimal  @default(1) @db.Decimal(10, 2)
+  tempo_preparacao    Int?     // minutes
+  quantidade_total_produzida Decimal? @db.Decimal(10, 4)
+  unidade_medida      String?  // KG, L, Unidade
+  custo_total         Decimal  @default(0) @db.Decimal(10, 4)
+  custo_por_porcao    Decimal  @default(0) @db.Decimal(10, 4)
+  imagem_url          String?
+  descricao           String?  @db.Text
+  dificuldade         String?  // Fácil, Média, Difícil
+  categoria           String?
+  ativa               Boolean  @default(true)
+  criado_por          Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation(fields: [criado_por], references: [id])
+  ingredientes        IngredienteReceita[] @relation("ReceitaPai")
+  ingredienteEm       IngredienteReceita[] @relation("ReceitaFilho")
+  etapas              EtapaReceita[]
+  menuItems           MenuItem[]
+
+  @@unique([tenant_id, nome])
+  @@map("receitas")
+}
+
+model IngredienteReceita {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  receita_id          Int
+  produto_id          Int?
+  receita_preparo_id  Int?
+  quantidade          Decimal  @db.Decimal(10, 4)
+  unidade             String
+  custo_ingrediente   Decimal  @default(0) @db.Decimal(10, 4)
+  ordem               Int      @default(0)
+  notas               String?
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  receita             Receita  @relation("ReceitaPai", fields: [receita_id], references: [id])
+  produto             Produto? @relation(fields: [produto_id], references: [id])
+  receitaPreparo      Receita? @relation("ReceitaFilho", fields: [receita_preparo_id], references: [id])
+
+  @@map("ingredientes_receita")
+}
+
+model EtapaReceita {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  receita_id          Int
+  numero_etapa        Int
+  descricao           String   @db.Text
+  tempo_estimado      Int?     // minutes
+  temperatura         Int?     // celsius
+  equipamento         String?
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  receita             Receita  @relation(fields: [receita_id], references: [id])
+
+  @@unique([receita_id, numero_etapa])
+  @@map("etapas_receita")
+}
+
+model MenuItem {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  receita_id          Int
+  nome_comercial      String
+  pvp                 Decimal  @db.Decimal(10, 2)
+  margem_bruta        Decimal? @db.Decimal(10, 2)
+  margem_percentual   Decimal? @db.Decimal(5, 2)
+  categoria_menu      String?  // Entradas, Principais...
+  descricao_menu      String?  @db.Text
+  alergenos           String?
+  calorias            Int?
+  tempo_servico       Int?     // minutes
+  posicao_menu        Int      @default(0)
+  destacado           Boolean  @default(false)
+  ativo               Boolean  @default(true)
+  imagem_url          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  receita             Receita  @relation(fields: [receita_id], references: [id])
+  vendas              Venda[]
+  mapeamentosPos      MapeamentoPos[]
+
+  @@map("menu")
+}
+
+// -----------------------------------------------------------------------------
+// VENDAS
+// -----------------------------------------------------------------------------
+
+model Venda {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  data_venda          DateTime
+  hora_venda          DateTime? // Can be part of data_venda but kept for explicit separation if needed
+  menu_item_id        Int
+  quantidade          Int
+  pvp_praticado       Decimal  @db.Decimal(10, 2)
+  desconto_percentual Decimal? @db.Decimal(5, 2)
+  desconto_valor      Decimal? @db.Decimal(10, 2)
+  receita_total       Decimal  @db.Decimal(10, 2)
+  custo_total         Decimal? @db.Decimal(10, 2)
+  margem_bruta        Decimal? @db.Decimal(10, 2)
+  metodo_entrada      String   // Manual, POS, API
+  pos_transacao_id    String?
+  mesa                String?
+  colaborador         String?
+  observacoes         String?
+  user_id             Int?
+  createdAt           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  menuItem            MenuItem @relation(fields: [menu_item_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+
+  @@map("vendas")
+}
+
+// -----------------------------------------------------------------------------
+// INVENTÁRIO
+// -----------------------------------------------------------------------------
+
+model ListaInventario {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  nome                String
+  descricao           String?
+  tipo                String   // Completo, Parcial, Spot
+  periodicidade       String?  // Diário, Semanal...
+  produtos_json       Json?    // List of IDs
+  ativa               Boolean  @default(true)
+  criado_por          Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation(fields: [criado_por], references: [id])
+  inventarios         Inventario[]
+
+  @@map("lista_inventario")
+}
+
+model Inventario {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  lista_inventario_id Int?
+  data_contagem       DateTime
+  hora_inicio         DateTime?
+  hora_fim            DateTime?
+  produto_id          Int?     // Can be direct product or variation
+  variacao_id         Int?
+  quantidade_contada  Decimal  @db.Decimal(10, 4)
+  quantidade_teorica  Decimal? @db.Decimal(10, 4)
+  diferenca           Decimal? @db.Decimal(10, 4)
+  preco_unitario      Decimal? @db.Decimal(10, 4)
+  valor_diferenca     Decimal? @db.Decimal(10, 2)
+  status              String   @default("Em curso") // Em curso, Concluído, Validado, Ajustado
+  metodo              String   // Manual, Ficheiro, Interface
+  observacoes         String?
+  user_id             Int?
+  validado_por        Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  listaInventario     ListaInventario? @relation(fields: [lista_inventario_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+  validador           User?    @relation("InventarioValidador", fields: [validado_por], references: [id])
+
+  @@map("inventario")
+}
+
+model StockTeorico {
+  tenant_id           Int
+  produto_id          Int
+  variacao_id         Int      @default(0) // 0 if null/base product
+  quantidade_atual    Decimal  @db.Decimal(10, 4)
+  valor_total         Decimal  @db.Decimal(10, 2)
+  data_ultima_atualizacao DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+
+  @@id([tenant_id, produto_id, variacao_id])
+  @@map("stock_teorico")
+}
+
+// -----------------------------------------------------------------------------
+// AI & INTEGRAÇÕES
+// -----------------------------------------------------------------------------
+
+model AlertaAi {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  tipo_alerta         String   // Margem Baixa, Preço Subiu...
+  titulo              String
+  mensagem            String   @db.Text
+  entidade_tipo       String?
+  entidade_id         String?
+  severidade          String   // Info, Atenção, Crítico
+  acoes_sugeridas     Json?
+  dados_contexto      Json?
+  lido                Boolean  @default(false)
+  lido_por            Int?
+  data_leitura        DateTime?
+  arquivado           Boolean  @default(false)
+  expira_em           DateTime?
+  createdAt           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+
+  @@map("alertas_ai")
+}
+
+model ConversaAi {
+  id                  BigInt   @id @default(autoincrement())
+  tenant_id           Int
+  user_id             Int
+  sessao_id           String
+  role                String   // user, assistant, system
+  mensagem            String   @db.Text
+  tokens_usados       Int?
+  contexto_adicional  Json?
+  timestamp           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  user                User     @relation(fields: [user_id], references: [id])
+
+  @@map("conversas_ai")
+}
+
+model Integracao {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  tipo_integracao     String   // POS, Contabilidade, Email
+  nome                String
+  provedor            String   // Lightspeed, Square...
+  ativa               Boolean  @default(true)
+  configuracao        Json?
+  ultimo_sync         DateTime?
+  status_ultimo_sync  String?
+  mensagem_erro       String?
+  criado_por          Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation(fields: [criado_por], references: [id])
+  mapeamentosPos      MapeamentoPos[]
+
+  @@map("integracoes")
+}
+
+model MapeamentoPos {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  integracao_id       Int
+  pos_item_id         String
+  pos_item_nome       String
+  menu_item_id        Int
+  ativo               Boolean  @default(true)
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  integracao          Integracao @relation(fields: [integracao_id], references: [id])
+  menuItem            MenuItem @relation(fields: [menu_item_id], references: [id])
+
+  @@unique([tenant_id, integracao_id, pos_item_id])
+  @@map("mapeamento_pos")
+}

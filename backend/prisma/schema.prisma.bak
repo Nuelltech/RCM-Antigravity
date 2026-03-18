@@ -1,0 +1,1878 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
+}
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// CORE: Tenants & Users
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  nome_restaurante    String
+  slug                String    @unique
+  nif                 String?   @unique
+  morada              String?
+  telefone            String?
+  email_contacto      String?
+  logo_url            String?
+  plano               String    @default("trial") // trial, basico, profissional, enterprise
+  data_expiracao_plano DateTime?
+  ativo               Boolean   @default(true)
+  
+  // Support & Management fields
+  status              String?   @default("active") // active, trial, suspended, cancelled, payment_overdue
+  trial_ends_at       DateTime?
+  suspended_at        DateTime?
+  suspension_reason   String?   @db.Text
+  
+  // Usage limits
+  monthly_limit_invoices Int?  @default(50)
+  monthly_limit_sales    Int?  @default(100)
+  storage_limit_mb       Int?  @default(1000)
+  configuracoes       Json?     // targets margem, moeda, timezone
+  metadata            Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+
+  userTenants         UserTenant[]  // Multi-tenant: users associated with this tenant
+  sessions            Session[]
+  tenantLimits        TenantLimits?
+  auditLogs           AuditLog[]
+  familias            Familia[]
+  subfamilias         Subfamilia[]
+  produtos            Produto[]
+  variacoesProduto    VariacaoProduto[]
+  historicoPrecos     HistoricoPreco[]
+  compras             Compra[]
+  comprasTemporarias  CompraTemporaria[]
+  comprasFaturas      CompraFatura[]
+  comprasItens        CompraItem[]
+  receitas            Receita[]
+  ingredientesReceita IngredienteReceita[]
+  etapasReceita       EtapaReceita[]
+  menuItems           MenuItem[]
+  vendas              Venda[]
+  stockTeorico        StockTeorico[]
+  alertasAi           AlertaAi[]
+  conversasAi         ConversaAi[]
+  integracoes         Integracao[]
+  mapeamentosPos      MapeamentoPos[]
+  combos              Combo[]
+  comboItens          ComboItem[]
+  comboCategorias     ComboCategoria[]
+  comboOpcoes         ComboCategoriaOpcao[]
+  formatosVenda       FormatoVenda[]
+  templateFormatosVenda TemplateFormatoVenda[]
+  templateVariacoesCompra TemplateVariacaoCompra[]
+  dadosRestaurante    DadosRestaurante?
+  custosEstrutura     CustoEstrutura[]
+  historicoCustosEstrutura CustoEstruturaHistorico[]
+  localizacoes        Localizacao[]
+  listasCalculadora   ListaCalculadora[]
+  sessoesInventario   SessaoInventario[]
+  itensInventario     ItemInventario[]
+  faturasImportacao   FaturaImportacao[]
+  faturasLinhasImportacao FaturaLinhaImportacao[]
+  matchingHistorico   MatchingHistorico[]
+  createdTemplates    InvoiceTemplate[]  // Templates created by this tenant
+  fornecedores        Fornecedor[]  // Suppliers for this tenant
+  demoRequests        DemoRequest[]  // Demo requests linked to this tenant
+  invoiceMetrics      InvoiceProcessingMetrics[]  // Invoice processing metrics
+  vendasImportacao    VendaImportacao[]
+  vendasLinhasImportacao VendaLinhaImportacao[]
+  salesMatchingHistorico SalesMatchingHistorico[]
+  salesProcessingMetrics SalesProcessingMetrics[]
+  errorLogs              ErrorLog[]
+  performanceMetrics     PerformanceMetric[]
+  tenantNotes            TenantNote[]
+  tenantEvents           TenantEvent[]
+
+  @@map("tenants")
+}
+
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  nome                String
+  email               String    @unique  // Globally unique
+  password_hash       String?   // Nullable for new users without password yet
+  two_factor_secret   String?
+  two_factor_enabled  Boolean   @default(false)
+  email_verificado    Boolean   @default(false)
+  verification_code   String?
+  verification_code_expires_at DateTime?
+  ultimo_login        DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Multi-tenant: user can belong to multiple tenants
+  tenants             UserTenant[]
+  invitedUsers        UserTenant[] @relation("UserInviter")  // Users this user invited
+  sessions            Session[]
+  twoFactorBackupCodes TwoFactorBackupCode[]
+  passwordResets      PasswordReset[]
+  invoiceMetrics      InvoiceProcessingMetrics[]  // Invoice processing metrics
+  auditLogs           AuditLog[]
+  comprasValidadas    Compra[]
+  comprasTempCriadas  CompraTemporaria[]
+  comprasFaturasValidadas CompraFatura[]
+  receitasCriadas     Receita[]
+  vendasRegistadas    Venda[]
+  conversasAi         ConversaAi[]
+  integracoesCriadas  Integracao[]
+  historicoPrecos     HistoricoPreco[]
+  listasCalculadora   ListaCalculadora[]
+  sessoesCriadas      SessaoInventario[] @relation("SessaoCriador")
+  sessoesFechadas     SessaoInventario[] @relation("SessaoFechador")
+  itensContados       ItemInventario[]
+  matchingHistorico   MatchingHistorico[]
+  convertedLeads      Lead[]          // Leads that converted to this user
+  demoRequests        DemoRequest[]   // Demo requests from this user
+  salesMatchingHistorico SalesMatchingHistorico[]
+  salesProcessingMetrics SalesProcessingMetrics[]
+  errorLogs              ErrorLog[]
+  performanceMetrics     PerformanceMetric[]
+
+
+
+  @@index([email]) // Performance: Login lookup
+  @@map("users")
+}
+
+// User-Tenant Relationship (Many-to-Many)
+// A user can belong to multiple tenants with different roles
+model UserTenant {
+  user_id       Int
+  tenant_id     Int
+  role          String    // admin, manager, operador, visualizador
+  ativo         Boolean   @default(true)
+  invited_by    Int?
+  invited_at    DateTime  @default(now())
+  activated_at  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  inviter       User?     @relation("UserInviter", fields: [invited_by], references: [id], onDelete: SetNull)
+
+  @@id([user_id, tenant_id])
+  @@index([tenant_id, ativo])
+  @@index([user_id, ativo])
+  @@map("user_tenants")
+}
+
+model Session {
+  id                  Int       @id @default(autoincrement())
+  user_id             Int
+  tenant_id           Int
+  access_token_hash   String    @db.VarChar(64)
+  refresh_token_hash  String    @db.VarChar(64)
+  ip_address          String?
+  user_agent          String?
+  expires_at          DateTime
+  refresh_expires_at  DateTime
+  revoked             Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+
+  user                User      @relation(fields: [user_id], references: [id])
+  tenant              Tenant    @relation(fields: [tenant_id], references: [id])
+
+  @@map("sessions")
+}
+
+model TwoFactorBackupCode {
+  id        Int      @id @default(autoincrement())
+  user_id   Int
+  code_hash String
+  usado     Boolean  @default(false)
+  data_uso  DateTime?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [user_id], references: [id])
+
+  @@map("two_factor_backup_codes")
+}
+
+model PasswordReset {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  token      String   @unique @db.VarChar(255)
+  expires_at DateTime
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([user_id])
+  @@map("password_resets")
+}
+
+model TenantLimits {
+  tenant_id               Int @id
+  max_users               Int @default(5)
+  max_produtos            Int @default(100)
+  max_receitas            Int @default(50)
+  max_storage_mb          Int @default(500)
+  storage_usado_mb        Int @default(0)
+  api_calls_per_day       Int @default(1000)
+  ai_queries_per_month    Int @default(100)
+  ai_queries_usado_mes_atual Int @default(0)
+
+  tenant                  Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@map("tenant_limits")
+}
+
+model AuditLog {
+  id              BigInt   @id @default(autoincrement())
+  tenant_id       Int
+  user_id         Int?
+  acao            String
+  entidade_tipo   String?
+  entidade_id     String?
+  dados_anteriores Json?
+  dados_novos     Json?
+  ip_address      String?
+  user_agent      String?
+  resultado       String   // sucesso, erro, negado
+  timestamp       DateTime @default(now())
+
+  tenant          Tenant   @relation(fields: [tenant_id], references: [id])
+  user            User?    @relation(fields: [user_id], references: [id])
+
+  @@index([tenant_id, timestamp])
+  @@map("audit_log")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUTOS & INVENTÃƒÂRIO
+// -----------------------------------------------------------------------------
+
+model Familia {
+  id          Int      @id @default(autoincrement())
+  tenant_id   Int
+  uuid        String   @default(uuid())
+  nome        String
+  codigo      String?  // ex: CAR, PEI
+  descricao   String?
+  icone       String?
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  subfamilias Subfamilia[]
+
+  @@unique([tenant_id, nome])
+  @@map("familias")
+}
+
+model Subfamilia {
+  id          Int      @id @default(autoincrement())
+  tenant_id   Int
+  familia_id  Int
+  nome        String
+  codigo      String?  // ex: POR, VIT
+  ordem       Int      @default(0)
+  ativo       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id])
+  familia     Familia  @relation(fields: [familia_id], references: [id])
+  produtos    Produto[]
+
+  @@unique([tenant_id, familia_id, nome])
+  @@map("subfamilias")
+}
+
+model Produto {
+  id              Int      @id @default(autoincrement())
+  tenant_id       Int
+  uuid            String   @default(uuid())
+  nome            String
+  familia_id      Int?     // Optional mainly for flexibility, but usually required
+  subfamilia_id   Int
+  unidade_medida  String   // KG, L, Unidade
+  descricao       String?  @db.Text
+  imagem_url      String?
+  codigo_interno  String?
+  vendavel        Boolean  @default(false) // NEW: Can be sold directly (not just ingredient)
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenant_id], references: [id])
+  subfamilia      Subfamilia @relation(fields: [subfamilia_id], references: [id])
+  variacoes       VariacaoProduto[]
+  ingredientesReceita IngredienteReceita[]
+  stockTeorico    StockTeorico[]
+  comboItens      ComboItem[]
+  formatosVenda   FormatoVenda[] // NEW: Sell formats for this product
+  itensInventario ItemInventario[]
+  comprasItens    CompraItem[]
+  faturasLinhasImportacao FaturaLinhaImportacao[]
+  matchingHistorico MatchingHistorico[]
+
+  @@unique([tenant_id, subfamilia_id, nome])
+  @@map("produtos")
+}
+
+model VariacaoProduto {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  produto_id          Int
+  tipo_unidade_compra String   // ex: "Caixa 12un"
+  unidades_por_compra Decimal  @db.Decimal(10, 4)
+  volume_por_unidade  Decimal? @db.Decimal(10, 4) // Optional: volume/quantity per individual unit (e.g., 0.33 for 33cl bottle)
+  preco_compra        Decimal  @db.Decimal(10, 2)
+  preco_unitario      Decimal  @db.Decimal(10, 4) // Computed in app, stored for cache
+  fornecedor          String?
+  codigo_fornecedor   String?
+  data_ultima_compra  DateTime?
+  template_id         Int?     // Reference to template used
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  template            TemplateVariacaoCompra? @relation("TemplateUsage", fields: [template_id], references: [id])
+  historicoPrecos     HistoricoPreco[]
+  compras             Compra[]
+  comprasTemporarias  CompraTemporaria[]
+  comprasItens        CompraItem[]
+  stockTeorico        StockTeorico[]
+  formatosVendaOrigem FormatoVenda[] @relation("VariacaoOrigem") // NEW: Sell formats using this variation as origin
+  itensInventario     ItemInventario[]
+  faturasLinhasImportacao FaturaLinhaImportacao[]
+  matchingHistorico   MatchingHistorico[]
+
+  @@map("variacoes_produto")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUTOS: Purchase Variation Templates
+// -----------------------------------------------------------------------------
+
+model TemplateVariacaoCompra {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  
+  // Template definition
+  nome                String   // "Pack 6un", "Barril 50L", "Saco 25kg"
+  descricao           String?  @db.Text
+  unidades_por_compra Decimal  @db.Decimal(10, 4)
+  unidade_medida      String   // "L", "KG", "Unidade"
+  
+  // Control
+  ativo               Boolean  @default(true)
+  ordem_exibicao      Int?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacoes           VariacaoProduto[] @relation("TemplateUsage")
+  
+  @@index([tenant_id, ativo])
+  @@index([tenant_id, unidade_medida])
+  @@map("template_variacao_compra")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUTOS: Sell Formats for Products
+// -----------------------------------------------------------------------------
+
+// NEW MODEL: Sell Formats for Products
+model FormatoVenda {
+  id                      Int              @id @default(autoincrement())
+  tenant_id               Int
+  produto_id              Int
+  
+  // Identification
+  nome                    String           // "Coca-Cola Copo 25cl", "Coca-Cola Lata 33cl"
+  descricao               String?          @db.Text
+  codigo_interno          String?
+  
+  // Quantity sold per unit
+  quantidade_vendida      Decimal          @db.Decimal(10, 3)
+  unidade_medida          String           // "L", "ML", "KG", "G", "UN"
+  
+  // Pricing (current active price)
+  preco_venda             Decimal?         @db.Decimal(10, 2)  // PVP (selling price)
+  custo_unitario          Decimal          @db.Decimal(10, 2)  // Unit cost (calculated)
+  margem_percentual       Decimal?         @db.Decimal(5, 2)   // Auto-calculated %
+  
+  // Source tracking
+  variacao_origem_id      Int?             // Origin variation (if direct sale)
+  conversao_necessaria    Boolean          @default(false)     // Needs conversion?
+  template_id             Int?             // Template used to create this format
+  
+  // Price validity (for price history)
+  data_inicio_vigencia    DateTime         @default(now())
+  data_fim_vigencia       DateTime?        // null = currently active
+  
+  // Control flags
+  ativo                   Boolean          @default(true)
+  disponivel_menu         Boolean          @default(true)
+  ordem_exibicao          Int?
+  
+  // Timestamps
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  
+  // Relations
+  tenant                  Tenant           @relation(fields: [tenant_id], references: [id])
+  produto                 Produto          @relation(fields: [produto_id], references: [id])
+  variacao_origem         VariacaoProduto? @relation("VariacaoOrigem", fields: [variacao_origem_id], references: [id])
+  menu_itens              MenuItem[]
+  comboCategoriaOpcoes    ComboCategoriaOpcao[]
+  template                TemplateFormatoVenda? @relation("TemplateUsage", fields: [template_id], references: [id])
+  
+  @@index([tenant_id, produto_id])
+  @@index([tenant_id, ativo, disponivel_menu])
+  @@index([data_fim_vigencia])
+  @@index([template_id])
+  @@map("formatos_venda")
+}
+
+// -----------------------------------------------------------------------------
+// PRODUCTS: Sale Format Templates
+// -----------------------------------------------------------------------------
+
+model TemplateFormatoVenda {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  
+  // Template definition
+  nome                String   // "Copo 25cl", "Lata 33cl", "Garrafa 1L"
+  descricao           String?  @db.Text
+  quantidade          Decimal  @db.Decimal(10, 3)
+  unidade_medida      String   // "L", "ML", "KG", "G", "UN"
+  
+  // Control
+  ativo               Boolean  @default(true)
+  ordem_exibicao      Int?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  formatosVenda       FormatoVenda[] @relation("TemplateUsage")
+  
+  @@index([tenant_id, ativo])
+  @@map("template_formato_venda")
+}
+
+model HistoricoPreco {
+  id                      BigInt   @id @default(autoincrement())
+  tenant_id               Int
+  variacao_produto_id     Int
+  preco_anterior          Decimal  @db.Decimal(10, 2)
+  preco_novo              Decimal  @db.Decimal(10, 2)
+  preco_unitario_anterior Decimal? @db.Decimal(10, 4)
+  preco_unitario_novo     Decimal? @db.Decimal(10, 4)
+  percentual_mudanca      Decimal  @db.Decimal(5, 2)
+  origem                  String   @default("MANUAL") // MANUAL, COMPRA, SISTEMA
+  alterado_por            Int?
+  receitas_afetadas       Int      @default(0)
+  menus_afetados          Int      @default(0)
+  data_mudanca            DateTime @default(now())
+
+  tenant                  Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao                VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
+  usuario                 User?    @relation(fields: [alterado_por], references: [id])
+
+  @@map("historico_precos")
+}
+
+// -----------------------------------------------------------------------------
+// FORNECEDORES (Suppliers)
+// -----------------------------------------------------------------------------
+
+model Fornecedor {
+  id                Int       @id @default(autoincrement())
+  tenant_id         Int
+  uuid              String    @unique @default(uuid())
+  
+  // Identification
+  nome              String    // "Mercado Central"
+  nome_normalize    String    // "mercado central" (for matching)
+  nif               String?
+  
+  // Contact
+  email             String?
+  telefone          String?
+  morada            String?
+  
+  // Business
+  categoria         String?   // "Carnes", "Legumes", "Bebidas"
+  observacoes       String?   @db.Text
+  
+  // Status
+  ativo             Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  tenant            Tenant    @relation(fields: [tenant_id], references: [id])
+  compras           Compra[]
+  faturasImportacao FaturaImportacao[]
+  invoiceTemplates  InvoiceTemplate[]  // Multiple templates for different formats
+  
+  @@unique([tenant_id, nome_normalize])
+  @@index([tenant_id, ativo])
+  @@map("fornecedores")
+}
+
+// -----------------------------------------------------------------------------
+// COMPRAS
+// -----------------------------------------------------------------------------
+
+model Compra {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  data_compra         DateTime
+  variacao_produto_id Int
+  quantidade_comprada Decimal  @db.Decimal(10, 4)
+  preco_unitario      Decimal  @db.Decimal(10, 4)
+  preco_total         Decimal  @db.Decimal(10, 2)
+  fornecedor          String?  // OLD: kept for migration
+  fornecedor_id       Int?     // NEW: FK to fornecedores
+  numero_fatura       String?
+  metodo_entrada      String   // Manual, OCR, API
+  documento_url       String?
+  validado            Boolean  @default(true)
+  data_validacao      DateTime?
+  user_id             Int?
+  fatura_importacao_id Int?    // Link to imported invoice
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao            VariacaoProduto @relation(fields: [variacao_produto_id], references: [id])
+  fornecedorRel       Fornecedor? @relation(fields: [fornecedor_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+  faturaImportacao    FaturaImportacao? @relation(fields: [fatura_importacao_id], references: [id])
+
+  @@index([fornecedor_id])
+  @@map("compras")
+}
+
+model CompraTemporaria {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  sessao_id           String   // Grouping ID for the OCR session
+  produto_reconhecido String?
+  variacao_id         Int?
+  quantidade          Decimal? @db.Decimal(10, 4)
+  preco_unitario      Decimal? @db.Decimal(10, 4)
+  preco_total         Decimal? @db.Decimal(10, 2)
+  fornecedor          String?
+  data_compra         DateTime?
+  status              String   @default("Pendente") // Pendente, Validado, Corrigido, Rejeitado
+  confianca_ocr       Int?     // 0-100
+  dados_ocr_raw       Json?
+  user_id             Int?
+  createdAt           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+
+  @@map("compras_temporarias")
+}
+
+// -----------------------------------------------------------------------------
+// COMPRAS - FaturaÃƒÂ§ÃƒÂ£o (Invoice-based Purchases)
+// -----------------------------------------------------------------------------
+
+model CompraFatura {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  
+  // Supplier Info
+  fornecedor_nome     String
+  fornecedor_nif      String?
+  
+  // Invoice Info
+  numero_fatura       String
+  data_fatura         DateTime
+  
+  // Totals
+  total_sem_iva       Decimal  @db.Decimal(10, 2)
+  total_iva           Decimal  @db.Decimal(10, 2)
+  total_com_iva       Decimal  @db.Decimal(10, 2)
+  
+  // Source tracking
+  metodo_entrada      String   // Manual, OCR, API, Import
+  documento_url       String?
+  fatura_importacao_id Int?    // Link to imported invoice if from OCR
+  
+  // Validation
+  validado            Boolean  @default(false)
+  data_validacao      DateTime?
+  validado_por        Int?
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  validador           User?    @relation(fields: [validado_por], references: [id])
+  faturaImportacao    FaturaImportacao? @relation(fields: [fatura_importacao_id], references: [id])
+  itens               CompraItem[]
+  
+  @@map("compras_faturas")
+}
+
+model CompraItem {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  
+  // Parent invoice
+  compra_fatura_id    Int
+  
+  // Product Info
+  produto_id          Int
+  variacao_id         Int?
+  
+  // Line Data
+  descricao           String
+  quantidade          Decimal  @db.Decimal(10, 4)
+  unidade             String   // KG, L, UN, etc.
+  preco_unitario      Decimal  @db.Decimal(10, 4)
+  preco_total         Decimal  @db.Decimal(10, 2)
+  iva_percentual      Decimal? @db.Decimal(5, 2)
+  iva_valor           Decimal? @db.Decimal(10, 2)
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  compraFatura        CompraFatura @relation(fields: [compra_fatura_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  
+  @@map("compras_itens")
+}
+
+
+// -----------------------------------------------------------------------------
+// RECEITAS & MENU
+// -----------------------------------------------------------------------------
+
+model Receita {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  nome                String
+  tipo                String   // Final, Pre-preparo
+  numero_porcoes      Decimal  @default(1) @db.Decimal(10, 2)
+  tempo_preparacao    Int?     // minutes
+  quantidade_total_produzida Decimal? @db.Decimal(10, 4)
+  unidade_medida      String?  // KG, L, Unidade
+  custo_total         Decimal  @default(0) @db.Decimal(10, 4)
+  custo_por_porcao    Decimal  @default(0) @db.Decimal(10, 4)
+  imagem_url          String?
+  video_url           String?
+  descricao           String?  @db.Text
+  dificuldade         String?  // FÃƒÂ¡cil, MÃƒÂ©dia, DifÃƒÂ­cil
+  categoria           String?
+  ativa               Boolean  @default(true)
+  criado_por          Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation(fields: [criado_por], references: [id])
+  ingredientes        IngredienteReceita[] @relation("ReceitaPai")
+  ingredienteEm       IngredienteReceita[] @relation("ReceitaFilho")
+  etapas              EtapaReceita[]
+  menuItems           MenuItem[]
+  comboItens          ComboItem[]
+  comboCategoriaOpcoes ComboCategoriaOpcao[]
+
+  @@unique([tenant_id, nome])
+  @@map("receitas")
+}
+
+
+model IngredienteReceita {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  receita_id          Int
+  produto_id          Int?
+  receita_preparo_id  Int?
+  quantidade_bruta    Decimal  @db.Decimal(10, 4) // Quantidade retirada do armazenamento
+  quantidade_liquida  Decimal? @db.Decimal(10, 4) // Quantidade ÃƒÂºtil apÃƒÂ³s preparaÃƒÂ§ÃƒÂ£o
+  rentabilidade       Decimal? @db.Decimal(5, 2)  // (Qtd LÃƒÂ­quida / Qtd Bruta) * 100 - calculado
+  unidade             String
+  custo_ingrediente   Decimal  @default(0) @db.Decimal(10, 4)
+  ordem               Int      @default(0)
+  notas               String?
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  receita             Receita  @relation("ReceitaPai", fields: [receita_id], references: [id])
+  produto             Produto? @relation(fields: [produto_id], references: [id])
+  receitaPreparo      Receita? @relation("ReceitaFilho", fields: [receita_preparo_id], references: [id])
+
+  @@map("ingredientes_receita")
+}
+
+
+model EtapaReceita {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  receita_id          Int
+  numero_etapa        Int
+  descricao           String   @db.Text
+  tempo_estimado      Int?     // minutes
+  temperatura         Int?     // celsius
+  equipamento         String?
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  receita             Receita  @relation(fields: [receita_id], references: [id])
+
+  @@unique([receita_id, numero_etapa])
+  @@map("etapas_receita")
+}
+
+model MenuItem {
+  id                  Int              @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String           @default(uuid())
+  receita_id          Int?             // Optional - one of receita_id, combo_id, or formato_venda_id
+  combo_id            Int?             // Optional - one of receita_id, combo_id, or formato_venda_id
+  formato_venda_id    Int?             // NEW: Sell format (direct product sale)
+  nome_comercial      String
+  pvp                 Decimal          @db.Decimal(10, 2)
+  margem_bruta        Decimal?         @db.Decimal(10, 2)
+  margem_percentual   Decimal?         @db.Decimal(5, 2)
+  cmv_percentual      Decimal?         @db.Decimal(5, 2)
+  categoria_menu      String?          // Entradas, Principais...
+  descricao_menu      String?          @db.Text
+  alergenos           String?
+  calorias            Int?
+  tempo_servico       Int?             // minutes
+  posicao_menu        Int              @default(0)
+  destacado           Boolean          @default(false)
+  ativo               Boolean          @default(true)
+  imagem_url          String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  tenant              Tenant           @relation(fields: [tenant_id], references: [id])
+  receita             Receita?         @relation(fields: [receita_id], references: [id])
+  combo               Combo?           @relation(fields: [combo_id], references: [id])
+  formatoVenda        FormatoVenda?    @relation(fields: [formato_venda_id], references: [id])
+  vendas              Venda[]
+  mapeamentosPos      MapeamentoPos[]
+  vendasLinhasImportacao VendaLinhaImportacao[]
+  salesMatchingHistorico SalesMatchingHistorico[]
+
+  @@map("menu")
+}
+
+// -----------------------------------------------------------------------------
+// VENDAS
+// -----------------------------------------------------------------------------
+
+model Venda {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  data_venda          DateTime
+  hora_venda          DateTime? // Can be part of data_venda but kept for explicit separation if needed
+  tipo                String   @default("ITEM") // ITEM, TOTAL
+  menu_item_id        Int?
+  quantidade          Int      @default(1)
+  pvp_praticado       Decimal  @db.Decimal(10, 2)
+  desconto_percentual Decimal? @db.Decimal(5, 2)
+  desconto_valor      Decimal? @db.Decimal(10, 2)
+  receita_total       Decimal  @db.Decimal(10, 2)
+  custo_total         Decimal? @db.Decimal(10, 2)
+  margem_bruta        Decimal? @db.Decimal(10, 2)
+  metodo_entrada      String   // Manual, POS, API, PDF
+  pos_transacao_id    String?
+  mesa                String?
+  colaborador         String?
+  observacoes         String?
+  user_id             Int?
+  venda_importacao_id Int?     // Link to import if created via PDF import
+  createdAt           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  menuItem            MenuItem? @relation(fields: [menu_item_id], references: [id])
+  user                User?    @relation(fields: [user_id], references: [id])
+  vendaImportacao     VendaImportacao? @relation(fields: [venda_importacao_id], references: [id])
+
+  @@index([tenant_id, data_venda]) // Performance: Consumption reports
+  @@map("vendas")
+}
+
+// -----------------------------------------------------------------------------
+// INVENTÃƒÂRIO
+// -----------------------------------------------------------------------------
+
+model Localizacao {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  nome                String
+  descricao           String?
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  itensInventario     ItemInventario[]
+
+  @@unique([tenant_id, nome])
+  @@map("localizacoes")
+}
+
+model ListaCalculadora {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  nome                String
+  descricao           String?
+  itens               Json     // Array of { tipo, id, quantidade }
+  criado_por          Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation(fields: [criado_por], references: [id])
+
+  @@map("listas_calculadora")
+}
+
+model SessaoInventario {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  numero              Int      // Sequential number per tenant
+  nome                String?  // Optional name/description
+  tipo                String   // "Total", "Calculadora", "Personalizado"
+  status              String   // "Aberto", "Fechado", "Cancelado"
+  data_inicio         DateTime @default(now())
+  data_fim            DateTime?
+  filtros_usados      Json?    // Store filters used to generate this session
+  criado_por          Int?
+  fechado_por         Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation("SessaoCriador", fields: [criado_por], references: [id])
+  fechador            User?    @relation("SessaoFechador", fields: [fechado_por], references: [id])
+  itens               ItemInventario[]
+
+  @@map("sessoes_inventario")
+}
+
+model ItemInventario {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  sessao_id           Int
+  produto_id          Int
+  variacao_id         Int?     // Optional purchase variation
+  localizacao_id      Int?
+  quantidade_contada  Decimal  @db.Decimal(10, 4)
+  unidade_medida      String
+  
+  // Snapshot data at time of inventory
+  custo_unitario      Decimal? @db.Decimal(10, 4)
+  valor_total         Decimal? @db.Decimal(10, 2)
+  
+  observacoes         String?
+  contado_por         Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  sessao              SessaoInventario @relation(fields: [sessao_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  localizacao         Localizacao? @relation(fields: [localizacao_id], references: [id])
+  contador            User?    @relation(fields: [contado_por], references: [id])
+
+  @@map("itens_inventario")
+}
+
+model StockTeorico {
+  tenant_id           Int
+  produto_id          Int
+  variacao_id         Int      @default(0) // 0 if null/base product
+  quantidade_atual    Decimal  @db.Decimal(10, 4)
+  valor_total         Decimal  @db.Decimal(10, 2)
+  data_ultima_atualizacao DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  produto             Produto  @relation(fields: [produto_id], references: [id])
+  variacao            VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+
+  @@id([tenant_id, produto_id, variacao_id])
+  @@map("stock_teorico")
+}
+
+// -----------------------------------------------------------------------------
+// AI & INTEGRAÃƒâ€¡Ãƒâ€¢ES
+// -----------------------------------------------------------------------------
+
+model AlertaAi {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  tipo_alerta         String   // Margem Baixa, PreÃƒÂ§o Subiu...
+  titulo              String
+  mensagem            String   @db.Text
+  entidade_tipo       String?
+  entidade_id         String?
+  severidade          String   // Info, AtenÃƒÂ§ÃƒÂ£o, CrÃƒÂ­tico
+  acoes_sugeridas     Json?
+  dados_contexto      Json?
+  lido                Boolean  @default(false)
+  lido_por            Int?
+  data_leitura        DateTime?
+  arquivado           Boolean  @default(false)
+  expira_em           DateTime?
+  createdAt           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+
+  @@map("alertas_ai")
+}
+
+model ConversaAi {
+  id                  BigInt   @id @default(autoincrement())
+  tenant_id           Int
+  user_id             Int
+  sessao_id           String
+  role                String   // user, assistant, system
+  mensagem            String   @db.Text
+  tokens_usados       Int?
+  contexto_adicional  Json?
+  timestamp           DateTime @default(now())
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  user                User     @relation(fields: [user_id], references: [id])
+
+  @@map("conversas_ai")
+}
+
+model Integracao {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  tipo_integracao     String   // POS, Contabilidade, Email
+  nome                String
+  provedor            String   // Lightspeed, Square...
+  ativa               Boolean  @default(true)
+  configuracao        Json?
+  ultimo_sync         DateTime?
+  status_ultimo_sync  String?
+  mensagem_erro       String?
+  criado_por          Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  criador             User?    @relation(fields: [criado_por], references: [id])
+  mapeamentosPos      MapeamentoPos[]
+
+  @@map("integracoes")
+}
+
+model MapeamentoPos {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  integracao_id       Int
+  pos_item_id         String
+  pos_item_nome       String
+  menu_item_id        Int
+  ativo               Boolean  @default(true)
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  integracao          Integracao @relation(fields: [integracao_id], references: [id])
+  menuItem            MenuItem @relation(fields: [menu_item_id], references: [id])
+
+  @@unique([tenant_id, integracao_id, pos_item_id])
+  @@map("mapeamento_pos")
+}
+
+// -----------------------------------------------------------------------------
+// COMBOS - CombinaÃƒÂ§ÃƒÂµes de Receitas e Produtos
+// -----------------------------------------------------------------------------
+
+model Combo {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  nome                String
+  tipo                String   @default("Simples") // "Simples" | "Complexo"
+  descricao           String?  @db.Text
+  imagem_url          String?
+  custo_total         Decimal  @default(0) @db.Decimal(10, 4)
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  itens               ComboItem[]      // For "Complexo" type
+  categorias          ComboCategoria[] // For "Simples" type
+  menuItems           MenuItem[]
+
+  @@unique([tenant_id, nome])
+  @@map("combos")
+}
+
+model ComboItem {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  combo_id            Int
+  receita_id          Int?     // Pode ser uma receita final
+  produto_id          Int?     // Ou um produto (ex: bebida individual)
+  quantidade          Decimal  @db.Decimal(10, 4)
+  custo_unitario      Decimal  @db.Decimal(10, 4)
+  custo_total         Decimal  @db.Decimal(10, 4) // quantidade * custo_unitario
+  ordem               Int      @default(0)
+  observacoes         String?
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  combo               Combo    @relation(fields: [combo_id], references: [id], onDelete: Cascade)
+  receita             Receita? @relation(fields: [receita_id], references: [id])
+  produto             Produto? @relation(fields: [produto_id], references: [id])
+
+  @@map("combo_itens")
+}
+
+model ComboCategoria {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  combo_id            Int
+  categoria           String   // "Sopa", "Prato Principal", "Sobremesa", "Bebida", "CafÃƒÂ©"
+  ordem               Int      @default(0)
+  obrigatoria         Boolean  @default(true)
+  custo_max_calculado Decimal  @default(0) @db.Decimal(10, 4)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  combo               Combo    @relation(fields: [combo_id], references: [id], onDelete: Cascade)
+  opcoes              ComboCategoriaOpcao[]
+  
+  @@unique([combo_id, categoria])
+  @@map("combo_categorias")
+}
+
+model ComboCategoriaOpcao {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  categoria_id        Int
+  receita_id          Int?     // OpÃƒÂ§ÃƒÂ£o de receita
+  formato_venda_id    Int?     // OpÃƒÂ§ÃƒÂ£o de formato de venda (bebida)
+  custo_unitario      Decimal  @db.Decimal(10, 4)
+  ordem               Int      @default(0)
+  
+  createdAt           DateTime @default(now())
+  
+  tenant              Tenant           @relation(fields: [tenant_id], references: [id])
+  categoria           ComboCategoria   @relation(fields: [categoria_id], references: [id], onDelete: Cascade)
+  receita             Receita?         @relation(fields: [receita_id], references: [id])
+  formatoVenda        FormatoVenda?    @relation(fields: [formato_venda_id], references: [id])
+  
+  @@map("combo_categoria_opcoes")
+}
+
+// -----------------------------------------------------------------------------
+// DADOS DO RESTAURANTE - Operational Settings & Structural Costs
+// -----------------------------------------------------------------------------
+
+model DadosRestaurante {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int      @unique
+  
+  // Operational Settings
+  numero_lugares      Int      @default(0)
+  horas_trabalho_dia  Decimal  @default(8) @db.Decimal(4, 2)
+  dias_trabalho_semana Decimal @default(5) @db.Decimal(3, 1)
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+
+  // Alert Thresholds
+  cmv_alerta_amarelo          Decimal  @default(30) @db.Decimal(5, 2)
+  cmv_alerta_vermelho         Decimal  @default(35) @db.Decimal(5, 2)
+  alerta_aumento_custo_leve   Decimal  @default(5) @db.Decimal(5, 2)
+  alerta_aumento_custo_medio  Decimal  @default(10) @db.Decimal(5, 2)
+  alerta_aumento_custo_grave  Decimal  @default(15) @db.Decimal(5, 2)
+  alerta_inatividade_leve     Int      @default(3)
+  alerta_inatividade_medio    Int      @default(6)
+  alerta_inatividade_grave    Int      @default(10)
+  dias_alerta_preco_estagnado Int      @default(30)
+  
+  @@map("dados_restaurante")
+}
+
+model CustoEstrutura {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  
+  descricao           String
+  classificacao       String   // SalÃƒÂ¡rio, Eletricidade, ÃƒÂgua, Marketing, Contabilidade, Sistemas, Internet, VeÃƒÂ­culos, Renda, GestÃƒÂ£o, Outros
+  valor_mensal        Decimal  @db.Decimal(10, 2)
+  
+  ativo               Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  historico           CustoEstruturaHistorico[]
+  
+  @@index([tenant_id, ativo])
+  @@map("custos_estrutura")
+}
+
+model CustoEstruturaHistorico {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  custo_estrutura_id  Int
+  
+  valor               Decimal  @db.Decimal(10, 2)
+  
+  // Validity Period
+  data_inicio         DateTime
+  data_fim            DateTime? // Null = Current active value
+  
+  // Metadata
+  motivo_mudanca      String?
+  criado_por          Int?
+  createdAt           DateTime  @default(now())
+
+  tenant              Tenant         @relation(fields: [tenant_id], references: [id])
+  custoEstrutura      CustoEstrutura @relation(fields: [custo_estrutura_id], references: [id], onDelete: Cascade)
+  
+  @@index([custo_estrutura_id, data_inicio])
+  @@index([tenant_id, data_inicio, data_fim])
+  @@map("custos_estrutura_historico")
+}
+
+// -----------------------------------------------------------------------------
+// INVOICE IMPORT (OCR & STAGING)
+// -----------------------------------------------------------------------------
+
+model FaturaImportacao {
+  id                Int      @id @default(autoincrement())
+  tenant_id         Int
+  
+  // Supplier Info (extracted from OCR)
+  fornecedor_nome   String?  // OLD: kept for migration
+  fornecedor_id     Int?     // NEW: FK to fornecedores
+  fornecedor_nif    String?
+  
+  // Invoice Info
+  numero_fatura     String?
+  data_fatura       DateTime?
+  
+  // Totals
+  total_sem_iva            Decimal?  @db.Decimal(10, 2)
+  total_iva                Decimal?  @db.Decimal(10, 2)
+  total_com_iva            Decimal?  @db.Decimal(10, 2)
+  
+  // Discount breakdown (for debugging/transparency)
+  subtotal_antes_desconto  Decimal?  @db.Decimal(10, 2)  // Subtotal before global discount
+  desconto_global          Decimal?  @db.Decimal(10, 2)  // Global discount value
+  desconto_tipo            String?                        // "percentage" or "fixed"
+  taras                    Decimal?  @db.Decimal(10, 2)  // Container/packaging adjustment
+  
+  // File & Processing
+  ficheiro_nome     String
+  ficheiro_url      String
+  ficheiro_tipo     String    // pdf, jpg, png
+  ficheiro_paths    Json?     // NEW: Array of file paths for multi-page invoices
+  ocr_texto_bruto   String?   @db.Text
+  ocr_metadata      Json?
+  
+  // Status
+  status            String    // pending, reviewing, approved, rejected, error
+  erro_mensagem     String?   @db.Text
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  processado_em     DateTime?
+  aprovado_em       DateTime?
+  aprovado_por      Int?
+  
+  // Relations
+  tenant            Tenant    @relation(fields: [tenant_id], references: [id])
+  fornecedorRel     Fornecedor? @relation(fields: [fornecedor_id], references: [id])
+  linhas            FaturaLinhaImportacao[]
+  compras           Compra[]
+  comprasFaturas    CompraFatura[]
+  processingMetrics InvoiceProcessingMetrics[]  // Processing metrics
+  
+  @@index([tenant_id, status])
+  @@index([fornecedor_id])
+  @@index([tenant_id, data_fatura])
+  @@map("faturas_importacao")
+}
+
+model FaturaLinhaImportacao {
+  id                    Int      @id @default(autoincrement())
+  fatura_importacao_id  Int
+  tenant_id             Int
+  linha_numero          Int
+  
+  // Extracted Data from OCR
+  descricao_original    String
+  descricao_limpa       String?   // Product name without package info (NEW)
+  quantidade            Decimal?  @db.Decimal(10, 3)
+  unidade               String?   // kg, un, cx, l, etc
+  preco_unitario        Decimal?  @db.Decimal(10, 4)
+  preco_total           Decimal?  @db.Decimal(10, 2)
+  iva_percentual        Decimal?  @db.Decimal(5, 2)
+  iva_valor             Decimal?  @db.Decimal(10, 2)
+  
+  // Package Information (NEW - extracted by Gemini)
+  emb_tipo              String?   // caixa, saco, embalagem, garrafa, pacote
+  emb_quantidade        Decimal?  @db.Decimal(10, 3)  // 4, 800, 20, etc.
+  emb_unidade           String?   // kg, g, L, ml, un
+  
+  // Calculated Prices (NEW - computed by Gemini)
+  preco_por_kg          Decimal?  @db.Decimal(10, 4)  // Normalized price per kg
+  preco_por_litro       Decimal?  @db.Decimal(10, 4)  // Normalized price per liter
+  preco_por_unidade     Decimal?  @db.Decimal(10, 4)  // Normalized price per unit
+  
+  // Product Matching
+  produto_id            Int?
+  variacao_id           Int?
+  confianca_match       Decimal?  @db.Decimal(5, 2)  // 0-100%
+  status                String    // pending, matched, manual_review, new_product, approved
+  
+  // New Product Data (if creating new product)
+  familia_id            Int?
+  subfamilia_id         Int?
+  criar_produto         Boolean   @default(false)
+  
+  // Metadata
+  metadata              Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  fatura                FaturaImportacao @relation(fields: [fatura_importacao_id], references: [id], onDelete: Cascade)
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  produto               Produto?  @relation(fields: [produto_id], references: [id])
+  variacao              VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  
+  @@index([fatura_importacao_id])
+  @@index([tenant_id, status])
+  @@index([produto_id])
+  @@map("faturas_linhas_importacao")
+}
+
+model MatchingHistorico {
+  id                    Int      @id @default(autoincrement())
+  tenant_id             Int
+  
+  // Original invoice description
+  descricao_fatura      String
+  fornecedor_nome       String?
+  
+  // Matched product
+  produto_id            Int
+  variacao_id           Int?
+  
+  // Confidence & Confirmation
+  confianca_inicial     Decimal?  @db.Decimal(5, 2)
+  confirmado_por        Int       // user_id
+  createdAt             DateTime  @default(now())
+  
+  // Relations
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  produto               Produto   @relation(fields: [produto_id], references: [id])
+  variacao              VariacaoProduto? @relation(fields: [variacao_id], references: [id])
+  user                  User      @relation(fields: [confirmado_por], references: [id])
+  
+  @@index([tenant_id, descricao_fatura])
+  @@index([produto_id])
+  @@map("matching_historico")
+}
+
+// -----------------------------------------------------------------------------
+// PERFORMANCE INDEXES (ADDITIONAL)
+// -----------------------------------------------------------------------------
+// Note: Some indexes are already defined in the models above.
+// We are ensuring critical paths are covered.
+
+// User: email lookup for login
+// Already has @@unique([tenant_id, email]), but login often searches by email globally first or needs faster access.
+// Since email is not unique globally (only per tenant), we add a normal index.
+// Actually, the login query is `findMany({ where: { email } })`.
+// So we need an index on just `email`.
+// We can't easily add it to the model block without modifying the model block itself.
+// Let's modify the User model block directly in a separate edit if needed, 
+// but here we will just ensure we have the right indexes.
+
+
+// -----------------------------------------------------------------------------
+// INVOICE TEMPLATES
+// -----------------------------------------------------------------------------
+
+model InvoiceTemplate {
+  id                  Int      @id @default(autoincrement())
+  fornecedor_id       Int      // Multiple templates per supplier allowed
+  uuid                String   @default(uuid())
+  
+  // Template Info
+  template_name       String   // "Makro - Standard Invoice"
+  template_version    Int      @default(1)
+  template_format_id  String?  // Unique identifier for this format (e.g., "2025_lisboa", "2026_v2")
+  
+  // Template Structure (JSON)
+  header_config       Json     // { "nif_pattern": "...", "date_pattern": "...", "total_pattern": "..." }
+  table_config        Json     // { "columns": [...], "start_marker": "...", "end_marker": "...", "row_pattern": "..." }
+  
+  // Fingerprinting for quick matching
+  fingerprint_config  Json?    // { "required_keywords": [...], "optional_keywords": [...], "structure_markers": {...}, "layout_hints": {...} }
+  
+  // Learning & Statistics (across ALL tenants using this supplier)
+  is_active           Boolean  @default(true)
+  confidence_score    Float    @default(0.0)  // 0-100 (based on success rate)
+  times_used          Int      @default(0)    // How many times template was applied
+  times_successful    Int      @default(0)    // How many times it worked correctly
+  
+  // AI Generation
+  created_from_ai     Boolean  @default(false)
+  ai_prompt_used      String?  @db.Text
+  created_by_tenant   Int?     // Which tenant first created this template
+  
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  // Relations
+  fornecedor          Fornecedor @relation(fields: [fornecedor_id], references: [id], onDelete: Cascade)
+  createdBy           Tenant?    @relation(fields: [created_by_tenant], references: [id], onDelete: SetNull)
+  
+  @@index([fornecedor_id])
+  @@index([is_active])
+  @@unique([fornecedor_id, template_format_id])  // Unique format per supplier
+  @@map("invoice_templates")
+}
+
+// -----------------------------------------------------------------------------
+// INVOICE PROCESSING METRICS (Audit & Performance)
+// -----------------------------------------------------------------------------
+
+model InvoiceProcessingMetrics {
+  id                      Int       @id @default(autoincrement())
+  tenant_id               Int
+  invoice_id              Int
+  upload_source           String    // 'web', 'api', 'email'
+  user_id                 Int?
+  
+  // Parsing Method
+  parsing_method          String    // 'template', 'gemini', 'vision', 'failed', 'legacy'
+  template_id             Int?
+  template_score          Float?
+  
+  // Duration Metrics (milliseconds)
+  total_duration_ms       Int       // Worker processing time only
+  end_to_end_duration_ms  Int?      // Upload Ã¢â€ â€™ Reviewing/Error (TOTAL for UX/SLA)
+  ocr_duration_ms         Int?
+  parsing_duration_ms     Int?
+  
+  // Retry & Fallback
+  gemini_attempts         Int       @default(0)
+  gemini_model_used       String?   // 'gemini-2.5-flash', 'gemini-1.5-flash'
+  gemini_fallback_to_vision Boolean @default(false)
+  vision_used             Boolean   @default(false)
+  vision_duration_ms      Int?
+  
+  // Results
+  success                 Boolean
+  line_items_extracted    Int       @default(0)
+  confidence_score        Float?
+  
+  created_at              DateTime  @default(now())
+  
+  tenant                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  invoice                 FaturaImportacao    @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  user                    User?               @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  
+  @@index([tenant_id, created_at])
+  @@index([invoice_id])
+  @@index([parsing_method])
+  @@map("invoice_processing_metrics")
+}
+
+// -----------------------------------------------------------------------------
+// LEADS & DEMO REQUESTS (Pre-tenant, Global)
+// -----------------------------------------------------------------------------
+
+model Lead {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  
+  // Form data from lead capture modal
+  name                String
+  email               String
+  business_type       String    // restaurante_independente, restaurante_fine_dining, hotel, grupo_cadeia
+  
+  // Source tracking
+  source_page         String    @default("landing") // landing, demo
+  source_cta          String?   // hero, final, middle
+  utm_source          String?
+  utm_medium          String?
+  utm_campaign        String?
+  ip_address          String?
+  user_agent          String?
+  
+  // Funnel tracking
+  video_watched       Boolean   @default(false)
+  video_watched_at    DateTime?
+  demo_requested      Boolean   @default(false)
+  demo_requested_at   DateTime?
+  self_serve          Boolean   @default(false)  // Went directly to create account
+  self_serve_at       DateTime?
+  
+  // Lead status
+  status              String    @default("new")  // new, contacted, qualified, demo_scheduled, converted, rejected
+  status_history      Json?     // Array of status changes
+  
+  // Pipeline/Sales Tracking (Phase 3)
+  last_contacted_at   DateTime?
+  qualified_at        DateTime?
+  proposal_sent_at    DateTime?
+  won_at              DateTime?
+  lost_at             DateTime?
+  lost_reason         String?   @db.Text
+  internal_notes      String?   @db.Text
+  
+  assigned_to         Int?
+  assignedUser        InternalUser? @relation(fields: [assigned_to], references: [id])
+  
+  // Conversion tracking
+  converted_to_user_id Int?
+  converted_at        DateTime?
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  convertedUser       User?     @relation(fields: [converted_to_user_id], references: [id])
+  demoRequests        DemoRequest[]
+  
+  @@index([email])
+  @@index([status, createdAt])
+  @@index([business_type])
+  @@index([assigned_to])
+  @@map("leads")
+}
+
+model DemoRequest {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  
+  // Form data from demo request form
+  name                String
+  email               String
+  restaurant          String
+  locations           String    // "1", "2-5", "+5"
+  challenge           String    // margens, compras, precos, falta_controlo
+  
+  // Optional links (if user already exists)
+  user_id             Int?
+  tenant_id           Int?
+  lead_id             Int?      // Link back to original lead capture
+  
+  // Source tracking
+  source              String    @default("demo_page")
+  ip_address          String?
+  user_agent          String?
+  
+  // Demo status
+  status              String    @default("pending")  // pending, contacted, scheduled, completed, won, lost, cancelled
+  scheduled_at        DateTime?
+  completed_at        DateTime?
+  outcome             String?   // won, lost, postponed
+  notes               String?   @db.Text
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  user                User?     @relation(fields: [user_id], references: [id])
+  tenant              Tenant?   @relation(fields: [tenant_id], references: [id])
+  lead                Lead?     @relation(fields: [lead_id], references: [id])
+  
+  @@index([email])
+  @@index([status, createdAt])
+  @@index([challenge])
+  @@index([lead_id])
+  @@map("demo_requests")
+}
+
+// -----------------------------------------------------------------------------
+// INTERNAL USERS - Team Members (Admin, Marketing, Sales, Support)
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// INTERNAL AUTH: Admin & Support Users (RBAC)
+// -----------------------------------------------------------------------------
+
+model InternalRole {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique // e.g., 'ADMIN', 'SALES'
+  description String?
+  
+  permissions InternalRolePermission[]
+  users       InternalUser[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("internal_roles")
+}
+
+model InternalPermission {
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique // e.g., 'users.list', 'leads.manage'
+  description String?
+  module      String    // e.g., 'users', 'leads', 'tenants'
+
+  roles       InternalRolePermission[]
+
+  @@map("internal_permissions")
+}
+
+model InternalRolePermission {
+  role_id       Int
+  permission_id Int
+  
+  role          InternalRole       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    InternalPermission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  assignedAt    DateTime @default(now())
+
+  @@id([role_id, permission_id])
+  @@map("internal_role_permissions")
+}
+
+model InternalUser {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  
+  // Identity
+  email               String    @unique
+  password_hash       String
+  name                String
+  
+  // Role & Permissions
+  role                String    // Deprecated: Keeping for migration. Use internalRole instead.
+  internal_role_id    Int?
+  internalRole        InternalRole? @relation(fields: [internal_role_id], references: [id])
+  
+  permissions         Json?     // Custom permissions (overrides role)
+  
+  // Status
+  active              Boolean   @default(true)
+  email_verified      Boolean   @default(false)
+  
+  // Activity tracking
+  last_login_at       DateTime?
+  last_login_ip       String?
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  assignedLeads       Lead[]
+
+  @@index([email])
+  @@index([role, active])
+  @@map("internal_users")
+}
+
+// -----------------------------------------------------------------------------
+// SALES IMPORT (Similar to Invoice Import)
+// -----------------------------------------------------------------------------
+
+model VendaImportacao {
+  id                Int      @id @default(autoincrement())
+  tenant_id         Int
+  
+  // Report Info (extracted from PDF/Image)
+  data_venda        DateTime? // Report date
+  total_bruto       Decimal?  @db.Decimal(10, 2) // Gross sales
+  total_liquido     Decimal?  @db.Decimal(10, 2) // Net sales
+  
+  // VAT Breakdown (optional)
+  iva_6_base        Decimal?  @db.Decimal(10, 2)
+  iva_6_valor       Decimal?  @db.Decimal(10, 2)
+  iva_13_base       Decimal?  @db.Decimal(10, 2)
+  iva_13_valor      Decimal?  @db.Decimal(10, 2)
+  iva_23_base       Decimal?  @db.Decimal(10, 2)
+  iva_23_valor      Decimal?  @db.Decimal(10, 2)
+  
+  // Payment Methods (optional)
+  pagamento_dinheiro Decimal? @db.Decimal(10, 2)
+  pagamento_cartao   Decimal? @db.Decimal(10, 2)
+  pagamento_outros   Decimal? @db.Decimal(10, 2)
+  
+  // File & Processing
+  ficheiro_nome     String
+  ficheiro_url      String
+  ficheiro_tipo     String    // pdf, jpg, png
+  ocr_texto_bruto   String?   @db.Text
+  
+  // Status
+  status            String    // pending, reviewing, approved, rejected, error
+  erro_mensagem     String?   @db.Text
+  
+  // Timestamps
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  processado_em     DateTime?
+  aprovado_em       DateTime?
+  aprovado_por      Int?
+  
+  // Relations
+  tenant            Tenant    @relation(fields: [tenant_id], references: [id])
+  linhas            VendaLinhaImportacao[]
+  vendas            Venda[]   // Created sales records after approval
+  processingMetrics SalesProcessingMetrics[]
+  
+  @@index([tenant_id, status])
+  @@index([tenant_id, data_venda])
+  @@map("vendas_importacao")
+}
+
+model VendaLinhaImportacao {
+  id                    Int      @id @default(autoincrement())
+  venda_importacao_id   Int
+  tenant_id             Int
+  linha_numero          Int
+  
+  // Extracted Data from OCR/Gemini
+  descricao_original    String
+  descricao_limpa       String?
+  quantidade            Decimal?  @db.Decimal(10, 3)
+  preco_unitario        Decimal?  @db.Decimal(10, 2)
+  preco_total           Decimal   @db.Decimal(10, 2)
+  
+  // MenuItem Matching (sales are linked to menu, not stock)
+  menu_item_id          Int?
+  confianca_match       Decimal?  @db.Decimal(5, 2)  // 0-100%
+  status                String    // pending, matched, manual_review, approved
+  
+  // Metadata
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  vendaImportacao       VendaImportacao @relation(fields: [venda_importacao_id], references: [id], onDelete: Cascade)
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  menuItem              MenuItem? @relation(fields: [menu_item_id], references: [id])
+  
+  @@index([venda_importacao_id])
+  @@index([tenant_id, status])
+  @@index([menu_item_id])
+  @@map("vendas_linhas_importacao")
+}
+
+model SalesMatchingHistorico {
+  id                    Int      @id @default(autoincrement())
+  tenant_id             Int
+  
+  // Original sales description
+  descricao_venda       String
+  
+  // Matched menu item
+  menu_item_id          Int
+  
+  // Confidence & Confirmation
+  confianca_inicial     Decimal?  @db.Decimal(5, 2)
+  confirmado_por        Int       // user_id
+  createdAt             DateTime  @default(now())
+  
+  // Relations
+  tenant                Tenant    @relation(fields: [tenant_id], references: [id])
+  menuItem              MenuItem  @relation(fields: [menu_item_id], references: [id])
+  user                  User      @relation(fields: [confirmado_por], references: [id])
+  
+  @@index([tenant_id, descricao_venda])
+  @@index([menu_item_id])
+  @@map("sales_matching_historico")
+}
+
+model SalesProcessingMetrics {
+  id                      Int       @id @default(autoincrement())
+  tenant_id               Int
+  sales_import_id         Int
+  upload_source           String    // 'web', 'api'
+  user_id                 Int?
+  
+  // Parsing Method
+  parsing_method          String    // 'gemini-multimodal', 'failed'
+  
+  // Duration Metrics (milliseconds)
+  total_duration_ms       Int
+  ocr_duration_ms         Int?
+  parsing_duration_ms     Int?
+  
+  // Results
+  success                 Boolean
+  line_items_extracted    Int       @default(0)
+  confidence_score        Float?
+  
+  created_at              DateTime  @default(now())
+  
+  tenant                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  salesImport             VendaImportacao     @relation(fields: [sales_import_id], references: [id], onDelete: Cascade)
+  user                    User?               @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  
+  @@index([tenant_id, created_at])
+  @@index([sales_import_id])
+  @@map("sales_processing_metrics")
+}
+
+// -----------------------------------------------------------------------------
+// MONITORING & DIAGNOSTICS (PHASE 4)
+// -----------------------------------------------------------------------------
+
+model ErrorLog {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  level         String   // ERROR, WARN, INFO, CRITICAL
+  source        String   // API, WORKER, DATABASE, CLIENT
+  message       String   @db.Text
+  stack_trace   String?  @db.Text
+  tenant_id     Int?
+  user_id       Int?
+  endpoint      String?
+  method        String?
+  status_code   Int?
+  metadata      Json?
+  resolved      Boolean  @default(false)
+  resolved_at   DateTime?
+  resolved_by   Int?
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp, level])
+  @@index([tenant_id])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
+model PerformanceMetric {
+  id            BigInt   @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  type          String   // API_REQUEST, DB_QUERY, WORKER_JOB
+  name          String   // "GET /api/v1/users", "CalculoCustos"
+  duration_ms   Int
+  status        String   // SUCCESS, ERROR
+  status_code   Int?
+  tenant_id     Int?
+  user_id       Int?
+  metadata      Json?    // { queryParams, workerJobId }
+  
+  tenant        Tenant?  @relation(fields: [tenant_id], references: [id])
+  user          User?    @relation(fields: [user_id], references: [id])
+  
+  @@index([timestamp])
+  @@index([type, name])
+  @@map("performance_metrics")
+}
+
+model WorkerMetric {
+  id            BigInt   @id @default(autoincrement())
+  queue_name    String
+  job_name      String
+  job_id        String?
+  duration_ms   Int
+  status        String   // COMPLETED, FAILED
+  error_message String?  @db.Text
+  processed_at  DateTime @default(now())
+  attempts      Int      @default(1)
+  
+  @@index([queue_name, processed_at])
+  @@map("worker_metrics")
+}
+
+// -----------------------------------------------------------------------------
+// INTERNAL SUPPORT: Tenant Notes & Events
+// -----------------------------------------------------------------------------
+
+model TenantNote {
+  id                BigInt   @id @default(autoincrement())
+  tenant_id         Int
+  internal_user_id  String   // ID do utilizador interno (InternalUser)
+  content           String   @db.Text
+  created_at        DateTime @default(now())
+  
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id])
+  @@index([created_at])
+  @@map("tenant_notes")
+}
+
+model TenantEvent {
+  id            BigInt   @id @default(autoincrement())
+  tenant_id     Int
+  event_type    String   // account_created, first_invoice, first_error, plan_changed, suspended, reactivated
+  description   String
+  metadata_json String?  @db.Text
+  created_at    DateTime @default(now())
+  
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  
+  @@index([tenant_id, created_at])
+  @@index([event_type])
+  @@map("tenant_events")
+}
+
+
+model SystemHealth {
+  id            Int      @id @default(autoincrement())
+  timestamp     DateTime @default(now())
+  service       String   // DATABASE, REDIS, WORKERS, API, AI
+  status        String   // UP, DOWN, DEGRADED
+  response_ms   Int?
+  details       Json?
+  
+  @@index([timestamp, service])
+  @@map("system_health")
+}

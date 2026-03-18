@@ -1,0 +1,19 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    - cron: '*/14 * * * *' # Runs every 14 minutes (Render sleeps after 15m)
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  ping:
+    name: Ping Services
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Staging
+        run: curl -I https://rcm-staging.onrender.com/api/health
+        continue-on-error: true
+
+      - name: Ping Production
+        run: curl -I https://rcm-backend.onrender.com/api/health
+        continue-on-error: true

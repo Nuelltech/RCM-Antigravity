@@ -1,0 +1,46 @@
+{
+    "cli": {
+        "version": ">= 5.9.0",
+        "appVersionSource": "remote"
+    },
+    "build": {
+        "development": {
+            "developmentClient": true,
+            "distribution": "internal"
+        },
+        "preview": {
+            "distribution": "internal",
+            "android": {
+                "buildType": "apk"
+            },
+            "env": {
+                "EAS_SKIP_AUTO_FINGERPRINT": "1",
+                "EXPO_PUBLIC_API_URL": "https://rcm-staging.onrender.com"
+            }
+        },
+        "staging": {
+            "distribution": "internal",
+            "android": {
+                "buildType": "apk"
+            },
+            "env": {
+                "EAS_SKIP_AUTO_FINGERPRINT": "1",
+                "EXPO_PUBLIC_API_URL": "https://rcm-staging.onrender.com"
+            }
+        },
+        "production": {
+            "autoIncrement": true,
+            "env": {
+                "EXPO_PUBLIC_API_URL": "https://rcm-backend.onrender.com"
+            }
+        }
+    },
+    "submit": {
+        "production": {},
+        "staging": {
+            "android": {
+                "track": "internal"
+            }
+        }
+    }
+}

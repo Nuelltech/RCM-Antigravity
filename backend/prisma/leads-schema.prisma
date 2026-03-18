@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// LEADS & DEMO REQUESTS (Pre-tenant, Global)
+// -----------------------------------------------------------------------------
+
+model Lead {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  
+  // Form data from lead capture modal
+  name                String
+  email               String
+  business_type       String    // restaurante_independente, restaurante_fine_dining, hotel, grupo_cadeia
+  
+  // Source tracking
+  source_page         String    @default("landing") // landing, demo
+  source_cta          String?   // hero, final, middle
+  utm_source          String?
+  utm_medium          String?
+  utm_campaign        String?
+  ip_address          String?
+  user_agent          String?
+  
+  // Funnel tracking
+  video_watched       Boolean   @default(false)
+  video_watched_at    DateTime?
+  demo_requested      Boolean   @default(false)
+  demo_requested_at   DateTime?
+  self_serve          Boolean   @default(false)  // Went directly to create account
+  self_serve_at       DateTime?
+  
+  // Lead status
+  status              String    @default("new")  // new, contacted, qualified, demo_scheduled, converted, rejected
+  
+  // Internal Management (Phase 3)
+  assigned_to         Int?      // Assigned to internal team member
+  status_history      Json?     // Array of status changes with timestamps
+  last_contacted_at   DateTime?
+  qualified_at        DateTime?
+  proposal_sent_at    DateTime?
+  won_at              DateTime?
+  lost_at             DateTime?
+  lost_reason         String?
+  internal_notes      String?   @db.Text
+  
+  // Conversion tracking
+  converted_to_user_id Int?
+  converted_at        DateTime?
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  // convertedUser       User?     @relation(fields: [converted_to_user_id], references: [id])
+  demoRequests        DemoRequest[]
+  assignedUser        InternalUser? @relation(fields: [assigned_to], references: [id])
+  
+  @@index([email])
+  @@index([status, createdAt])
+  @@index([business_type])
+  @@index([assigned_to])
+  @@map("leads")
+}
+
+model DemoRequest {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  
+  // Form data from demo request form
+  name                String
+  email               String
+  restaurant          String
+  locations           String    // "1", "2-5", "+5"
+  challenge           String    // margens, compras, precos, falta_controlo
+  
+  // Optional links (if user already exists)
+  user_id             Int?
+  tenant_id           Int?
+  lead_id             Int?      // Link back to original lead capture
+  
+  // Source tracking
+  source              String    @default("demo_page")
+  ip_address          String?
+  user_agent          String?
+  
+  // Demo status
+  status              String    @default("pending")  // pending, contacted, scheduled, completed, won, lost, cancelled
+  scheduled_at        DateTime?
+  completed_at        DateTime?
+  outcome             String?   // won, lost, postponed
+  notes               String?   @db.Text
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  // user                User?     @relation(fields: [user_id], references: [id])
+  // tenant              Tenant?   @relation(fields: [tenant_id], references: [id])
+  lead                Lead?     @relation(fields: [lead_id], references: [id])
+  
+  @@index([email])
+  @@index([status, createdAt])
+  @@index([challenge])
+  @@index([lead_id])
+  @@map("demo_requests")
+}
+
+// -----------------------------------------------------------------------------
+// INTERNAL USERS - Team Members (Admin, Marketing, Sales, Support)
+// -----------------------------------------------------------------------------
+
+model InternalUser {
+  id                  Int       @id @default(autoincrement())
+  uuid                String    @unique @default(uuid())
+  
+  // Identity
+  email               String    @unique
+  password_hash       String
+  name                String
+  
+  // Role & Permissions
+  role                String    // Admin, Marketing, Sales, Support
+  permissions         Json?     // Additional granular permissions if needed
+  
+  // Status
+  active              Boolean   @default(true)
+  email_verified      Boolean   @default(false)
+  
+  // Activity tracking
+  last_login_at       DateTime?
+  last_login_ip       String?
+  
+  // Timestamps
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  // Relations
+  assignedLeads       Lead[]    // Leads assigned to this user
+  
+  @@index([email])
+  @@index([role, active])
+  @@map("internal_users")
+}
+

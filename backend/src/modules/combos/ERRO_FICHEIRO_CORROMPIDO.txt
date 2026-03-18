@@ -1,0 +1,11 @@
+// FICHEIRO CORROMPIDO
+// Este código do combos.module.ts ficou corrompido na última edição.
+//
+// SOLUÇÃO TEMPORÁRIA:
+// 1. Usar o módulo antigo (sem suporte para Combos Simples)
+// 2. Ou copiar manualmente o código do GitHub antes das minhas edições
+//
+// Para restaurar:
+// git checkout HEAD -- src/modules/combos/combos.module.ts
+//
+// Desculpa pelo erro! O ficheiro tinha 800+ linhas e a edição falhou.
