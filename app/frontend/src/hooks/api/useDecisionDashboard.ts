@@ -30,6 +30,8 @@ export interface ActionTask {
 export interface DecisionDashboardData {
     marginStatus: {
         currentLoss: number;
+        currentGain: number;
+        netBalance: number;
         additionalRisk: number;
         cmv: number;
         targetCmv: number;

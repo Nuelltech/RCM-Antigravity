@@ -84,6 +84,8 @@ export default function DecisionDashboardPage() {
                         {/* 1. Header Margin Status */}
                         <MarginStatusHeader 
                             currentLoss={marginStatus.currentLoss}
+                            currentGain={marginStatus.currentGain}
+                            netBalance={marginStatus.netBalance}
                             additionalRisk={marginStatus.additionalRisk}
                             cmv={marginStatus.cmv}
                             targetCmv={marginStatus.targetCmv}

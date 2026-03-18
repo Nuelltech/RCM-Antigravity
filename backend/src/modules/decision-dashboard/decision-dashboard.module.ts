@@ -99,80 +99,113 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
             // 2. Fetch Hemorrhage (Structural Problems) - HEAVY CALCULATION (30 days)
             let structuralProblems: StructuralProblem[] = [];
             let currentLoss = 0;
+            let currentGain = 0;
             
             const now = new Date();
             const start = new Date(now);
             start.setDate(now.getDate() - 30);
             
-            const vendas = await prisma.venda.findMany({
-                where: {
-                    tenant_id: req.tenantId,
-                    data_venda: { gte: start, lte: now },
-                    tipo: 'ITEM',
-                    menu_item_id: { not: null }
-                },
+            // Set time boundaries to cover the full day just like hemorragia
+            start.setHours(0, 0, 0, 0);
+            now.setHours(23, 59, 59, 999);
+
+            const menuItems = await prisma.menuItem.findMany({
+                where: { tenant_id: req.tenantId, ativo: true },
                 include: {
-                    menuItem: {
-                        select: { nome_comercial: true, cmv_percentual: true }
-                    }
+                    receita: { select: { custo_por_porcao: true } },
+                    combo: { select: { custo_total: true } },
+                    formatoVenda: { select: { custo_unitario: true } },
                 }
             });
 
-            const itemHemorrhageMap = new Map<number, any>();
-            let totalFaturacao = 0;
-            let totalCusto = 0;
+            const salesAgg = await prisma.venda.groupBy({
+                by: ['menu_item_id'],
+                where: {
+                    tenant_id: req.tenantId,
+                    menu_item_id: { in: menuItems.map(i => i.id) },
+                    data_venda: { gte: start, lte: now }
+                },
+                _sum: { quantidade: true, receita_total: true, custo_total: true }
+            });
 
-            for (const venda of vendas) {
-                const itemId = venda.menu_item_id!;
-                const menuItem = venda.menuItem;
-                if (!menuItem) continue;
-
-                const faturacao = Number(venda.receita_total || 0);
-                const custo = Number(venda.custo_total || 0);
-                
-                totalFaturacao += faturacao;
-                totalCusto += custo;
-
-                const targetCmv = globalTargetCmv; // Usar o limite do restaurante em vez de menuItem.cmv_percentual
-                const targetCusto = faturacao * (targetCmv / 100);
-                
-                // If actual cost is bigger than target cost, we lost money
-                const hemorragia = custo - targetCusto;
-
-                if (itemHemorrhageMap.has(itemId)) {
-                    const existing = itemHemorrhageMap.get(itemId);
-                    existing.faturacao += faturacao;
-                    existing.custo += custo;
-                    existing.hemorragia += hemorragia;
-                } else {
-                    itemHemorrhageMap.set(itemId, {
-                        faturacao,
-                        custo,
-                        hemorragia,
-                        targetCmv,
-                        name: menuItem.nome_comercial
+            // Map aggregate to dictionary for O(1) loop lookup
+            const salesMap = new Map<number, { volumeVendas: number, totalRevenueSales: number, totalCusto: number }>();
+            for (const agg of salesAgg) {
+                if (agg.menu_item_id) {
+                    salesMap.set(agg.menu_item_id, {
+                        volumeVendas: Number(agg._sum.quantidade || 0),
+                        totalRevenueSales: Number(agg._sum.receita_total || 0),
+                        totalCusto: Number(agg._sum.custo_total || 0)
                     });
                 }
             }
 
+            let totalFaturacaoGlobal = 0;
+            let totalCustoGlobal = 0;
+
+            for (const item of menuItems) {
+                const itemSales = salesMap.get(item.id);
+                if (!itemSales) continue;
+
+                const volumeVendas = itemSales.volumeVendas;
+                if (volumeVendas === 0) continue;
+
+                totalFaturacaoGlobal += itemSales.totalRevenueSales;
+                totalCustoGlobal += itemSales.totalCusto;
+
+                // USE HISTORICAL COST
+                let custoUnitario = 0;
+                if (itemSales.totalCusto > 0) {
+                    custoUnitario = itemSales.totalCusto / volumeVendas;
+                } else {
+                    if (item.receita) custoUnitario = Number(item.receita.custo_por_porcao);
+                    else if (item.combo) custoUnitario = Number(item.combo.custo_total);
+                    else if (item.formatoVenda) custoUnitario = Number(item.formatoVenda.custo_unitario);
+                }
+
+                if (custoUnitario <= 0) continue;
+
+                // Weighted average PVP
+                const totalRevenueSales = itemSales.totalRevenueSales;
+                const pvpMedio = volumeVendas > 0 ? totalRevenueSales / volumeVendas : Number(item.pvp);
+
+                if (pvpMedio <= 0) continue;
+
+                // CMV calculation
+                const cmvAtual = (custoUnitario / pvpMedio) * 100;
+                const cmvTarget = globalTargetCmv;
+
+                const diffCMV = cmvAtual - cmvTarget;
+
+                if (diffCMV > 0) {
+                    const perdaUnitaria = pvpMedio * (diffCMV / 100);
+                    const totalPerdido = perdaUnitaria * volumeVendas;
+
+                    structuralProblems.push({
+                        id: item.id.toString(),
+                        name: item.nome_comercial,
+                        loss: Math.round(totalPerdido * 100) / 100,
+                        cmv: Math.round(cmvAtual * 10) / 10,
+                        targetCmv: cmvTarget,
+                        suggestedAction: 'Ajustar preço ou receita'
+                    });
+                } else {
+                    const economiasCMV = Math.abs(diffCMV);
+                    const ganhoUnitario = pvpMedio * (economiasCMV / 100);
+                    const totalGanho = ganhoUnitario * volumeVendas;
+                    currentGain += totalGanho;
+                }
+            }
+
+            const totalItemsCount = structuralProblems.length;
+
             // Extract top offenders
-            const allStructural = Array.from(itemHemorrhageMap.entries())
-                .filter(([_, data]) => data.hemorragia > 0)
-                .sort((a, b) => b[1].hemorragia - a[1].hemorragia);
+            structuralProblems.sort((a, b) => b.loss - a.loss);
 
-            currentLoss = allStructural.reduce((sum, [_, data]) => sum + data.hemorragia, 0);
-
-            structuralProblems = allStructural.slice(0, 10).map(([id, data]) => ({
-                id: id.toString(),
-                name: data.name,
-                loss: data.hemorragia,
-                cmv: data.faturacao > 0 ? (data.custo / data.faturacao) * 100 : 0,
-                targetCmv: data.targetCmv,
-                suggestedAction: 'Ajustar preço ou receita'
-            }));
+            currentLoss = structuralProblems.reduce((sum, p) => sum + p.loss, 0);
 
             // Setup overall CMV calculation
-            const overallCmv = totalFaturacao > 0 ? (totalCusto / totalFaturacao) * 100 : 0;
+            const overallCmv = totalFaturacaoGlobal > 0 ? (totalCustoGlobal / totalFaturacaoGlobal) * 100 : 0;
 
             // 3. Generate Actions List (Combines Top 3 of both)
             const tasks: ActionTask[] = [];
@@ -203,13 +236,15 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
             const responseData = {
                 marginStatus: {
                     currentLoss,
+                    currentGain,
+                    netBalance: currentGain - currentLoss,
                     additionalRisk,
                     cmv: overallCmv,
                     targetCmv: globalTargetCmv
                 },
                 structuralProblems: {
                     items: structuralProblems.slice(0, 5), // Only send top 5 to UI
-                    totalItems: allStructural.length
+                    totalItems: totalItemsCount
                 },
                 recentChanges: {
                     items: recentChanges.slice(0, 5),
