@@ -4,6 +4,7 @@ import { env } from '../core/env';
 import { prisma } from '../core/database';
 import { subDays } from 'date-fns';
 import { Decimal } from '@prisma/client/runtime/library';
+import Redis from 'ioredis';
 
 const WORKER_NAME = 'AlertsProcessor';
 
@@ -29,7 +30,7 @@ const worker = new Worker<AlertsJobData>(
         }
     },
     {
-        connection: redisOptions,
+        connection: new Redis(env.REDIS_URL, redisOptions) as any,
         concurrency: 2,
     }
 );
