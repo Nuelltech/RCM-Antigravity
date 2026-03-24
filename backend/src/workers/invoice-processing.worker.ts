@@ -5,13 +5,13 @@ import { IntelligentParserRouter } from '../modules/invoices/services/intelligen
 import { prisma } from '../core/database';
 import { notificationService } from '../services/notification.service';
 import { env } from '../core/env';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 
 // const prisma = new PrismaClient();
-const redisConnection = new Redis(env.REDIS_URL, redisOptions);
+const redisConnection = redis;
 
 interface InvoiceProcessingJob {
     invoiceId: number;
@@ -302,7 +302,8 @@ const worker = new Worker<InvoiceProcessingJob>(
         }
     },
     {
-        connection: redisConnection as any,
+        connection: redis,
+        sharedConnection: true,
         concurrency: 5,  // Process up to 5 invoices in parallel
         limiter: {
             max: 10,  // Max 10 jobs

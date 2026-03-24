@@ -2,14 +2,14 @@ import { Worker, Queue } from 'bullmq';
 import { prisma } from '../core/database';
 import * as emailService from '../core/email.service';
 import { recordJobRun } from './recovery.service';
+import { env } from '../core/env';
+import { redisOptions, redis } from '../core/redis';
+import Redis from 'ioredis';
 
 /** Shared grace period constant — must match subscriptions.service.ts */
 const GRACE_PERIOD_DAYS = 3;
 
-const connection = {
-    host: process.env.REDIS_HOST || '127.0.0.1',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-};
+const connection = redis as any;
 
 const SUBSCRIPTION_CHECK_QUEUE = 'subscription-check-queue';
 

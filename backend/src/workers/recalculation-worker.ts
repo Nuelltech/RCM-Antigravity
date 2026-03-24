@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import { env } from '../core/env';
 import Redis from 'ioredis';
 import { RecalculationJobData } from '../core/queue';
@@ -132,7 +132,7 @@ const recalculationWorker = new Worker<RecalculationJobData>(
     'recalculation',
     processRecalculationJob,
     {
-        connection: new Redis(env.REDIS_URL, redisOptions) as any,
+        connection: redis as any,
         concurrency: 5, // Process up to 5 jobs concurrently
         limiter: {
             max: 10, // Max 10 jobs

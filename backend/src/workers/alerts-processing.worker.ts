@@ -1,9 +1,10 @@
 import { Worker, Job } from 'bullmq';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import { env } from '../core/env';
 import { prisma } from '../core/database';
 import { subDays } from 'date-fns';
 import { Decimal } from '@prisma/client/runtime/library';
+import Redis from 'ioredis';
 
 const WORKER_NAME = 'AlertsProcessor';
 
@@ -29,7 +30,8 @@ const worker = new Worker<AlertsJobData>(
         }
     },
     {
-        connection: redisOptions,
+        connection: redis,
+        sharedConnection: true,
         concurrency: 2,
     }
 );

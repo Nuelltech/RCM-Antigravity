@@ -2,13 +2,13 @@ import { Worker, Queue } from 'bullmq';
 import { prisma } from '../core/database';
 import { addGlobalCatalogJob } from '../queues/global-catalog.queue';
 import { recordJobRun } from './recovery.service';
+import { env } from '../core/env';
+import { redisOptions, redis } from '../core/redis';
+import Redis from 'ioredis';
 
 const CATALOG_SCAN_QUEUE = 'catalog-scan-queue';
 
-const connection = {
-    host: process.env.REDIS_HOST || '127.0.0.1',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-};
+const connection = redis as any;
 
 // Queue for scheduling the repeatable job
 export const catalogScanQueue = new Queue(CATALOG_SCAN_QUEUE, { connection });

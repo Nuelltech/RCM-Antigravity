@@ -2,10 +2,10 @@ import { Worker, Job } from 'bullmq';
 import Redis from 'ioredis';
 import { prisma } from '../core/database';
 import { env } from '../core/env';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import { GlobalCatalogJobData } from '../queues/global-catalog.queue';
 
-const redisConnection = new Redis(env.REDIS_URL, redisOptions);
+const redisConnection = redis;
 
 /**
  * Global Catalog Worker
@@ -83,7 +83,8 @@ const worker = new Worker<GlobalCatalogJobData>(
         }
     },
     {
-        connection: redisConnection as any,
+        connection: redis,
+        sharedConnection: true,
         concurrency: 2, // Leve, não precisa de ser muito agressivo
     }
 );

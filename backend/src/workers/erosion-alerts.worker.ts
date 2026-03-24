@@ -1,10 +1,10 @@
 import { Worker, Queue } from 'bullmq';
 import { prisma } from '../core/database';
+import { env } from '../core/env';
+import { redisOptions, redis } from '../core/redis';
+import Redis from 'ioredis';
 
-const connection = {
-    host: process.env.REDIS_HOST || '127.0.0.1',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-};
+const connection = redis as any;
 
 const EROSION_ALERTS_QUEUE = 'erosion-alerts-queue';
 
