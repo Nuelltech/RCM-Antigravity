@@ -173,7 +173,6 @@ const worker = new Worker<SeedDataJobData>(
     },
     {
         connection: redis as any,
-        sharedConnection: true,
         concurrency: 5, // Allow multiple setups at once
     }
 );

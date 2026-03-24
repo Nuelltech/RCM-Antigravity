@@ -118,7 +118,6 @@ const retryWorker = new Worker<InvoiceRetryJob>(
     },
     {
         connection: redis as any,
-        sharedConnection: true,
         concurrency: 3  // Less concurrent retries
     }
 );

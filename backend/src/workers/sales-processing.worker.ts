@@ -330,7 +330,6 @@ const worker = new Worker<SalesProcessingJob>(
     },
     {
         connection: redis as any,
-        sharedConnection: true,
         concurrency: 5,  // Process up to 5 sales imports in parallel
         limiter: {
             max: 10,

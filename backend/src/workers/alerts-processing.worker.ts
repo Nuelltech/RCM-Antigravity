@@ -31,7 +31,6 @@ const worker = new Worker<AlertsJobData>(
     },
     {
         connection: redis as any,
-        sharedConnection: true,
         concurrency: 2,
     }
 );
