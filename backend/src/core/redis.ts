@@ -10,6 +10,7 @@ import { env } from './env';
  * - Auth session caching
  */
 export const redisOptions = {
+    family: 4, // Force IPv4 for Render internal networking
     maxRetriesPerRequest: null, // STRICTLY REQUIRED by BullMQ, cannot be changed
     enableReadyCheck: false,
     retryStrategy(times: number) {
