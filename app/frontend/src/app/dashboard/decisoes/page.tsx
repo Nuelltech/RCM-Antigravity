@@ -35,7 +35,7 @@ export default function DecisionDashboardPage() {
         );
     }
 
-    const { marginStatus, actionList, structuralProblems, recentChanges } = data;
+    const { marginStatus, actionList, structuralProblems, recentChanges, occupancyData, structureData, insightMessage } = data;
     
     // Provide a safe fallback if globalMacro is undefined (from stale Redis/SWR cache)
     const globalMacro = data.globalMacro || {
@@ -90,52 +90,93 @@ export default function DecisionDashboardPage() {
                     </Button>
                 </div>
 
-                {/* Section 1 Title */}
-                <div className="mt-8 mb-4">
-                    <h2 className="text-lg font-bold text-slate-800">Cenário Global das Contas</h2>
-                    <p className="text-sm text-slate-500">Resumo da contabilidade e do resultado líquido gerado.</p>
-                </div>
 
-                {/* 0. Macro Financials (30 days) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <div className="p-5 rounded-xl border bg-white shadow-sm flex flex-col justify-between">
-                        <div className="text-sm font-medium text-slate-500 mb-2 flex items-center justify-between">
-                            Vendas
-                            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded">30 Dias</span>
+
+                {/* 0. Macro Financials (30 days) - Single Card Layout */}
+                <div className="mb-8">
+                    <div className="p-6 rounded-2xl border bg-white shadow-sm flex flex-col relative w-full overflow-hidden max-w-2xl">
+                        {/* Title & Detail Button */}
+                        <div className="flex justify-between items-start mb-6 w-full">
+                            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                💰 O Resultado dos ultimos 30 dias de trabalho
+                            </h2>
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => window.location.href = '/dashboard'}
+                                className="text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                            >
+                                Ver detalhe →
+                            </Button>
                         </div>
-                        <div className="text-2xl sm:text-3xl font-bold text-slate-900">
-                            {formatCurrency(globalMacro.vendas)}
-                        </div>
-                    </div>
-                    
-                    <div className="p-5 rounded-xl border bg-white shadow-sm flex flex-col justify-between">
-                        <div className="text-sm font-medium text-slate-500 mb-2 flex items-center justify-between">
-                            Custos Totais
-                            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded">30 Dias</span>
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                            <div className="text-2xl sm:text-3xl font-bold text-slate-900">
-                                {formatCurrency(globalMacro.custosMercadoria + globalMacro.custosEstrutura)}
+
+                        {/* Net Result highlighted */}
+                        <div className="mb-2">
+                            <div className={`text-4xl sm:text-5xl font-extrabold tracking-tight ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {globalMacro.resultadoLiquido > 0 ? '+' : ''}{formatCurrency(globalMacro.resultadoLiquido)}
+                            </div>
+                            <div className="mt-2 text-sm font-medium text-slate-600 flex items-center gap-2">
+                                👉 {globalMacro.resultadoLiquido >= 0 ? 'Margem Segura' : 'Margem frágil'} ({formatCurrency(globalMacro.resultadoLiquido / 30)}/dia)
                             </div>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">Mercadoria + Estrutura</p>
-                    </div>
 
-                    <div className={`p-5 rounded-xl border shadow-sm flex flex-col justify-between ${globalMacro.resultadoLiquido >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-red-50/50 border-red-100'}`}>
-                        <div className={`text-sm font-medium mb-2 flex items-center justify-between ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                            Resultado Líquido
-                            <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600 bg-emerald-100' : 'text-red-600 bg-red-100'}`}>30 Dias</span>
+                        <div className="w-full h-px border-dashed border-b border-slate-200 my-5" />
+                        
+                        {/* Vendas e Custos */}
+                        <div className="flex flex-col gap-1.5 mb-5 border border-slate-100 rounded-lg p-3 bg-slate-50/50">
+                            <div className="text-sm text-slate-500 flex items-center justify-between">
+                                <span>Vendas:</span> <span className="font-bold text-blue-500 text-base">{formatCurrency(globalMacro.vendas)}</span>
+                            </div>
+                            <div className="text-sm text-slate-500 flex flex-col pt-1 border-t border-slate-100">
+                                <div className="flex items-center justify-between">
+                                    <span>Custos:</span> <span className="font-bold text-red-500 text-base">{formatCurrency(globalMacro.custosMercadoria + globalMacro.custosEstrutura)}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-400 mt-0.5 italic flex justify-end">(inclui Custos de Estrutura + Custo das Mercadorias)</span>
+                            </div>
                         </div>
-                        <div className={`text-2xl sm:text-3xl font-bold ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {formatCurrency(globalMacro.resultadoLiquido)}
+
+                        {/* Indicators */}
+                        <div className="flex flex-col gap-2 mb-2">
+                            <div className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                                💸 Perda no menu: <span className="text-red-500 font-bold">-{formatCurrency(marginStatus.currentLoss)}</span>
+                            </div>
+                            <div className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                                ⚠️ Custos a subir: <span className="text-amber-500 font-bold">-{formatCurrency(marginStatus.additionalRisk)}</span>
+                            </div>
                         </div>
-                        <p className={`text-xs mt-1 ${globalMacro.resultadoLiquido >= 0 ? 'text-emerald-600/70' : 'text-red-600/70'}`}>Vendas - CMV - Estrutura</p>
+
+                        <div className="w-full h-px border-dashed border-b border-slate-200 my-5" />
+
+                        {/* CMV explanation in natural language */}
+                        <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-700 mb-4 leading-relaxed font-medium">
+                            <span className="block mb-2 font-normal text-slate-500">
+                                Gastou <strong>{marginStatus.cmv.toFixed(1)}%</strong> do valor nas vendas em mercadoria e estrutura. O teto recomendado era <strong>{marginStatus.targetCmv.toFixed(0)}%</strong>. 
+                            </span>
+                            <div className={`p-3 rounded border-l-4 shadow-sm ${globalMacro.resultadoLiquido >= 0 ? "border-emerald-500 bg-emerald-50" : "border-red-500 bg-red-50"}`}>
+                                <div className="flex items-start gap-2">
+                                    <span className="text-xl">💡</span>
+                                    <div>
+                                        <p className="font-semibold text-slate-800 mb-1">Diagnóstico Total da Margem</p>
+                                        <span className="font-medium text-slate-700">{insightMessage}</span>
+                                        {structureData?.rate > 0 && typeof structureData.breakEvenSales === 'number' && (
+                                            <p className="text-xs text-slate-500 mt-2 font-normal flex items-center gap-1">
+                                                <span>📊 Ocupação: {occupancyData?.rate || 0}%</span> • 
+                                                <span>Estrutura: {structureData.rate}%</span> •
+                                                <span>Ponto de Equilíbrio: {formatCurrency(structureData.breakEvenSales)}</span>
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 {/* Section 2 Title */}
                 <div className="mt-10 mb-6">
-                    <h2 className="text-lg font-bold text-slate-800">Desafios Operacionais a Resolver</h2>
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        🧩 Desafios Operacionais a Resolver
+                    </h2>
                     <p className="text-sm text-slate-500">Onde estão as fugas de dinheiro na ementa e como compensá-las.</p>
                 </div>
 

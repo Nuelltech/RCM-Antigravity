@@ -1177,6 +1177,7 @@ model DadosRestaurante {
   
   // Operational Settings
   numero_lugares      Int      @default(0)
+  servicos_por_dia    Int      @default(2)
   horas_trabalho_dia  Decimal  @default(8) @db.Decimal(4, 2)
   dias_trabalho_semana Decimal @default(5) @db.Decimal(3, 1)
   
@@ -1197,6 +1198,59 @@ model DadosRestaurante {
   dias_alerta_preco_estagnado Int      @default(30)
   
   @@map("dados_restaurante")
+}
+
+// -----------------------------------------------------------------------------
+// DADOS GLOBAIS - Criterio de Ocupação (System Level)
+// -----------------------------------------------------------------------------
+
+model CriterioOcupacao {
+  id                  Int      @id @default(autoincrement())
+  percentagem_min     Decimal  @db.Decimal(5, 2)
+  percentagem_max     Decimal  @db.Decimal(5, 2)
+  nivel               String   // ex: "Fraco", "Médio", "Bom"
+  cor_ux              String?  // ex: "#FF0000"
+  descricao_pratica   String?  @db.Text // "Não cobre custos fixos na maioria dos casos"
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("criterios_ocupacao")
+}
+
+// -----------------------------------------------------------------------------
+// DADOS GLOBAIS - Regras de Motor de Decisão
+// -----------------------------------------------------------------------------
+
+model CriterioEstrutura {
+  id                  Int      @id @default(autoincrement())
+  percentagem_min     Decimal  @db.Decimal(5, 2)
+  percentagem_max     Decimal  @db.Decimal(5, 2)
+  nivel               String   // "Eficiente", "Controlado", "Aceitável", "Perigoso", "Crítico", "Insustentável"
+  cor_ux              String?  // "#FF0000"
+  descricao_pratica   String?  @db.Text
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("criterios_estrutura")
+}
+
+model RegraDecisaoDashboard {
+  id                  Int      @id @default(autoincrement())
+  
+  lucro_positivo      Boolean? // NULL = "Any"
+  cmv_controlado      Boolean? // NULL = "Any"
+  nivel_ocupacao      String?  // Match com CriterioOcupacao.nivel (ex: "Crítico", "Boa"), NULL = "Any"
+  nivel_estrutura     String?  // Match com CriterioEstrutura.nivel (ex: "Eficiente", "Pesada"), NULL = "Any"
+  
+  mensagem            String   @db.Text
+  prioridade          Int      @default(0) // Higher value executes first
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("regras_decisao_dashboard")
 }
 
 model CustoEstrutura {

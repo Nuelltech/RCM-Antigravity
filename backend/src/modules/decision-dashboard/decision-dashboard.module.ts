@@ -45,7 +45,7 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
 
         try {
             // Check Redis Cache first (Optional)
-            const cacheKey = `tenant:${req.tenantId}:decision_dashboard`;
+            const cacheKey = `tenant:${req.tenantId}:decision_dashboard:v2`;
             const forceRefresh = req.query.refresh === 'true';
 
             try {
@@ -235,6 +235,34 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
 
             const overallCmv = globalGrossRevenue > 0 ? (globalGrossCost / globalGrossRevenue) * 100 : 0;
 
+            // ===== NEW: Calculate Real Occupancy Rate =====
+            const numLugares = Number(dadosRestaurante?.numero_lugares || 0);
+            // Default 2 as defined in schema changes
+            const servicosDia = Number(dadosRestaurante?.servicos_por_dia || 2);
+            const diasTrabalhoSemana = Number(dadosRestaurante?.dias_trabalho_semana || 5);
+            
+            const diasAbertosMes = (30 / 7) * diasTrabalhoSemana;
+            const capacidadeRealMes = numLugares * servicosDia * Math.round(diasAbertosMes);
+            
+            // Using volumeVendas as a proxy for 'clientes servidos' (1 main plate = 1 customer approximately)
+            const totalClientesServidos = Array.from(salesMap.values()).reduce((sum, item) => sum + item.volumeVendas, 0);
+
+            let occupRate = 0;
+            let occupLevel = "Desconhecido";
+
+            if (numLugares > 0) {
+                occupRate = (totalClientesServidos / capacidadeRealMes) * 100;
+                
+                // CriterioOcupacao Engine logic (fallback if DB query fails)
+                if (occupRate < 30) occupLevel = "Crítico";
+                else if (occupRate < 50) occupLevel = "Fraco";
+                else if (occupRate < 65) occupLevel = "Médio";
+                else if (occupRate < 80) occupLevel = "Bom";
+                else if (occupRate < 90) occupLevel = "Muito Bom";
+                else occupLevel = "Excelente";
+            }
+
+
             // ===== NEW: Calculate Structural Costs for the Period =====
             const historicoCustos = await prisma.custoEstruturaHistorico.findMany({
                 where: { tenant_id: req.tenantId }
@@ -264,6 +292,48 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
             }
 
             const custoEstruturaPeriodo = totalCustoEstruturaPeriodo;
+            
+            // ===== NEW: Calculate Structural Weight =====
+            let structRate = 0;
+            let structLevel = "Desconhecido";
+            const vendas = globalGrossRevenue;
+            
+            if (vendas > 0) {
+                structRate = (custoEstruturaPeriodo / vendas) * 100;
+                
+                if (structRate < 30) structLevel = "Eficiente";
+                else if (structRate < 35) structLevel = "Controlado";
+                else if (structRate < 40) structLevel = "Aceitável";
+                else if (structRate < 45) structLevel = "Alto";
+                else if (structRate < 55) structLevel = "Crítico";
+                else structLevel = "Insustentável";
+            }
+            
+            // ===== NEW: Execute the Rule Engine for the "Insight Message" =====
+            const isProfit = (vendas - globalGrossCost - custoEstruturaPeriodo) >= 0;
+            const isCmvOk = overallCmv <= globalTargetCmv;
+
+            let finalInsight = "Preencha os seus Dados do Restaurante para podermos gerar uma análise avançada do seu fluxo.";
+            
+            try {
+                const rules = await prisma.regraDecisaoDashboard.findMany({
+                    orderBy: { prioridade: 'desc' }
+                });
+
+                const match = rules.find(r => 
+                    (r.lucro_positivo === null || r.lucro_positivo === isProfit) &&
+                    (r.cmv_controlado === null || r.cmv_controlado === isCmvOk) &&
+                    (r.nivel_ocupacao === null || r.nivel_ocupacao === occupLevel) &&
+                    (r.nivel_estrutura === null || r.nivel_estrutura === structLevel)
+                );
+
+                if (match) {
+                    finalInsight = match.mensagem;
+                }
+            } catch (err) {
+                console.warn("[Decision Dashboard] Error finding rule matching, continuing without contextual message", err);
+            }
+            
             
             // Define macro stats to send back
             const globalGrossStats = {
@@ -309,6 +379,17 @@ export async function decisionDashboardRoutes(app: FastifyInstance) {
                     cmv: overallCmv,
                     targetCmv: globalTargetCmv
                 },
+                occupancyData: {
+                    rate: Math.round(occupRate),
+                    level: occupLevel,
+                    hasData: numLugares > 0
+                },
+                structureData: {
+                    rate: Math.round(structRate),
+                    level: structLevel,
+                    breakEvenSales: Math.round(custoEstruturaPeriodo / 0.35)
+                },
+                insightMessage: finalInsight,
                 structuralProblems: {
                     items: structuralProblems.slice(0, 5), // Only send top 5 to UI
                     totalItems: totalItemsCount

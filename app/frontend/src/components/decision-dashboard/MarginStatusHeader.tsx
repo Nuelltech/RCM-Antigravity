@@ -31,9 +31,15 @@ export function MarginStatusHeader({ currentLoss, currentGain, netBalance, addit
                             <TrendingDown className="h-5 w-5" />
                         </div>
                         <div>
-                            <h3 className={`text-sm font-semibold ${isLosingMoney ? 'text-red-900' : 'text-emerald-900'}`}>Hemorragia Financeira</h3>
-                            <p className={`text-[10px] uppercase font-bold tracking-wider ${isLosingMoney ? 'text-red-700/60' : 'text-emerald-700/60'}`}>
-                                Últimos 30 Dias
+                            <div className="flex items-center gap-1 group relative">
+                                <h3 className={`text-sm font-semibold ${isLosingMoney ? 'text-red-900' : 'text-emerald-900'}`}>Hemorragia Financeira</h3>
+                                <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded shadow-lg z-10 font-normal normal-case tracking-normal">
+                                    Este valor é real. Representa o lucro líquido exato que o seu restaurante deixou de ganhar no último mês porque vendeu estes pratos com margens abaixo do objetivo.
+                                </div>
+                                <div className="cursor-help w-3.5 h-3.5 rounded-full border border-current flex items-center justify-center text-[9px] opacity-60">i</div>
+                            </div>
+                            <p className={`text-[10px] uppercase font-bold tracking-wider mt-0.5 ${isLosingMoney ? 'text-red-700/60' : 'text-emerald-700/60'}`}>
+                                💸 DINHEIRO PERDIDO NAS VENDAS (Últimos 30 dias)
                             </p>
                         </div>
                     </div>
@@ -74,20 +80,26 @@ export function MarginStatusHeader({ currentLoss, currentGain, netBalance, addit
                             <AlertTriangle className="h-5 w-5" />
                         </div>
                         <div>
-                            <h3 className={`text-sm font-semibold ${hasRisk ? 'text-orange-900' : 'text-green-900'}`}>RISCO ADICIONAL</h3>
-                            <p className={`text-[10px] uppercase font-bold tracking-wider ${hasRisk ? 'text-orange-700/60' : 'text-green-700/60'}`}>
-                                Alertas Recentes
+                            <div className="flex items-center gap-1 group relative">
+                                <h3 className={`text-sm font-semibold uppercase ${hasRisk ? 'text-orange-900' : 'text-green-900'}`}>Risco de perda adicional</h3>
+                                <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded shadow-lg z-10 font-normal normal-case tracking-normal">
+                                    Este valor é uma projecção financeira futura para avisar quanto vai perder mensalmente se não ajustar os preços de venda dos pratos que sofreram aumentos nos fornecedores.
+                                </div>
+                                <div className="cursor-help w-3.5 h-3.5 rounded-full border border-current flex items-center justify-center text-[9px] opacity-60">i</div>
+                            </div>
+                            <p className={`text-[10px] uppercase font-bold tracking-wider mt-0.5 ${hasRisk ? 'text-orange-700/60' : 'text-green-700/60'}`}>
+                                🔮 PREJUÍZO (Próximos 30 dias)
                             </p>
                         </div>
                     </div>
-                    <Link href="/radar-de-risco">
+                    <Link href="/alertas-erosao">
                         <Button variant="ghost" size="sm" className={`h-8 px-2 text-xs ${hasRisk ? 'text-orange-700 hover:text-orange-800 hover:bg-orange-100' : 'text-green-700 hover:text-green-800 hover:bg-green-100'}`}>
                             Ver detalhe <ArrowRight className="ml-1 h-3 w-3" />
                         </Button>
                     </Link>
                 </div>
 
-                <div className="flex items-end justify-between mt-4 pt-4 border-t" style={{ borderColor: hasRisk ? '#fed7aa' : '#bbf7d0' }}>
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: hasRisk ? '#fed7aa' : '#bbf7d0' }}>
                     <div>
                         <div className={`text-lg sm:text-2xl font-bold ${hasRisk ? 'text-orange-600' : 'text-green-600'}`}>
                             {hasRisk ? `-${formatCurrency(additionalRisk)}` : '0,00 €'}
@@ -95,14 +107,6 @@ export function MarginStatusHeader({ currentLoss, currentGain, netBalance, addit
                         <p className={`text-[10px] sm:text-xs mt-1 max-w-[150px] sm:max-w-none ${hasRisk ? 'text-orange-700/80' : 'text-green-700/80'}`}>
                             {hasRisk ? '(aumentos de custos em análise)' : '(sem aumentos de custos)'}
                         </p>
-                    </div>
-
-                    <div className="text-right">
-                        <div className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">CMV Global</div>
-                        <div className={`text-xl sm:text-2xl font-bold ${cmv > targetCmv ? 'text-red-600' : 'text-slate-700'}`}>
-                            {cmv.toFixed(1)}%
-                        </div>
-                        <div className="text-[10px] text-slate-400 mt-1 uppercase">Alvo: {targetCmv.toFixed(0)}%</div>
                     </div>
                 </div>
             </div>

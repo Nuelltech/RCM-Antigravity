@@ -42,6 +42,17 @@ export interface DecisionDashboardData {
         cmv: number;
         targetCmv: number;
     };
+    occupancyData: {
+        rate: number;
+        level: string;
+        hasData: boolean;
+    };
+    structureData: {
+        rate: number;
+        level: string;
+        breakEvenSales: number;
+    };
+    insightMessage: string;
     structuralProblems: {
         items: StructuralProblem[];
         totalItems: number;

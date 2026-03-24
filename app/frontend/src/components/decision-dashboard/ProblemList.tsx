@@ -37,10 +37,10 @@ export function ProblemList({ type, items, totalItems }: ProblemListProps) {
                 </div>
                 <div>
                     <h3 className={`font-bold ${isStructural ? 'text-rose-900' : 'text-orange-900'}`}>
-                        {isStructural ? 'MENU COM PERDA' : 'CUSTOS A SUBIR'}
+                        {isStructural ? 'MENU COM PERDA REAL' : 'CUSTOS A SUBIR'}
                     </h3>
                     <p className={`text-xs font-medium ${isStructural ? 'text-rose-700/80' : 'text-orange-700/80'}`}>
-                        {isStructural ? 'Hemorragia dos últimos 30 dias' : 'Alerta do Radar (Novos Custos)'}
+                        {isStructural ? '💸 Dinheiro perdido nas vendas (Últimos 30 dias)' : '🔮 Prejuízo projetado (Próximos 30 dias)'}
                     </p>
                 </div>
             </div>
@@ -60,8 +60,11 @@ export function ProblemList({ type, items, totalItems }: ProblemListProps) {
                                     <div className="font-semibold text-slate-800 text-base max-w-[70%] truncate" title={item.name}>
                                         {index + 1}. {item.name}
                                     </div>
-                                    <div className="font-bold text-red-600">
-                                        -{formatCurrency(loss)}
+                                    <div className="font-bold text-red-600 flex flex-col items-end leading-tight">
+                                        <span className={`text-[9px] uppercase font-semibold tracking-wider ${isStructural ? 'text-rose-400' : 'text-orange-400'}`}>
+                                            {isStructural ? 'Já perdeu:' : 'Vai perder:'}
+                                        </span>
+                                        <span>-{formatCurrency(loss)}</span>
                                     </div>
                                 </div>
                                 
