@@ -10,6 +10,7 @@ import { env } from './env';
  * - Auth session caching
  */
 export const redisOptions = {
+    family: 4, // Force IPv4 for Render internal networking
     maxRetriesPerRequest: null, // STRICTLY REQUIRED by BullMQ, cannot be changed
     enableReadyCheck: false,
     retryStrategy(times: number) {
@@ -40,15 +41,15 @@ redis.on('connect', () => {
 
 redis.on('error', (err: any) => {
     const errString = String(err?.message || err || '');
-    if (errString.includes('ECONNREFUSED') || err?.code === 'ECONNREFUSED') {
+    if (errString.includes('ECONNREFUSED') || err?.code === 'ECONNREFUSED' || errString.includes('ECONNRESET') || err?.code === 'ECONNRESET') {
         return;
     }
     
     if (err?.errors && Array.isArray(err.errors)) {
-        const isRefused = err.errors.some((e: any) => 
-            e.code === 'ECONNREFUSED' || String(e).includes('ECONNREFUSED')
+        const isRefusedOrReset = err.errors.some((e: any) => 
+            e.code === 'ECONNREFUSED' || String(e).includes('ECONNREFUSED') || e.code === 'ECONNRESET' || String(e).includes('ECONNRESET')
         );
-        if (isRefused) return;
+        if (isRefusedOrReset) return;
     }
 
     console.error('❌ Redis error:', errString);
