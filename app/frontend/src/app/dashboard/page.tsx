@@ -14,11 +14,15 @@ import { useUser } from '@/hooks/useUser';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { DollarSign, ShoppingBag, TrendingDown, AlertTriangle, Building2, FileDown } from 'lucide-react';
 import { format, subDays } from 'date-fns';
-import { DashboardPDF } from '@/components/pdf/DashboardPDF';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ExportPDFModal } from '@/components/dashboard/ExportPDFModal';
+import dynamic from 'next/dynamic';
+import { DashboardPDF } from '@/components/pdf/DashboardPDF';
 import { CmvAlertCard } from '@/components/dashboard/CmvAlertCard';
+
+const ExportButton = dynamic(
+    () => import('@/components/ExportButton').then(mod => ({ default: mod.ExportButton })),
+    { ssr: false }
+);
 
 interface DashboardStats {
     vendasMes: number;
@@ -54,7 +58,24 @@ export default function DashboardPage() {
     const [activeAlerts, setActiveAlerts] = useState(0);
     const [alerts, setAlerts] = useState<any[]>([]);
     const [salesData, setSalesData] = useState<any[]>([]);
-    const [exportModalOpen, setExportModalOpen] = useState(false);
+    const [hemorragiaData, setHemorragiaData] = useState<any>(null);
+    const [pdfLogoUrl, setPdfLogoUrl] = useState<string | undefined>(undefined);
+
+    // Convert logo to base64 for PDF (react-pdf needs base64 or absolute URL)
+    useEffect(() => {
+        const loadLogo = async () => {
+            try {
+                const resp = await fetch('/images/logo-login.png');
+                const blob = await resp.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => setPdfLogoUrl(reader.result as string);
+                reader.readAsDataURL(blob);
+            } catch {
+                // Logo load failed — PDF will use text fallback
+            }
+        };
+        loadLogo();
+    }, []);
 
     // Date range for export
     const [dateRange, setDateRange] = useState({
@@ -83,44 +104,59 @@ export default function DashboardPage() {
 
     useEffect(() => {
         if (userLoading) return;
-        if (!tenantId) return; // Don't load if no tenant selected
+        if (!tenantId) return;
 
-        // Check onboarding status
         const checkOnboarding = async () => {
             try {
-                // Use role from user object
                 const role = user?.role;
                 if (role === 'owner' || role === 'admin' || role === 'manager') {
-                    const res = await fetchClient('/onboarding/check');
-                    if (!res.seeded) {
-                        router.push('/onboarding');
-                        return; // Stop loading dashboard
+                    // ✅ PERFORMANCE FIX: Cache do onboarding check em sessionStorage.
+                    // Evita uma chamada sequencial bloqueante em cada visita ao dashboard.
+                    const onboardingCacheKey = `onboarding_seeded_${tenantId}`;
+                    const cachedSeeded = sessionStorage.getItem(onboardingCacheKey);
+
+                    if (cachedSeeded === null) {
+                        // Cache miss → verificar com a API
+                        const res = await fetchClient('/onboarding/check');
+                        if (!res.seeded) {
+                            router.push('/onboarding');
+                            return;
+                        }
+                        // Guardar resultado no cache (seeded=true não muda)
+                        sessionStorage.setItem(onboardingCacheKey, 'true');
                     }
+                    // Se cachedSeeded !== null, já foi verificado → skip da chamada API
                 }
 
-                // If seeded or not owner, load stats
+                // ✅ PERFORMANCE FIX: Disparar todas as chamadas de dados em PARALELO
+                // em vez de sequencialmente. O tempo total = tempo do mais lento dos 4.
                 setLoading(true);
-                loadStats();
-                loadAlerts();
-                loadSalesChart();
+                await Promise.all([
+                    loadStats(),
+                    loadHemorragia(),
+                    loadAlerts(),
+                    loadSalesChart(),
+                ]);
 
             } catch (error) {
-                console.error('Failed to check onboarding status', error);
-                // Fallback to loading stats
+                console.error('Failed to check onboarding or load stats:', error);
+                // Fallback: tentar carregar dados mesmo assim
                 setLoading(true);
-                loadStats();
-                loadAlerts();
-                loadSalesChart();
+                await Promise.all([
+                    loadStats(),
+                    loadHemorragia(),
+                    loadAlerts(),
+                    loadSalesChart(),
+                ]);
             }
         };
 
-        // Debounced loading
         const timeoutId = setTimeout(() => {
             checkOnboarding();
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [tenantId, userLoading, dateRange, router, user?.role]); // ✅ FIX: Reload when tenant or date changes
+    }, [tenantId, userLoading, dateRange, router, user?.role]);
 
     async function loadStats() {
         if (!dateRange.from || !dateRange.to) return;
@@ -148,12 +184,25 @@ export default function DashboardPage() {
     }
 
 
+    async function loadHemorragia() {
+        if (!dateRange.from || !dateRange.to) return;
+        try {
+            const response = await fetchClient(`/hemorragia/analise?startDate=${dateRange.from}&endDate=${dateRange.to}`);
+            if (response?.resumo) {
+                setHemorragiaData(response.resumo);
+            }
+        } catch (error) {
+            console.error('Erro ao carregar dados de hemorragia:', error);
+        }
+    }
+
     async function loadAlerts() {
         try {
             const response = await fetchClient('/alerts');
-            setActiveAlerts(response.length);
+            const arr = Array.isArray(response) ? response : [];
+            setActiveAlerts(arr.length);
             // Pass all alerts to PDF (PDF component handles sorting/filtering)
-            setAlerts(response);
+            setAlerts(arr);
         } catch (error) {
             console.error('Erro ao carregar alertas:', error);
         }
@@ -202,14 +251,34 @@ export default function DashboardPage() {
                             </div>
 
                             {/* Export PDF Button */}
-                            <Button
-                                onClick={() => setExportModalOpen(true)}
-                                disabled={loading}
-                                className="gap-2"
-                            >
-                                <FileDown className="h-4 w-4" />
-                                Exportar PDF
-                            </Button>
+                            <ExportButton
+                                pdfDocument={
+                                    <DashboardPDF
+                                        restaurantName={restaurantName}
+                                        dateRange={{
+                                            from: dateRange.from ? new Date(dateRange.from).toLocaleDateString('pt-PT') : '',
+                                            to: dateRange.to ? new Date(dateRange.to).toLocaleDateString('pt-PT') : '',
+                                        }}
+                                        stats={stats}
+                                        activeAlerts={activeAlerts}
+                                        salesData={(salesData as any[]).map((d: any) => ({ date: d.date, value: d.vendas || d.value || 0, custos: d.custos || 0 }))}
+                                        topMenuItems={stats.topItems
+                                            ?.slice(0, 5)
+                                            .map((item: any) => ({
+                                                nome: item.name || item.nome || '',
+                                                vendas: item.revenue || item.vendas || 0,
+                                                quantidade: item.quantity || item.quantidade || 0,
+                                                cmv: item.cmv || 0,
+                                            })) || []}
+                                        alerts={alerts}
+                                        hemorragiaData={hemorragiaData}
+                                        generatedBy={userName}
+                                        logoUrl={pdfLogoUrl}
+                                    />
+                                }
+                                fileName={`dashboard-${dateRange.from}-${dateRange.to}`}
+                                disabled={loading || !dateRange.from || !dateRange.to}
+                            />
                         </div>
                     </div>
 
@@ -315,37 +384,6 @@ export default function DashboardPage() {
                     </div>
 
                     <TopRecipesGrid items={stats.topItems} categories={stats.categories} />
-
-                    {/* Export PDF Modal */}
-                    <ExportPDFModal
-                        open={exportModalOpen}
-                        onOpenChange={setExportModalOpen}
-                        pdfDocument={
-                            <DashboardPDF
-                                restaurantName={restaurantName}
-                                dateRange={{
-                                    from: dateRange.from ? new Date(dateRange.from).toLocaleDateString('pt-PT') : '',
-                                    to: dateRange.to ? new Date(dateRange.to).toLocaleDateString('pt-PT') : '',
-                                }}
-                                stats={stats}
-                                activeAlerts={activeAlerts}
-                                salesData={salesData}
-                                topMenuItems={stats.topItems
-                                    ?.filter((item: any) => (item.vendas > 0 || item.cmv > 0))
-                                    .slice(0, 5)
-                                    .map((item: any) => ({
-                                        nome: item.name,
-                                        vendas: item.vendas || 0,
-                                        quantidade: item.quantity || 0,
-                                        cmv: item.cmv || 0,
-                                    })) || []}
-                                alerts={alerts}
-                                generatedBy={userName}
-                                logoUrl="/logo.png"
-                            />
-                        }
-                        fileName={`dashboard-${dateRange.from}-${dateRange.to}`}
-                    />
                 </div>
             </AppLayout>
         </RoleGuard>

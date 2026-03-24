@@ -15,6 +15,15 @@ interface DashboardStats {
         total: number;
         active: number;
         trial: number;
+        paid: number;
+        grace_period: number;
+        expired: number;
+        by_plan: { plan_name: string; plan_display_name: string; count: number }[];
+    };
+    revenue: {
+        mrr: number;
+        arr: number;
+        currency: string;
     };
     leads: {
         new_today: number;
@@ -40,9 +49,9 @@ export default function DashboardPage() {
         } catch (error: any) {
             console.error('Error fetching stats:', error);
             toast.error('Erro ao carregar estatísticas');
-            // Use mock data for now
             setStats({
-                tenants: { total: 0, active: 0, trial: 0 },
+                tenants: { total: 0, active: 0, trial: 0, paid: 0, grace_period: 0, expired: 0, by_plan: [] },
+                revenue: { mrr: 0, arr: 0, currency: 'EUR' },
                 leads: { new_today: 0, new_this_week: 0, conversion_rate: 0 }
             });
         } finally {
@@ -64,8 +73,8 @@ export default function DashboardPage() {
                         </p>
                     </div>
 
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    {/* Row 1: Tenants overview */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                         <StatsCard
                             title="Total de Tenants"
                             value={stats?.tenants.total || 0}
@@ -74,25 +83,58 @@ export default function DashboardPage() {
                             color="blue"
                             isLoading={isLoading}
                         />
-
                         <StatsCard
-                            title="Tenants Ativos"
+                            title="Ativos (30d)"
                             value={stats?.tenants.active || 0}
-                            subtitle="Em uso"
+                            subtitle="Com login recente"
                             icon={CheckCircle2}
                             color="green"
                             isLoading={isLoading}
                         />
-
                         <StatsCard
-                            title="Novos Leads"
-                            value={stats?.leads.new_this_week || 0}
-                            subtitle="Esta semana"
-                            icon={Users}
+                            title="Em Trial"
+                            value={stats?.tenants.trial || 0}
+                            subtitle="Plano de teste"
+                            icon={Calendar}
                             color="orange"
                             isLoading={isLoading}
                         />
+                        <StatsCard
+                            title="Subscrições Pagas"
+                            value={stats?.tenants.paid || 0}
+                            subtitle="Plano pago activo"
+                            icon={CheckCircle2}
+                            color="green"
+                            isLoading={isLoading}
+                        />
+                    </div>
 
+                    {/* Row 2: Payment health + MRR */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <StatsCard
+                            title="Período de Graça"
+                            value={stats?.tenants.grace_period || 0}
+                            subtitle="Pagamento em atraso"
+                            icon={Calendar}
+                            color="orange"
+                            isLoading={isLoading}
+                        />
+                        <StatsCard
+                            title="Expirados"
+                            value={stats?.tenants.expired || 0}
+                            subtitle="Cancelados / Suspensos"
+                            icon={TrendingUp}
+                            color="red"
+                            isLoading={isLoading}
+                        />
+                        <StatsCard
+                            title="MRR"
+                            value={`€${(stats?.revenue.mrr || 0).toFixed(2)}`}
+                            subtitle="Receita Mensal Recorrente"
+                            icon={TrendingUp}
+                            color="purple"
+                            isLoading={isLoading}
+                        />
                         <StatsCard
                             title="Taxa de Conversão"
                             value={`${stats?.leads.conversion_rate || 0}%`}
@@ -103,7 +145,53 @@ export default function DashboardPage() {
                         />
                     </div>
 
-                    {/* System Health Cards - NEW */}
+                    {/* Plan Breakdown */}
+                    {(stats?.tenants.by_plan?.length ?? 0) > 0 && (
+                        <div className="mb-8">
+                            <h2 className="text-xl font-bold text-gray-900 mb-4">Distribuição por Plano</h2>
+                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                                {isLoading ? (
+                                    <div className="space-y-4">
+                                        {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {stats!.tenants.by_plan.map(p => {
+                                            const pct = stats!.tenants.total > 0
+                                                ? Math.round((p.count / stats!.tenants.total) * 100)
+                                                : 0;
+                                            const planColors: Record<string, string> = {
+                                                trial: 'bg-blue-500',
+                                                basico: 'bg-green-500',
+                                                standard: 'bg-indigo-500',
+                                                plus: 'bg-purple-500',
+                                                enterprise: 'bg-orange-500',
+                                            };
+                                            const barColor = planColors[p.plan_name] ?? 'bg-slate-400';
+                                            return (
+                                                <div key={p.plan_name}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-sm font-medium text-slate-700">{p.plan_display_name}</span>
+                                                        <span className="text-sm text-slate-500">
+                                                            <strong className="text-slate-900">{p.count}</strong> tenant{p.count !== 1 ? 's' : ''} ({pct}%)
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-100 rounded-full h-2.5">
+                                                        <div
+                                                            className={`${barColor} h-2.5 rounded-full transition-all duration-500`}
+                                                            style={{ width: `${pct}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* System Health Cards */}
                     <div className="mb-8">
                         <h2 className="text-xl font-bold text-gray-900 mb-4">System Health</h2>
                         <SystemHealthCards />
@@ -147,7 +235,7 @@ export default function DashboardPage() {
                     </div>
                 </div>
             </InternalLayout>
-        </ProtectedRoute>
+        </ProtectedRoute >
     );
 }
 
@@ -156,7 +244,7 @@ interface StatsCardProps {
     value: number | string;
     subtitle: string;
     icon: any;
-    color: 'blue' | 'green' | 'orange' | 'purple';
+    color: 'blue' | 'green' | 'orange' | 'purple' | 'red';
     isLoading?: boolean;
 }
 
@@ -166,6 +254,7 @@ function StatsCard({ title, value, subtitle, icon: Icon, color, isLoading }: Sta
         green: 'bg-green-50 text-green-600',
         orange: 'bg-orange-50 text-orange-600',
         purple: 'bg-purple-50 text-purple-600',
+        red: 'bg-red-50 text-red-600',
     };
 
     return (

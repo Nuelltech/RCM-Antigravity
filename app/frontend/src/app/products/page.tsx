@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { fetchClient } from "@/lib/api";
-import { Plus, Search, LayoutGrid, LayoutList, Filter, Trash2, Edit, AlertTriangle } from "lucide-react";
+import { Plus, Search, LayoutGrid, LayoutList, Filter, Trash2, Edit, AlertTriangle, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ImportFromCatalogModal } from "@/components/products/ImportFromCatalogModal";
 import {
     Dialog,
     DialogContent,
@@ -60,6 +61,9 @@ export default function ProductsPage() {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [productToDelete, setProductToDelete] = useState<{ id: number; name: string } | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // Import Modal State
+    const [importModalOpen, setImportModalOpen] = useState(false);
 
     // Pagination state
     const [page, setPage] = useState(1);
@@ -174,12 +178,18 @@ export default function ProductsPage() {
                             Gerencie os ingredientes e produtos do seu restaurante.
                         </p>
                     </div>
-                    <Link href="/products/new">
-                        <Button className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Novo Produto
+                    <div className="flex gap-2">
+                        <Button variant="outline" className="gap-2" onClick={() => setImportModalOpen(true)}>
+                            <Download className="h-4 w-4" />
+                            Importar Catálogo Base
                         </Button>
-                    </Link>
+                        <Link href="/products/new">
+                            <Button className="gap-2">
+                                <Plus className="h-4 w-4" />
+                                Novo Produto
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 {/* Filters and Search */}
@@ -516,6 +526,15 @@ export default function ProductsPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Import from Catalog Modal */}
+            <ImportFromCatalogModal
+                open={importModalOpen}
+                onOpenChange={setImportModalOpen}
+                onComplete={() => {
+                    loadProducts();
+                }}
+            />
         </AppLayout>
     );
 }

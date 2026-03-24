@@ -2,7 +2,7 @@
 
 import { useInternalAuth } from "@/contexts/InternalAuthContext";
 import { useRouter } from "next/navigation";
-import { Home, Users, Building2, LayoutDashboard, LogOut, Menu, X, Activity, Headset, Shield } from "lucide-react";
+import { Home, Users, Building2, LayoutDashboard, LogOut, Menu, X, Activity, Headset, Shield, Database, Bot } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { UserRole } from "@/lib/roles";
@@ -23,6 +23,8 @@ export default function InternalLayout({ children }: LayoutProps) {
         { name: "Roles", href: "/settings/roles", icon: Shield, roles: [UserRole.ADMIN] },
         { name: "System", href: "/system", icon: Activity, roles: [UserRole.ADMIN, UserRole.SALES_SUPPORT] },
         { name: "Support", href: "/support/tenants", icon: Headset, roles: [UserRole.ADMIN, UserRole.SALES_SUPPORT] },
+        { name: "Global Catalog", href: "/catalog", icon: Database, roles: [UserRole.ADMIN] },
+        { name: "Scrapers", href: "/scrapers", icon: Bot, roles: [UserRole.ADMIN] },
     ];
 
     const handleLogout = () => {

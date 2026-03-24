@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import { RecalculationJobData } from '../core/queue';
 import { recalculationService } from '../modules/produtos/recalculation.service';
 import { dashboardCache } from '../core/cache.service';
+import { menuCache } from '../core/menu-cache';
 
 /**
  * Recalculation Worker
@@ -147,7 +148,8 @@ recalculationWorker.on('completed', async (job) => {
     // (costs have changed, dashboard stats need refresh)
     if (job.data.tenantId) {
         await dashboardCache.invalidateTenant(job.data.tenantId);
-        console.log(`[CACHE INVALIDATE] Dashboard cache cleared for tenant ${job.data.tenantId} after recalculation`);
+        await menuCache.invalidateTenant(job.data.tenantId);
+        console.log(`[CACHE INVALIDATE] Dashboard and Menu caches cleared for tenant ${job.data.tenantId} after recalculation`);
     }
 });
 

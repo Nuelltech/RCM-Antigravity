@@ -134,6 +134,7 @@ export function AddToMenuModal({ onClose, onSuccess }: AddToMenuModalProps) {
     const margem = pvpNumber - custo;
     const margemPercent = pvpNumber > 0 ? (margem / pvpNumber) * 100 : 0;
     const cmvPercent = pvpNumber > 0 ? (custo / pvpNumber) * 100 : 0;
+    const markupPercent = custo > 0 ? (margem / custo) * 100 : 0;
 
     const getProfitabilityColor = (margemPercent: number) => {
         if (margemPercent >= 70) return "text-green-600";
@@ -281,7 +282,7 @@ export function AddToMenuModal({ onClose, onSuccess }: AddToMenuModalProps) {
                         </div>
 
                         {/* Analysis */}
-                        <div className="col-span-2 grid grid-cols-3 gap-4 pt-2 border-t">
+                        <div className="col-span-2 grid grid-cols-4 gap-3 pt-2 border-t">
                             <div>
                                 <span className="text-xs text-gray-500 block">Margem Bruta</span>
                                 <span className={`font-semibold ${margem >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -300,6 +301,12 @@ export function AddToMenuModal({ onClose, onSuccess }: AddToMenuModalProps) {
                                         </span>
                                     )}
                                 </div>
+                            </div>
+                            <div>
+                                <span className="text-xs text-gray-500 block">Markup %</span>
+                                <span className="font-semibold text-blue-600">
+                                    {markupPercent.toFixed(1)}%
+                                </span>
                             </div>
                             <div>
                                 <span className="text-xs text-gray-500 block">CMV %</span>

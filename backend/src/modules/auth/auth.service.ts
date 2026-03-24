@@ -338,7 +338,7 @@ export class AuthService {
                     tenant_id: defaultTenant.tenant_id,
                     access_token_hash: accessTokenHash,
                     refresh_token_hash: refreshTokenHash,
-                    expires_at: new Date(Date.now() + 15 * 60 * 1000), // 15 mins (match JWT)
+                    expires_at: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 horas (match JWT)
                     refresh_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
                     user_agent: 'Mobile App', // Hardcoded safely for mobile
                 }
@@ -399,7 +399,7 @@ export class AuthService {
                     tenant_id: targetTenantId,
                     access_token_hash: accessTokenHash,
                     refresh_token_hash: refreshTokenHash,
-                    expires_at: new Date(Date.now() + 60 * 60 * 1000), // 60 mins (match JWT)
+                    expires_at: new Date(Date.now() + 8 * 60 * 60 * 1000), // 8 horas (match JWT)
                     refresh_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
                     user_agent: 'Mobile App / Web Switch', // Generic UA
                 }

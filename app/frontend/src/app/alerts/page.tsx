@@ -60,6 +60,8 @@ export default function AlertsPage() {
     const [loading, setLoading] = useState(true);
     const { toast } = useToast();
 
+    const [regenerating, setRegenerating] = useState(false);
+
     useEffect(() => {
         loadAlerts();
     }, []);
@@ -67,12 +69,8 @@ export default function AlertsPage() {
     async function loadAlerts() {
         setLoading(true);
         try {
-            const data = await fetchClient('/alerts/regenerate', {
-                method: 'POST',
-                body: JSON.stringify({})
-            });
+            const data = await fetchClient('/alerts');
             setAlerts(Array.isArray(data) ? data : []);
-            toast({ description: "Alertas atualizados com sucesso." });
         } catch (error) {
             console.error('Erro ao carregar alertas:', error);
             toast({
@@ -82,6 +80,33 @@ export default function AlertsPage() {
             });
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleRegenerate() {
+        setRegenerating(true);
+        try {
+            await fetchClient('/alerts/regenerate', {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
+            toast({
+                title: "A processar...",
+                description: "Os alertas estão a ser recalculados em segundo plano. A lista será atualizada em breve.",
+            });
+            // Wait a few seconds then refresh the list
+            setTimeout(async () => {
+                await loadAlerts();
+                setRegenerating(false);
+            }, 4000);
+        } catch (error) {
+            console.error('Erro ao regenerar alertas:', error);
+            toast({
+                title: "Erro",
+                description: "Não foi possível iniciar o recálculo dos alertas.",
+                variant: "destructive",
+            });
+            setRegenerating(false);
         }
     }
 
@@ -132,9 +157,9 @@ export default function AlertsPage() {
                             Monitorize as anomalias e avisos importantes do seu restaurante.
                         </p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={loadAlerts} disabled={loading}>
-                        <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                        Atualizar
+                    <Button variant="outline" size="sm" onClick={handleRegenerate} disabled={loading || regenerating}>
+                        <RefreshCw className={`h-4 w-4 mr-2 ${regenerating ? 'animate-spin' : ''}`} />
+                        {regenerating ? 'A recalcular...' : 'Recalcular Alertas'}
                     </Button>
                 </div>
 

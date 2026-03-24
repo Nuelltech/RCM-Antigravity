@@ -1,5 +1,18 @@
 import { fetchWithAuth } from '../lib/api';
 
+export interface TenantSubscriptionInfo {
+    sub_status: string | null;
+    plan_name: string | null;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    trial_end: string | null;
+    next_billing_date: string | null;
+    current_period_end: string | null;
+    payment_failed_at: string | null;
+    grace_period_end: string | null;
+    suspension_reason: string | null;
+}
+
 export interface TenantOverview {
     id: number;
     nome_restaurante: string;
@@ -11,6 +24,7 @@ export interface TenantOverview {
     created_at: string;
     last_access: string | null;
     payment_status: 'ok' | 'overdue' | 'trial';
+    subscription: TenantSubscriptionInfo | null;
 }
 
 export interface TenantHealth {

@@ -150,17 +150,26 @@ export async function salesRoutes(app: FastifyInstance) {
         } else if (type === 'ITEM' && items) {
             const itemIds = items.map((i: any) => i.id);
             const menuItems = await prisma.menuItem.findMany({
-                where: { id: { in: itemIds }, tenant_id: req.tenantId }
+                where: { id: { in: itemIds }, tenant_id: req.tenantId },
+                include: { receita: true, combo: true, formatoVenda: true }
             });
 
             for (const item of items) {
                 const menuItem = menuItems.find((mi: any) => mi.id === item.id);
                 if (menuItem) {
-                    // Calculate cost from MenuItem: custo = pvp - margem_bruta
-                    const pvp = Number(menuItem.pvp || 0);
-                    const margemBruta = Number(menuItem.margem_bruta || 0);
-                    const custoUnitario = pvp - margemBruta;
-                    const custoTotal = custoUnitario * item.qty;
+                    let baseUnitCost = 0;
+                    if (menuItem.receita) baseUnitCost = Number(menuItem.receita.custo_por_porcao || 0);
+                    else if (menuItem.combo) baseUnitCost = Number(menuItem.combo.custo_total || 0);
+                    else if (menuItem.formatoVenda) baseUnitCost = Number(menuItem.formatoVenda.custo_unitario || 0);
+
+                    // If zero, fallback to margin approach
+                    if (baseUnitCost === 0) {
+                        const pvp = Number(menuItem.pvp || 0);
+                        const margemBruta = Number(menuItem.margem_bruta || 0);
+                        baseUnitCost = pvp > 0 && margemBruta > 0 ? pvp - margemBruta : 0;
+                    }
+
+                    const custoTotal = baseUnitCost * item.qty;
 
                     await db.create('venda', {
                         data_venda: dataVenda,
@@ -574,7 +583,9 @@ export async function salesRoutes(app: FastifyInstance) {
             include: {
                 linhas: {
                     include: {
-                        menuItem: true
+                        menuItem: {
+                            include: { receita: true, combo: true, formatoVenda: true }
+                        }
                     }
                 }
             }
@@ -629,6 +640,10 @@ export async function salesRoutes(app: FastifyInstance) {
                     quantidade: Number(line.quantidade) || 1,
                     pvp_praticado: line.preco_unitario || menuItem.pvp, // Use imported price as practiced price
                     receita_total: line.preco_total,
+                    custo_total: ((menuItem.receita ? Number(menuItem.receita.custo_por_porcao) :
+                        menuItem.combo ? Number(menuItem.combo.custo_total) :
+                            menuItem.formatoVenda ? Number(menuItem.formatoVenda.custo_unitario) :
+                                (Number(menuItem.pvp) - Number(menuItem.margem_bruta || 0))) || 0) * (Number(line.quantidade) || 1),
                     metodo_entrada: 'PDF',  // Manual, POS, API, PDF
                     venda_importacao_id: salesImport.id,
                     user_id: req.userId

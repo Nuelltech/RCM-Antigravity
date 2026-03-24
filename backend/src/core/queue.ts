@@ -24,7 +24,7 @@ export interface RecalculationJobData {
 }
 
 export const recalculationQueue = new Queue<RecalculationJobData>('recalculation', {
-    connection: new Redis(env.REDIS_URL, redisOptions) as any,
+    connection: redis as any,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -43,7 +43,7 @@ export const recalculationQueue = new Queue<RecalculationJobData>('recalculation
 
 // Queue events for monitoring
 export const recalculationQueueEvents = new QueueEvents('recalculation', {
-    connection: new Redis(env.REDIS_URL, redisOptions) as any,
+    connection: redis as any,
 });
 
 recalculationQueueEvents.on('completed', ({ jobId }) => {
@@ -66,7 +66,7 @@ export interface SeedDataJobData {
 }
 
 export const seedDataQueue = new Queue<SeedDataJobData>('seed-data', {
-    connection: new Redis(env.REDIS_URL, redisOptions) as any,
+    connection: redis as any,
     defaultJobOptions: {
         attempts: 3,
         backoff: {
@@ -81,7 +81,7 @@ export const seedDataQueue = new Queue<SeedDataJobData>('seed-data', {
 });
 
 export const seedDataQueueEvents = new QueueEvents('seed-data', {
-    connection: new Redis(env.REDIS_URL, redisOptions) as any,
+    connection: redis as any,
 });
 
 seedDataQueueEvents.on('completed', ({ jobId }) => {
@@ -227,6 +227,68 @@ export async function getQueueMetrics() {
         failed,
         delayed,
         total: waiting + active + delayed,
+    };
+}
+
+// ==================== ALERTS QUEUE ====================
+
+export interface AlertsJobData {
+    tenantId: number;
+    userId?: number;
+    forceRecalculation?: boolean;
+}
+
+export const alertsQueue = new Queue<AlertsJobData>('alerts-processing', {
+    connection: redis as any,
+    defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+            type: 'exponential',
+            delay: 1000,
+        },
+        removeOnComplete: {
+            count: 50,
+            age: 24 * 3600,
+        },
+        removeOnFail: {
+            count: 100,
+        },
+    },
+});
+
+export const alertsQueueEvents = new QueueEvents('alerts-processing', {
+    connection: redis as any,
+});
+
+alertsQueueEvents.on('completed', ({ jobId }) => {
+    console.log(`✅ Alerts job ${jobId} completed`);
+});
+
+alertsQueueEvents.on('failed', ({ jobId, failedReason }) => {
+    console.error(`❌ Alerts job ${jobId} failed:`, failedReason);
+});
+
+export async function addAlertsJob(
+    tenantId: number,
+    userId?: number,
+    forceRecalculation?: boolean
+) {
+    const job = await alertsQueue.add(
+        'regenerate-alerts',
+        {
+            tenantId,
+            userId,
+            forceRecalculation
+        },
+        {
+            jobId: `alerts-${tenantId}-${Date.now()}`,
+            removeOnComplete: true
+        }
+    );
+
+    return {
+        jobId: job.id,
+        status: 'queued',
     };
 }
 

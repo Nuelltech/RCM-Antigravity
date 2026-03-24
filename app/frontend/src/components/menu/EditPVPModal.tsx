@@ -26,6 +26,9 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
     const newMargem = pvpNumber - custo;
     const newMargemPercentual = pvpNumber > 0 ? ((pvpNumber - custo) / pvpNumber) * 100 : 0;
     const newCMV = pvpNumber > 0 ? (custo / pvpNumber) * 100 : 0;
+    const newMarkup = custo > 0 ? ((pvpNumber - custo) / custo) * 100 : 0;
+
+    const currentMarkup = custo > 0 && item.margem_bruta != null ? (item.margem_bruta / custo) * 100 : 0;
 
     const isValidPVP = pvpNumber > custo;
 
@@ -103,6 +106,10 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
                                     <span className="font-semibold">€ {item.margem_bruta?.toFixed(2) ?? "0.00"}</span>
                                 </div>
                                 <div className="flex justify-between">
+                                    <span className="text-sm">Markup:</span>
+                                    <span className="font-semibold text-blue-600 text-sm">{currentMarkup.toFixed(1)}%</span>
+                                </div>
+                                <div className="flex justify-between">
                                     <span className="text-sm">CMV:</span>
                                     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${getCMVColor(item.cmv_percentual)}`}>
                                         {item.cmv_percentual.toFixed(1)}%
@@ -122,6 +129,17 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
                                     <div className="flex items-center gap-1">
                                         <span className="font-semibold">€ {newMargem.toFixed(2)}</span>
                                         {newMargem > (item.margem_bruta || 0) ? (
+                                            <TrendingUp className="h-3 w-3 text-green-600" />
+                                        ) : (
+                                            <TrendingDown className="h-3 w-3 text-red-600" />
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm">Markup:</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="font-semibold text-blue-600 text-sm">{newMarkup.toFixed(1)}%</span>
+                                        {newMarkup > currentMarkup ? (
                                             <TrendingUp className="h-3 w-3 text-green-600" />
                                         ) : (
                                             <TrendingDown className="h-3 w-3 text-red-600" />
@@ -170,7 +188,7 @@ export function EditPVPModal({ item, onClose, onSuccess }: EditPVPModalProps) {
                             />
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
-                            Custo por porção: € {custo.toFixed(2)} • Margem: {newMargemPercentual.toFixed(1)}%
+                            Custo por porção: € {custo.toFixed(2)} • Margem: {newMargemPercentual.toFixed(1)}% • Markup: {newMarkup.toFixed(1)}%
                         </p>
                     </div>
 

@@ -233,6 +233,24 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
         return reply.send(result);
     });
+
+    // Cache invalidation endpoint
+    app.withTypeProvider<ZodTypeProvider>().delete('/cache', {
+        schema: {
+            tags: ['Dashboard'],
+            summary: 'Invalidate dashboard cache for current tenant',
+            security: [{ bearerAuth: [] }],
+        }
+    }, async (req, reply) => {
+        const tenantId = req.tenantId;
+        if (!tenantId) return reply.status(401).send();
+
+        await dashboardCache.invalidate(`stats:v3:${tenantId}:*`);
+        await dashboardCache.invalidate(`chart:v1:${tenantId}:*`);
+        console.log(`[Dashboard Cache] Invalidated all cache for tenant ${tenantId}`);
+
+        return reply.send({ success: true, message: 'Cache invalidated' });
+    });
 }
 
 // Helper function to get dashboard stats
@@ -285,6 +303,7 @@ async function getDashboardStats(tenantId: number, startDate?: string, endDate?:
         category: string,
         quantity: number,
         revenue: number,
+        cost: number,
         image: string
     }>();
 
@@ -331,6 +350,7 @@ async function getDashboardStats(tenantId: number, startDate?: string, endDate?:
                     ...existing,
                     quantity: existing.quantity + sale.quantidade,
                     revenue: existing.revenue + receitaTotal,
+                    cost: existing.cost + custoTotal,
                 });
             } else {
                 // Create new entry
@@ -340,6 +360,7 @@ async function getDashboardStats(tenantId: number, startDate?: string, endDate?:
                     category,
                     quantity: sale.quantidade,
                     revenue: receitaTotal,
+                    cost: custoTotal,
                     image
                 });
             }
@@ -528,7 +549,11 @@ DATE(data_venda) as date,
     // Sort and prepare topItems
     const topItems = allItems
         .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10);
+        .slice(0, 10)
+        .map(item => ({
+            ...item,
+            cmv: item.revenue > 0 ? Number(((item.cost / item.revenue) * 100).toFixed(1)) : 0
+        }));
 
     console.log(`[DEBUG] Total items aggregated: ${allItems.length}, Top items: ${topItems.length}`);
     if (topItems.length > 0) {

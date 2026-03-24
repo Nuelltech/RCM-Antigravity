@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button";
 import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, Calculator, ShoppingCart, Save } from "lucide-react";
 import { DecimalInput } from "@/components/ui/decimal-input";
+import dynamic from "next/dynamic";
+
+const ExportButton = dynamic(
+    () => import('@/components/ExportButton').then(mod => ({ default: mod.ExportButton })),
+    { ssr: false }
+);
+import { CalculatorPDF } from '@/components/pdf/CalculatorPDF';
 
 interface AvailableItem {
     id: number;
@@ -55,6 +62,23 @@ export default function PurchaseCalculatorPage() {
 
     useEffect(() => {
         loadAvailableItems();
+
+        // Carrega as informações e o logotipo em Base64 para o PDF exportar logo à primeira
+        setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
+        setUserName(localStorage.getItem('userName') || 'Sistema');
+
+        const loadLogo = async () => {
+            try {
+                const resp = await fetch('/images/logo-login.png');
+                const blob = await resp.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => setPdfLogoUrl(reader.result as string);
+                reader.readAsDataURL(blob);
+            } catch {
+                // PDF will fallback to text if logo fails
+            }
+        };
+        loadLogo();
     }, []);
 
     const loadAvailableItems = async () => {
@@ -147,6 +171,11 @@ export default function PurchaseCalculatorPage() {
 
     const [saveDialogOpen, setSaveDialogOpen] = useState(false);
     const [listName, setListName] = useState("");
+
+    // Setup de PDF
+    const [restaurantName, setRestaurantName] = useState('');
+    const [userName, setUserName] = useState('');
+    const [pdfLogoUrl, setPdfLogoUrl] = useState<string | undefined>(undefined);
 
     const handleSaveList = async () => {
         if (!simulationResult || !listName) return;
@@ -312,10 +341,24 @@ export default function PurchaseCalculatorPage() {
                         <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>Resultados da Simulação</CardTitle>
                             {simulationResult && (
-                                <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(true)}>
-                                    <Save className="w-4 h-4 mr-2" />
-                                    Guardar Lista
-                                </Button>
+                                <div className="flex gap-2">
+                                    <ExportButton
+                                        pdfDocument={
+                                            <CalculatorPDF
+                                                restaurantName={restaurantName}
+                                                generatedBy={userName}
+                                                logoUrl={pdfLogoUrl}
+                                                plannedItems={items}
+                                                simulationResult={simulationResult}
+                                            />
+                                        }
+                                        fileName={`simulacao-compras-${new Date().toISOString().split('T')[0]}`}
+                                    />
+                                    <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(true)}>
+                                        <Save className="w-4 h-4 mr-2" />
+                                        Guardar Lista
+                                    </Button>
+                                </div>
                             )}
                         </CardHeader>
                         <CardContent>
@@ -325,11 +368,17 @@ export default function PurchaseCalculatorPage() {
                                 </div>
                             ) : (
                                 <div className="space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
                                             <div className="text-sm text-gray-500">Custo Total Estimado</div>
                                             <div className="text-2xl font-bold text-orange-600">
                                                 € {simulationResult.custo_total.toFixed(2)}
+                                            </div>
+                                        </div>
+                                        <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                                            <div className="text-sm text-gray-500">Itens Planeados</div>
+                                            <div className="text-2xl font-bold text-green-600">
+                                                {items.length}
                                             </div>
                                         </div>
                                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">

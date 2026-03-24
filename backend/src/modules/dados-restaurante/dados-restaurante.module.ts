@@ -8,6 +8,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 // Zod Schemas
 const updateDadosRestauranteSchema = z.object({
     numero_lugares: z.number().int().min(0).optional(),
+    servicos_por_dia: z.number().int().min(1).optional(),
     horas_trabalho_dia: z.number().positive().max(24).optional(),
     dias_trabalho_semana: z.number().positive().max(7).optional(),
     // Alert Thresholds
@@ -72,6 +73,7 @@ class DadosRestauranteService {
                 data: {
                     tenant_id: this.tenantId,
                     numero_lugares: 0,
+                    servicos_por_dia: 2,
                     horas_trabalho_dia: new Decimal(8),
                     dias_trabalho_semana: new Decimal(5),
                     // Defaults
@@ -96,6 +98,9 @@ class DadosRestauranteService {
         if (data.numero_lugares !== undefined) {
             updateData.numero_lugares = data.numero_lugares;
         }
+        if (data.servicos_por_dia !== undefined) {
+            updateData.servicos_por_dia = data.servicos_por_dia;
+        }
         if (data.horas_trabalho_dia !== undefined) {
             updateData.horas_trabalho_dia = new Decimal(data.horas_trabalho_dia);
         }
@@ -119,6 +124,7 @@ class DadosRestauranteService {
             create: {
                 tenant_id: this.tenantId,
                 numero_lugares: data.numero_lugares ?? 0,
+                servicos_por_dia: data.servicos_por_dia ?? 2,
                 horas_trabalho_dia: data.horas_trabalho_dia ? new Decimal(data.horas_trabalho_dia) : new Decimal(8),
                 dias_trabalho_semana: data.dias_trabalho_semana ? new Decimal(data.dias_trabalho_semana) : new Decimal(5),
                 cmv_alerta_amarelo: data.cmv_alerta_amarelo ? new Decimal(data.cmv_alerta_amarelo) : new Decimal(30),
@@ -315,6 +321,7 @@ export async function dadosRestauranteRoutes(app: FastifyInstance) {
                     id: z.number(),
                     tenant_id: z.number(),
                     numero_lugares: z.number(),
+                    servicos_por_dia: z.number().optional(),
                     horas_trabalho_dia: z.number(),
                     dias_trabalho_semana: z.number(),
                     // Alert Thresholds
@@ -362,6 +369,7 @@ export async function dadosRestauranteRoutes(app: FastifyInstance) {
                     id: z.number(),
                     tenant_id: z.number(),
                     numero_lugares: z.number(),
+                    servicos_por_dia: z.number().optional(),
                     horas_trabalho_dia: z.number(),
                     dias_trabalho_semana: z.number(),
                     cmv_alerta_amarelo: z.number(),

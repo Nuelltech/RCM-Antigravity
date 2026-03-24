@@ -30,12 +30,13 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { Building2, Plus, Pencil, Trash2, TrendingUp, MapPin } from 'lucide-react';
+import { Building2, Plus, Pencil, Trash2, TrendingUp, MapPin, Info } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface DadosRestaurante {
     id: number;
     numero_lugares: number;
+    servicos_por_dia: number;
     horas_trabalho_dia: number;
     dias_trabalho_semana: number;
     // Alert Thresholds
@@ -110,6 +111,7 @@ export default function DadosRestaurantePage() {
     // Form states
     const [formDados, setFormDados] = useState({
         numero_lugares: 0,
+        servicos_por_dia: 2,
         horas_trabalho_dia: 8,
         dias_trabalho_semana: 5,
         cmv_alerta_amarelo: 30,
@@ -155,6 +157,7 @@ export default function DadosRestaurantePage() {
             setDados(dadosRes);
             setFormDados({
                 numero_lugares: dadosRes.numero_lugares,
+                servicos_por_dia: dadosRes.servicos_por_dia,
                 horas_trabalho_dia: dadosRes.horas_trabalho_dia,
                 dias_trabalho_semana: dadosRes.dias_trabalho_semana,
                 cmv_alerta_amarelo: dadosRes.cmv_alerta_amarelo,
@@ -390,15 +393,38 @@ export default function DadosRestaurantePage() {
                     <CardContent>
                         <div className="grid gap-4 md:grid-cols-3">
                             <div className="space-y-2">
-                                <Label htmlFor="numero_lugares">Número de Lugares</Label>
+                                <div className="flex items-center h-6">
+                                    <Label htmlFor="numero_lugares">Número de Lugares</Label>
+                                </div>
                                 <Input
                                     id="numero_lugares"
+                                    type="number"
                                     value={formDados.numero_lugares}
                                     onChange={(e) => setFormDados({ ...formDados, numero_lugares: parseInt(e.target.value) || 0 })}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="horas_trabalho_dia">Horas de Trabalho/Dia</Label>
+                                <div className="flex items-center h-6 gap-2">
+                                    <Label htmlFor="servicos_por_dia">Serviços por Dia</Label>
+                                    <div className="group relative cursor-help">
+                                        <Info className="h-4 w-4 text-muted-foreground" />
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden w-64 rounded-md bg-slate-800 p-2 text-xs text-white group-hover:block z-50">
+                                            A Capacidade Diária do seu restaurante é calculada como: <br/><strong>Lugares × Serviços por dia</strong>.<br/>
+                                            Exemplo: Coloque 2 se serve pequenos-almoços e almoços, ou almoços e jantares.
+                                        </div>
+                                    </div>
+                                </div>
+                                <Input
+                                    id="servicos_por_dia"
+                                    type="number"
+                                    value={formDados.servicos_por_dia}
+                                    onChange={(e) => setFormDados({ ...formDados, servicos_por_dia: parseInt(e.target.value) || 0 })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex items-center h-6">
+                                    <Label htmlFor="horas_trabalho_dia">Horas de Trabalho/Dia</Label>
+                                </div>
                                 <Input
                                     id="horas_trabalho_dia"
                                     step="0.5"

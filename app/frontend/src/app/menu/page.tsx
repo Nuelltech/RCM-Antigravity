@@ -264,6 +264,7 @@ export default function MenuPage() {
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">PVP</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Custo</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Margem</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Markup</th>
                                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">CMV</th>
                                     <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
@@ -315,6 +316,11 @@ export default function MenuPage() {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                                                 <div className="text-gray-900">€ {item.margem_bruta?.toFixed(2)}</div>
                                                 <div className="text-xs text-gray-500">{item.margem_percentual?.toFixed(1)}%</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                                <span className="font-semibold text-blue-600">
+                                                    {custo > 0 ? (((item.pvp - custo) / custo) * 100).toFixed(1) : "0.0"}%
+                                                </span>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-center">
                                                 <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getCMVColor(item.cmv_percentual)}`}>

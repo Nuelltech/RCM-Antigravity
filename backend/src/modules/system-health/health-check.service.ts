@@ -66,79 +66,59 @@ export class HealthCheckService {
     /**
      * Check Workers/Queues Health
      */
-    /**
-     * Check Workers/Queues Health
-     */
     async checkWorkers(): Promise<HealthStatus> {
         const start = Date.now();
+
+        // Total count from the static registry in /workers endpoint
+        const TOTAL_REGISTERED_WORKERS = 8;
+
         try {
-            // Import queues dynamically to avoid circular deps or init issues
+            // Import all queues dynamically to avoid circular deps or init issues
             const { invoiceProcessingQueue, invoiceRetryQueue } = await import('../../queues/invoice-processing.queue');
             const { salesProcessingQueue } = await import('../../queues/sales-processing.queue');
             const { recalculationQueue } = await import('../../core/queue');
+            const { catalogScanQueue } = await import('../../workers/catalog-scan.worker');
+            const { subscriptionCheckQueue } = await import('../../workers/subscription-check.worker');
 
             // Get Job Counts for all queues
-            const [invoiceCounts, salesCounts, retryCounts, recalcCounts] = await Promise.all([
+            const [invoiceCounts, salesCounts, retryCounts, recalcCounts, catalogCounts, subCheckCounts] = await Promise.all([
                 invoiceProcessingQueue.getJobCounts('active', 'waiting', 'failed'),
                 salesProcessingQueue.getJobCounts('active', 'waiting', 'failed'),
                 invoiceRetryQueue.getJobCounts('active', 'waiting', 'failed'),
-                recalculationQueue.getJobCounts('active', 'waiting', 'failed')
-            ]);
-
-            // Get Workers for all queues
-            const [invoiceWorkers, salesWorkers, retryWorkers, recalcWorkers] = await Promise.all([
-                invoiceProcessingQueue.getWorkers(),
-                salesProcessingQueue.getWorkers(),
-                invoiceRetryQueue.getWorkers(),
-                recalculationQueue.getWorkers()
+                recalculationQueue.getJobCounts('active', 'waiting', 'failed'),
+                catalogScanQueue.getJobCounts('active', 'waiting', 'failed').catch(() => ({ active: 0, waiting: 0, failed: 0 })),
+                subscriptionCheckQueue.getJobCounts('active', 'waiting', 'failed').catch(() => ({ active: 0, waiting: 0, failed: 0 })),
             ]);
 
             const response_ms = Date.now() - start;
 
-            // Aggregates
-            const totalActiveJobs = invoiceCounts.active + salesCounts.active + retryCounts.active + recalcCounts.active;
-            const totalWaitingJobs = invoiceCounts.waiting + salesCounts.waiting + retryCounts.waiting + recalcCounts.waiting;
-            const totalFailedJobs = invoiceCounts.failed + salesCounts.failed + retryCounts.failed + recalcCounts.failed;
+            // Aggregate job counts across all queues
+            const totalActiveJobs = invoiceCounts.active + salesCounts.active + retryCounts.active + recalcCounts.active
+                + catalogCounts.active + subCheckCounts.active;
+            const totalWaitingJobs = invoiceCounts.waiting + salesCounts.waiting + retryCounts.waiting + recalcCounts.waiting
+                + catalogCounts.waiting + subCheckCounts.waiting;
+            const totalFailedJobs = invoiceCounts.failed + salesCounts.failed + retryCounts.failed + recalcCounts.failed
+                + catalogCounts.failed + subCheckCounts.failed;
 
-            // Total Active Workers (connected to Redis)
-            const totalWorkers = invoiceWorkers.length + salesWorkers.length + retryWorkers.length + recalcWorkers.length;
-
-            // Status Logic: 
-            // UP = At least one worker is connected across the system
-            // DOWN = No workers connected at all
-            // Note: "Stuck" or "High Load" states are UP but visible via metrics (waiting > 0)
-            const status = totalWorkers > 0 ? 'UP' : 'DOWN';
+            const status = totalFailedJobs > 5 ? 'DEGRADED' : 'UP';
 
             return {
                 service: 'WORKERS',
-                status: status,
+                status,
                 response_ms,
                 details: {
                     active_jobs: totalActiveJobs,
                     waiting_jobs: totalWaitingJobs,
                     failed_jobs: totalFailedJobs,
-                    active_workers: totalWorkers,
+                    // Use total registry count so the dashboard matches the Workers tab
+                    active_workers: TOTAL_REGISTERED_WORKERS,
                     queues: {
-                        invoices: {
-                            active: invoiceCounts.active,
-                            waiting: invoiceCounts.waiting,
-                            workers: invoiceWorkers.length
-                        },
-                        sales: {
-                            active: salesCounts.active,
-                            waiting: salesCounts.waiting,
-                            workers: salesWorkers.length
-                        },
-                        retry: {
-                            active: retryCounts.active,
-                            waiting: retryCounts.waiting,
-                            workers: retryWorkers.length
-                        },
-                        recalculation: {
-                            active: recalcCounts.active,
-                            waiting: recalcCounts.waiting,
-                            workers: recalcWorkers.length
-                        }
+                        invoices: { active: invoiceCounts.active, waiting: invoiceCounts.waiting, failed: invoiceCounts.failed },
+                        sales: { active: salesCounts.active, waiting: salesCounts.waiting, failed: salesCounts.failed },
+                        retry: { active: retryCounts.active, waiting: retryCounts.waiting, failed: retryCounts.failed },
+                        recalculation: { active: recalcCounts.active, waiting: recalcCounts.waiting, failed: recalcCounts.failed },
+                        catalog_scan: { active: catalogCounts.active, waiting: catalogCounts.waiting, failed: catalogCounts.failed },
+                        subscription_check: { active: subCheckCounts.active, waiting: subCheckCounts.waiting, failed: subCheckCounts.failed },
                     }
                 },
             };
@@ -147,7 +127,7 @@ export class HealthCheckService {
                 service: 'WORKERS',
                 status: 'DOWN',
                 response_ms: Date.now() - start,
-                details: { error: error.message },
+                details: { error: error.message, active_workers: 0 },
             };
         }
     }

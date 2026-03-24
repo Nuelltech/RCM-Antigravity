@@ -26,12 +26,27 @@ export default function ViewRecipePage() {
     const [restaurantName, setRestaurantName] = useState('');
     const [userName, setUserName] = useState('');
     const [pdfImage, setPdfImage] = useState<string | undefined>(undefined);
+    const [pdfLogoUrl, setPdfLogoUrl] = useState<string | undefined>(undefined);
 
     useEffect(() => {
         loadRecipe();
         // Get restaurant and user info
         setRestaurantName(localStorage.getItem('restaurantName') || 'Meu Restaurante');
         setUserName(localStorage.getItem('userName') || 'Sistema');
+
+        // Convert logo to base64 for PDF (react-pdf needs absolute URL or base64)
+        const loadLogo = async () => {
+            try {
+                const resp = await fetch('/images/logo-login.png');
+                const blob = await resp.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => setPdfLogoUrl(reader.result as string);
+                reader.readAsDataURL(blob);
+            } catch {
+                // Logo load failed — PDF will use text fallback
+            }
+        };
+        loadLogo();
     }, [params.id]);
 
     useEffect(() => {
@@ -132,8 +147,11 @@ export default function ViewRecipePage() {
                                             margem: undefined,
                                             tipo: String(recipe.tipo || 'Final'),
                                             dificuldade: String(recipe.dificuldade || 'Média'),
-                                            quantidade_produzida: Number(recipe.quantidade || 0),
-                                            unidade_produzida: String(recipe.unidade_medida || 'KG'),
+                                            quantidade_produzida: Number(recipe.quantidade_total_produzida || 0),
+                                            quantidade_por_porcao: recipe.quantidade_total_produzida && recipe.numero_porcoes > 0
+                                                ? Number((recipe.quantidade_total_produzida / recipe.numero_porcoes).toFixed(3))
+                                                : undefined,
+                                            unidade_produzida: String(recipe.unidade_medida || ''),
                                             ingredientes: (recipe.ingredientes || [])
                                                 .filter((i: any) => i && i.produto_id)
                                                 .map((ing: any) => {
@@ -169,6 +187,7 @@ export default function ViewRecipePage() {
                                         }}
                                         generatedBy={userName}
                                         imageUrl={recipe.imagem_url}
+                                        logoUrl={pdfLogoUrl}
                                     />
                                 }
                                 fileName={`receita-${recipe.nome?.toLowerCase().replace(/\s+/g, '-')}`}

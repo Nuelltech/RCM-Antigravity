@@ -94,15 +94,14 @@ export function PDFHeader({
             {/* Top Section - Logo & Restaurant */}
             <View style={styles.headerTop}>
                 <View style={styles.logoSection}>
-                    {/* Prevent Image Load Error - Forcing Text Fallback */}
-                    {/* {logoUrl ? (
+                    {logoUrl ? (
                         <Image src={logoUrl} style={styles.logo} />
-                    ) : ( */}
-                    <View>
-                        <Text style={styles.rcmText}>RCM</Text>
-                        <Text style={styles.rcmSubtext}>Restaurant Cost Manager</Text>
-                    </View>
-                    {/* )} */}
+                    ) : (
+                        <View>
+                            <Text style={styles.rcmText}>RCM</Text>
+                            <Text style={styles.rcmSubtext}>Restaurant Cost Manager</Text>
+                        </View>
+                    )}
                 </View>
                 <Text style={styles.restaurantName}>{restaurantName}</Text>
             </View>

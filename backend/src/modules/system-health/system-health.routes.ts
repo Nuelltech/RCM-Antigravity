@@ -125,36 +125,165 @@ export async function systemHealthRoutes(app: FastifyInstance) {
     });
 
     // GET /api/internal/health/workers
-    // Worker execution stats
+    // Full worker registry — shows ALL workers with schedule, last run, next run, queue depth
     server.get('/workers', {
         schema: {
             tags: ['System Health'],
-            summary: 'Get worker execution stats',
+            summary: 'Get full worker registry with status',
         }
     }, async (request, reply) => {
+        const Redis = (await import('ioredis')).default;
+        const { Queue } = await import('bullmq');
+
+        const redisConn = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+            maxRetriesPerRequest: null,
+            lazyConnect: true,
+        });
+        await redisConn.connect().catch(() => { }); // best-effort
+
+        // Helper: calculate next daily cron run (UTC hour)
+        const getNextRun = (cronHour: number): string => {
+            const now = new Date();
+            const next = new Date();
+            next.setUTCHours(cronHour, 0, 0, 0);
+            if (now.getTime() >= next.getTime()) {
+                next.setUTCDate(next.getUTCDate() + 1);
+            }
+            return next.toISOString();
+        };
+
+        // Helper: get queue counts from BullMQ
+        const getQueueCounts = async (queueName: string) => {
+            try {
+                const q = new Queue(queueName, { connection: redisConn as any });
+                const counts = await q.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed');
+                await q.close();
+                return counts;
+            } catch {
+                return { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 };
+            }
+        };
+
+        // 24h metrics from DB for all workers
         // @ts-ignore - Stale Prisma types legacy workaround
-        const stats = await prisma.workerMetric.groupBy({
-            by: ['queue_name', 'status'],
+        const dbMetrics = await prisma.workerMetric.groupBy({
+            by: ['queue_name'],
             _avg: { duration_ms: true },
-            _min: { duration_ms: true },
-            _max: { duration_ms: true },
             _count: { _all: true },
+            _max: { processed_at: true },
             where: {
                 processed_at: {
-                    gte: new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24h
+                    gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
                 }
             }
         });
+        const metricsMap = new Map(dbMetrics.map((m: any) => [m.queue_name, m]));
 
-        return stats.map((s: any) => ({
-            queue: s.queue_name,
-            status: s.status,
-            count: s._count._all,
-            avg_ms: Math.round(s._avg.duration_ms || 0),
-            min_ms: s._min.duration_ms,
-            max_ms: s._max.duration_ms
-        }));
+        // Scheduled workers — read last run from Redis
+        const [subLastRun, catLastRun] = await Promise.all([
+            redisConn.get('worker:last_run:subscription-check').catch(() => null),
+            redisConn.get('worker:last_run:catalog-scan').catch(() => null),
+        ]);
+
+        // Event-driven workers — get live queue counts
+        const [invoiceCounts, retryCounts, salesCounts, recalcCounts, catalogCounts, seedCounts] = await Promise.all([
+            getQueueCounts('invoice-processing'),
+            getQueueCounts('invoice-retry'),
+            getQueueCounts('sales-processing'),
+            getQueueCounts('recalculation'),
+            getQueueCounts('global-catalog'),
+            getQueueCounts('seed-data'),
+        ]);
+
+        await redisConn.quit().catch(() => { });
+
+        const enrichMetrics = (queueName: string) => {
+            const m = metricsMap.get(queueName) as any;
+            return {
+                jobs_24h: m?._count?._all ?? 0,
+                avg_ms: m ? Math.round(m._avg?.duration_ms ?? 0) : 0,
+                last_completed: m?._max?.processed_at ?? null,
+            };
+        };
+
+        const workers = [
+            // ── Scheduled ────────────────────────────────────────
+            {
+                id: 'subscription-check',
+                name: 'Subscription Check',
+                type: 'SCHEDULED',
+                description: 'Verifica ciclo de vida de trials e subscrições (avisos, grace period, suspensão)',
+                schedule: '0 2 * * *',
+                schedule_label: 'Diário às 02:00 UTC',
+                last_run: subLastRun,
+                next_run: getNextRun(2),
+                ...enrichMetrics('subscription-check-queue'),
+            },
+            {
+                id: 'catalog-scan',
+                name: 'Catalog Scan',
+                type: 'SCHEDULED',
+                description: 'Scan noturno de novas variações de produto para o catálogo global',
+                schedule: '0 3 * * *',
+                schedule_label: 'Diário às 03:00 UTC',
+                last_run: catLastRun,
+                next_run: getNextRun(3),
+                ...enrichMetrics('catalog-scan-queue'),
+            },
+            // ── Event-driven ─────────────────────────────────────
+            {
+                id: 'invoice-processing',
+                name: 'Invoice Processing',
+                type: 'EVENT_DRIVEN',
+                description: 'Processa faturas enviadas via OCR/IA',
+                queue_counts: invoiceCounts,
+                ...enrichMetrics('invoice-processing'),
+            },
+            {
+                id: 'invoice-retry',
+                name: 'Invoice Retry',
+                type: 'EVENT_DRIVEN',
+                description: 'Reprocessa faturas com falha',
+                queue_counts: retryCounts,
+                ...enrichMetrics('invoice-retry'),
+            },
+            {
+                id: 'sales-processing',
+                name: 'Sales Processing',
+                type: 'EVENT_DRIVEN',
+                description: 'Processa dados de vendas importados',
+                queue_counts: salesCounts,
+                ...enrichMetrics('sales-processing'),
+            },
+            {
+                id: 'recalculation',
+                name: 'Recalculation',
+                type: 'EVENT_DRIVEN',
+                description: 'Recalcula custos e margens após alterações',
+                queue_counts: recalcCounts,
+                ...enrichMetrics('recalculation'),
+            },
+            {
+                id: 'global-catalog',
+                name: 'Global Catalog',
+                type: 'EVENT_DRIVEN',
+                description: 'Atualiza o catálogo global de produtos',
+                queue_counts: catalogCounts,
+                ...enrichMetrics('global-catalog'),
+            },
+            {
+                id: 'seed-data',
+                name: 'Seed Data',
+                type: 'MANUAL',
+                description: 'Dados iniciais (só em setup/deploy)',
+                queue_counts: seedCounts,
+                ...enrichMetrics('seed-data'),
+            },
+        ];
+
+        return { success: true, workers };
     });
+
 
     // GET /api/internal/health/errors
     // Recent system errors from ErrorLog

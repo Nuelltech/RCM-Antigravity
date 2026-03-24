@@ -33,18 +33,25 @@ export function TopRecipesGrid({ items = [], categories = [] }: TopRecipesGridPr
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
     const sortedItems = useMemo(() => {
-        let filtered = items;
+        try {
+            if (!items || !Array.isArray(items)) return [];
+            console.log(`[TopRecipesGrid] Sorting ${items.length} items`);
+            let filtered = items;
 
-        if (categoryFilter !== 'all') {
-            filtered = filtered.filter(item => item.category === categoryFilter);
-        }
-
-        return [...filtered].sort((a: TopItem, b: TopItem) => {
-            if (filter === 'sales') {
-                return b.quantity - a.quantity;
+            if (categoryFilter !== 'all') {
+                filtered = filtered.filter(item => item.category === categoryFilter);
             }
-            return b.revenue - a.revenue;
-        }).slice(0, 5);
+
+            return [...filtered].sort((a: TopItem, b: TopItem) => {
+                if (filter === 'sales') {
+                    return (b.quantity || 0) - (a.quantity || 0);
+                }
+                return (b.revenue || 0) - (a.revenue || 0);
+            }).slice(0, 5);
+        } catch (e) {
+            console.error('[TopRecipesGrid] Failed sorting items:', e);
+            return [];
+        }
     }, [items, filter, categoryFilter]);
 
     return (

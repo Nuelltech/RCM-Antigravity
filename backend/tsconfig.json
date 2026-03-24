@@ -19,7 +19,8 @@
         "src/modules/**/*",
         "src/workers/**/*",
         "src/email-templates/**/*",
-        "src/queues/**/*"
+        "src/queues/**/*",
+        "src/services/**/*"
     ],
     "exclude": [
         "node_modules",

@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl", "debian-openssl-1.1.x"]
 }
 datasource db {
   provider = "mysql"
@@ -95,6 +95,7 @@ model Tenant {
   tenantEvents           TenantEvent[]
   integrationLogs        IntegrationLog[]
   tenantSubscription     TenantSubscription?  // Active subscription
+  alertasErosao          AlertaErosao[]
 
   @@map("tenants")
 }
@@ -142,7 +143,7 @@ model User {
   salesProcessingMetrics SalesProcessingMetrics[]
   errorLogs              ErrorLog[]
   performanceMetrics     PerformanceMetric[]
-
+  alertasErosaoResolvidos AlertaErosao[]
 
 
   @@index([email]) // Performance: Login lookup
@@ -545,6 +546,54 @@ model Fornecedor {
   @@map("fornecedores")
 }
 
+model ScraperConfig {
+  id              Int      @id @default(autoincrement())
+  nome            String   // "Makro PT", "Recheio"
+  slug            String   @unique // "makro-pt"
+  base_url        String   // "https://www.makro.pt"
+  
+  // Setup de Execução
+  ativo           Boolean  @default(true)
+  intervalo_horas Int      @default(24) // Correr a cada X horas
+  configuracao    Json?    // Auth requirements, search queries ou URLs
+  
+  // Estatísticas
+  ultima_execucao DateTime?
+  ultimo_status   String?  // sucesso, erro, pendente
+  produtos_extraidos Int   @default(0)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  runLogs         ScraperRun[]
+  
+  @@map("scraper_configs")
+}
+
+model ScraperRun {
+  id              Int      @id @default(autoincrement())
+  scraper_id      Int
+  status          String   // running, success, error, partial
+  
+  // Métricas
+  produtos_novos  Int      @default(0)
+  produtos_atualizados Int @default(0)
+  erros           Int      @default(0)
+  mensagem_erro   String?  @db.Text
+  
+  // Timestamps de Execução
+  iniciado_em     DateTime @default(now())
+  terminado_em    DateTime?
+  
+  scraper         ScraperConfig @relation(fields: [scraper_id], references: [id], onDelete: Cascade)
+  
+  @@index([scraper_id])
+  @@index([status])
+  @@index([iniciado_em])
+  @@map("scraper_runs")
+}
+
 // -----------------------------------------------------------------------------
 // COMPRAS
 // -----------------------------------------------------------------------------
@@ -777,6 +826,8 @@ model MenuItem {
   margem_bruta        Decimal?         @db.Decimal(10, 2)
   margem_percentual   Decimal?         @db.Decimal(5, 2)
   cmv_percentual      Decimal?         @db.Decimal(5, 2)
+  custo_base_snapshot Decimal?         @db.Decimal(10, 4)
+  data_snapshot       DateTime?
   categoria_menu      String?          // Entradas, Principais...
   descricao_menu      String?          @db.Text
   alergenos           String?
@@ -797,6 +848,7 @@ model MenuItem {
   mapeamentosPos      MapeamentoPos[]
   vendasLinhasImportacao VendaLinhaImportacao[]
   salesMatchingHistorico SalesMatchingHistorico[]
+  alertasErosao          AlertaErosao[]
 
   @@index([tenant_id, ativo])
   @@map("menu")
@@ -1125,6 +1177,7 @@ model DadosRestaurante {
   
   // Operational Settings
   numero_lugares      Int      @default(0)
+  servicos_por_dia    Int      @default(2)
   horas_trabalho_dia  Decimal  @default(8) @db.Decimal(4, 2)
   dias_trabalho_semana Decimal @default(5) @db.Decimal(3, 1)
   
@@ -1145,6 +1198,59 @@ model DadosRestaurante {
   dias_alerta_preco_estagnado Int      @default(30)
   
   @@map("dados_restaurante")
+}
+
+// -----------------------------------------------------------------------------
+// DADOS GLOBAIS - Criterio de Ocupação (System Level)
+// -----------------------------------------------------------------------------
+
+model CriterioOcupacao {
+  id                  Int      @id @default(autoincrement())
+  percentagem_min     Decimal  @db.Decimal(5, 2)
+  percentagem_max     Decimal  @db.Decimal(5, 2)
+  nivel               String   // ex: "Fraco", "Médio", "Bom"
+  cor_ux              String?  // ex: "#FF0000"
+  descricao_pratica   String?  @db.Text // "Não cobre custos fixos na maioria dos casos"
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("criterios_ocupacao")
+}
+
+// -----------------------------------------------------------------------------
+// DADOS GLOBAIS - Regras de Motor de Decisão
+// -----------------------------------------------------------------------------
+
+model CriterioEstrutura {
+  id                  Int      @id @default(autoincrement())
+  percentagem_min     Decimal  @db.Decimal(5, 2)
+  percentagem_max     Decimal  @db.Decimal(5, 2)
+  nivel               String   // "Eficiente", "Controlado", "Aceitável", "Perigoso", "Crítico", "Insustentável"
+  cor_ux              String?  // "#FF0000"
+  descricao_pratica   String?  @db.Text
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("criterios_estrutura")
+}
+
+model RegraDecisaoDashboard {
+  id                  Int      @id @default(autoincrement())
+  
+  lucro_positivo      Boolean? // NULL = "Any"
+  cmv_controlado      Boolean? // NULL = "Any"
+  nivel_ocupacao      String?  // Match com CriterioOcupacao.nivel (ex: "Crítico", "Boa"), NULL = "Any"
+  nivel_estrutura     String?  // Match com CriterioEstrutura.nivel (ex: "Eficiente", "Pesada"), NULL = "Any"
+  
+  mensagem            String   @db.Text
+  prioridade          Int      @default(0) // Higher value executes first
+  
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  @@map("regras_decisao_dashboard")
 }
 
 model CustoEstrutura {
@@ -2194,3 +2300,120 @@ model PaymentHistory {
   @@map("payment_history")
 }
 
+// -----------------------------------------------------------------------------
+// GLOBAL CATALOG (Crowdsourcing & AI)
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// MERCADO DE PREÇOS (Catálogo de preços de supermercados — sem tenant)
+// -----------------------------------------------------------------------------
+
+model MercadoPreco {
+  id                  Int      @id @default(autoincrement())
+  supermercado        String   // "pingo-doce" | "auchan" | "continente"
+  nome_produto        String
+  nome_normalizado    String   // lowercase, sem acentos (para fuzzy search)
+  categoria           String?
+  preco               Decimal  @db.Decimal(10, 4)
+  unidade             String   @default("UN") // "KG", "L", "UN", etc
+  preco_embalagem     Decimal? @db.Decimal(10, 4)
+  tamanho_embalagem   String?  // Text like 'emb. 1.5 kg' or '0.6 KG'
+  pid                 String?  // ID do produto no site do supermercado
+  url_produto         String?  @db.Text
+  ultima_atualizacao  DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  @@unique([supermercado, pid])
+  @@index([supermercado])
+  @@index([nome_normalizado])
+  @@index([categoria])
+  @@map("mercado_precos")
+}
+
+model MercadoAlerta {
+  id              Int      @id @default(autoincrement())
+  supermercado    String
+  nome_produto    String
+  preco_anterior  Decimal  @db.Decimal(10, 4)
+  preco_novo      Decimal  @db.Decimal(10, 4)
+  variacao_pct    Decimal  @db.Decimal(5, 2)  // ex: -12.50 = descida 12.5%
+  tipo            String   // "DESCIDA" | "SUBIDA"
+  lido            Boolean  @default(false)
+  data_detetada   DateTime @default(now())
+
+  @@index([lido])
+  @@index([supermercado])
+  @@map("mercado_alertas")
+}
+
+model GlobalProduct {
+  id                   Int       @id @default(autoincrement())
+  uuid                 String    @unique @default(uuid())
+  nome                 String    @unique
+  familia_codigo       String?   // "CAR", "LEG" (matches DEFAULT_FAMILIES)
+  subfamilia_codigo    String?   // "POR", "VER" (matches DEFAULT_SUBFAMILIES)
+  unidade_medida       String    // "KG", "L", "UN", etc
+  preco_mercado        Decimal   @default(0) @db.Decimal(10, 4)
+  numero_contribuicoes Int       @default(1)
+  
+  status               String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  origem               String    @default("CROWDSOURCING") // CROWDSOURCING, SCRAPING, MANUAL, SCRAPER
+  notas_curadoria      String?   @db.Text
+  
+  fornecedor_slug      String?   // Ex: "makro-pt"
+  origem_url           String?   @db.Text
+  ultima_scraped       DateTime?
+  
+  ultima_atualizacao   DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([status])
+  @@index([origem])
+  @@index([nome])
+  @@map("global_products")
+}
+
+// -----------------------------------------------------------------------------
+// ALERTAS DE EROSÃO DE MARGEM (Trabalhador Diário)
+// -----------------------------------------------------------------------------
+
+model AlertaErosao {
+  id                  Int      @id @default(autoincrement())
+  tenant_id           Int
+  uuid                String   @default(uuid())
+  
+  menu_item_id        Int
+
+  // Custos e Volume
+  custo_base          Decimal  @db.Decimal(10, 4)
+  custo_hoje          Decimal  @db.Decimal(10, 4)
+  volume_30d          Int      @default(0)
+  
+  // Margem
+  preco_venda_atual   Decimal  @db.Decimal(10, 2)
+  margem_atual        Decimal  @db.Decimal(10, 2)
+  perda_projetada     Decimal  @db.Decimal(10, 2)
+  
+  // Ações sugeridas
+  pratos_extra_necessarios Int @default(0)
+  preco_sugerido      Decimal? @db.Decimal(10, 2)
+  
+  // Estado
+  status              String   @default("ATIVO") // ATIVO, RESOLVIDO, IGNORADO
+  data_detecao        DateTime @default(now())
+  data_resolucao      DateTime?
+  resolvido_por       Int?     // User ID
+
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant              Tenant   @relation(fields: [tenant_id], references: [id])
+  menuItem            MenuItem @relation(fields: [menu_item_id], references: [id])
+  resolvidoPor        User?    @relation(fields: [resolvido_por], references: [id])
+
+  @@index([tenant_id, status])
+  @@index([menu_item_id, status])
+  @@map("alerta_erosao")
+}

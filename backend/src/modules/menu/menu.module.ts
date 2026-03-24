@@ -432,7 +432,7 @@ class MenuService {
 
         // Regenerate alerts in background (fire-and-forget)
         const alertsService = new AlertsService(this.tenantId);
-        alertsService.regenerateAlertsAsync();
+        alertsService.regenerateAlertsAsync().catch(console.error);
 
         // Invalidate menu cache
         await menuCache.invalidateTenant(this.tenantId);
@@ -548,7 +548,7 @@ class MenuService {
         // Regenerate alerts in background if PVP changed (fire-and-forget)
         if (data.pvp) {
             const alertsService = new AlertsService(this.tenantId);
-            alertsService.regenerateAlertsAsync();
+            alertsService.regenerateAlertsAsync().catch(console.error);
         }
 
         // Invalidate menu cache
