@@ -1,364 +1,184 @@
 import { Worker, Job } from 'bullmq';
-// import { PrismaClient } from '@prisma/client';
 import { prisma } from '../core/database';
-import Redis from 'ioredis';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { GeminiSalesParserService } from '../modules/vendas/services/gemini-sales-parser.service';
-import { SalesMatchingService } from '../modules/vendas/services/sales-matching.service';
-import { OCRService } from '../modules/invoices/services/ocr.service';
-import { RegexSalesParserService } from '../modules/vendas/services/regex-sales-parser.service';
-import { env } from '../core/env';
 import { redisOptions, redis } from '../core/redis';
+import { env } from '../core/env';
+import { SeedDataJobData } from '../core/queue';
+import { DEFAULT_FAMILIES, DEFAULT_SUBFAMILIES } from '../core/constants/seedData';
+import Redis from 'ioredis';
 
-// const prisma = new PrismaClient();
-const redisConnection = redis;
+console.log('[WORKER] 🛠️  Seed Data Worker Initialized');
 
-interface SalesProcessingJob {
-    salesImportId: number;
-    tenantId: number;
-    filepath: string;
-    fileContent?: string; // Base64 content for workers in separate containers
-    uploadSource: 'web' | 'api';
-    userId?: number;
-}
-
-/**
- * Sales Processing Worker
- * Processes sales imports asynchronously in the background
- * Clone of invoice-processing.worker adapted for sales
- */
-const worker = new Worker<SalesProcessingJob>(
-    'sales-processing',
-    async (job: Job<SalesProcessingJob>) => {
-        const { salesImportId, tenantId, filepath, fileContent, uploadSource, userId } = job.data;
-        const startTime = Date.now();
-        let processingFilepath = filepath;
-        let tempFilePath: string | null = null;
-
-        console.log(`[SALES-WORKER] Processing sales import #${salesImportId} (tenant: ${tenantId})`);
+const worker = new Worker<SeedDataJobData>(
+    'seed-data',
+    async (job: Job<SeedDataJobData>) => {
+        const { tenantId, userId, options } = job.data;
+        console.log(`[SEED] 🚀 Starting seed for Tenant ${tenantId} (Job ${job.id})`);
 
         try {
-            let fileReady = false;
+            await job.updateProgress(10);
 
-            // PRIORITY 1: Download from Public URL (FTP)
-            if (filepath.startsWith('http')) {
-                try {
-                    console.log(`[SALES-WORKER] 🌐 Attempting download from URL: ${filepath}`);
-                    const response = await fetch(filepath);
-                    if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
+            // Transaction to ensure atomicity of the seed structure
+            await prisma.$transaction(async (tx) => {
+                // 1. Seed Families
+                console.log(`[SEED] Creating families for Tenant ${tenantId}...`);
+                const familyMap = new Map<string, number>();
 
-                    const arrayBuffer = await response.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
+                for (const family of DEFAULT_FAMILIES) {
+                    const existingFamily = await tx.familia.findFirst({
+                        where: { tenant_id: tenantId, codigo: family.codigo }
+                    });
 
-                    const tempDir = os.tmpdir();
-                    const urlParts = filepath.split('/');
-                    const fileName = urlParts[urlParts.length - 1] || `downloaded_${Date.now()}.pdf`;
-
-                    tempFilePath = path.join(tempDir, `worker_dl_${Date.now()}_${fileName}`);
-                    fs.writeFileSync(tempFilePath, buffer);
-                    processingFilepath = tempFilePath;
-                    fileReady = true;
-
-                    console.log(`[SALES-WORKER] 📥 Downloaded file to: ${tempFilePath}`);
-                } catch (downloadErr: any) {
-                    console.warn(`[SALES-WORKER] ⚠️ URL download failed: ${downloadErr.message}. Falling back to payload.`);
-                }
-            }
-
-            // PRIORITY 2: Base64 Payload (Fallback)
-            if (!fileReady && fileContent) {
-                try {
-                    console.log(`[SALES-WORKER] 🔄 Using Base64 payload fallback`);
-                    const buffer = Buffer.from(fileContent, 'base64');
-                    const tempDir = os.tmpdir();
-                    const fileName = path.basename(filepath);
-                    tempFilePath = path.join(tempDir, `worker_${Date.now()}_${fileName}`);
-                    fs.writeFileSync(tempFilePath, buffer);
-                    processingFilepath = tempFilePath;
-                    fileReady = true;
-                    console.log(`[SALES-WORKER] 📥 Recreated file from payload at: ${tempFilePath}`);
-                } catch (err: any) {
-                    console.error('[SALES-WORKER] Failed to create temp file from content:', err);
-                }
-            }
-
-            // PRIORITY 3: Local Filesystem (Dev/Local fallback)
-            if (!fileReady) {
-                if (fs.existsSync(filepath)) {
-                    processingFilepath = filepath;
-                    fileReady = true;
-                    console.log(`[SALES-WORKER] 📂 Using local file at: ${processingFilepath}`);
-                }
-            }
-
-            // FINAL CHECK
-            if (!fileReady) {
-                const errorMsg = `File access failed. Tried URL (${filepath.startsWith('http')}), Payload (${!!fileContent}), and Local Path.`;
-                console.error(`[SALES-WORKER] ❌ ${errorMsg}`);
-                throw new Error(errorMsg);
-            }
-
-            // Update status to processing
-            await prisma.vendaImportacao.update({
-                where: { id: salesImportId },
-                data: { status: 'processing' }
-            });
-
-
-
-            // Parse sales report using Gemini (Primary) or Fallback (Secondary)
-            let result: any;
-            let parsingMethod = 'gemini-multimodal';
-
-            try {
-                const parser = new GeminiSalesParserService();
-                // Use the local processing filepath
-                result = await parser.parseSalesMultimodal(processingFilepath);
-            } catch (geminiError: any) {
-                console.warn(`[SALES-WORKER] ⚠️ Gemini parsing failed: ${geminiError.message}`);
-                console.log(`[SALES-WORKER] 🔄 Attempting Fallback: OCR + Regex`);
-
-                try {
-                    // Fallback: OCR + Regex
-                    const ocrService = new OCRService();
-                    if (!ocrService.checkAvailability()) {
-                        throw new Error('OCR Service not available for fallback');
+                    if (existingFamily) {
+                        familyMap.set(family.codigo, existingFamily.id);
+                        continue;
                     }
 
-                    // 1. Extract Text (Vision/Tesseract)
-                    const ocrResult = await ocrService.extractText(processingFilepath);
-
-                    // 2. Parse Regex
-                    const regexParser = new RegexSalesParserService();
-                    result = regexParser.parse(ocrResult.fullText);
-
-                    parsingMethod = 'fallback-regex';
-                    console.log(`[SALES-WORKER] ✅ Fallback successful. Date: ${result.header.dataVenda}, Total: ${result.header.totalBruto}`);
-
-                } catch (fallbackError: any) {
-                    console.error('[SALES-WORKER] ❌ Fallback also failed:', fallbackError.message);
-                    // Throw original error to indicate root cause, or fallback error?
-                    // Let's throw the original Gemini error but mention fallback failure
-                    throw new Error(`Primary Parsing Failed: ${geminiError.message}. Fallback Failed: ${fallbackError.message}`);
+                    const newFamily = await tx.familia.create({
+                        data: {
+                            tenant_id: tenantId,
+                            nome: family.nome,
+                            codigo: family.codigo,
+                        },
+                    });
+                    familyMap.set(family.codigo, newFamily.id);
                 }
-            }
 
-            const duration = Date.now() - startTime;
+                await job.updateProgress(50);
 
-            // Update sales import with parsed header data
-            await prisma.vendaImportacao.update({
-                where: { id: salesImportId },
-                data: {
-                    status: 'reviewing',
-                    // Add a warning note if fallback was used
-                    erro_mensagem: parsingMethod === 'fallback-regex'
-                        ? 'Aviso: Processado via Fallback (OCR). Verifique os dados com atenção.'
-                        : null,
+                // 2. Seed Subfamilies
+                console.log(`[SEED] Creating subfamilies for Tenant ${tenantId}...`);
+                const subFamilyMap = new Map<string, number>();
 
-                    data_venda: result.header.dataVenda || undefined,
-                    total_bruto: result.header.totalBruto || undefined,
-                    total_liquido: result.header.totalLiquido || undefined,
-                    iva_6_base: result.header.iva?.iva6?.base || undefined,
-                    iva_6_valor: result.header.iva?.iva6?.valor || undefined,
-                    iva_13_base: result.header.iva?.iva13?.base || undefined,
-                    iva_13_valor: result.header.iva?.iva13?.valor || undefined,
-                    iva_23_base: result.header.iva?.iva23?.base || undefined,
-                    iva_23_valor: result.header.iva?.iva23?.valor || undefined,
+                for (const sub of DEFAULT_SUBFAMILIES) {
+                    const familyId = familyMap.get(sub.familia_codigo);
+                    if (familyId) {
+                        const existingSub = await tx.subfamilia.findFirst({
+                            where: { tenant_id: tenantId, codigo: sub.codigo }
+                        });
 
-                    pagamento_dinheiro: result.header.pagamentos?.dinheiro || undefined,
-                    pagamento_cartao: result.header.pagamentos?.cartao || undefined,
-                    pagamento_outros: result.header.pagamentos?.outros || undefined,
-                    processado_em: new Date()
-                }
-            });
-
-            // Save line items
-            // Save line items
-            const lineItemsData = result.lineItems.map((item: any, index: number) => ({
-                venda_importacao_id: salesImportId,
-                tenant_id: tenantId,
-                linha_numero: item.linhaNumero || index + 1,
-                descricao_original: item.descricaoOriginal,
-                descricao_limpa: item.descricaoLimpa,
-                quantidade: item.quantidade || undefined,
-                preco_unitario: item.precoUnitario || undefined,
-                preco_total: item.precoTotal || 0,
-                status: 'pending' as const
-            }));
-
-            await prisma.vendaLinhaImportacao.createMany({
-                data: lineItemsData
-            });
-
-            // Auto-match with menu items (high confidence only)
-            if (result.lineItems.length > 0) {
-                const matchingService = new SalesMatchingService();
-                const linhas = await prisma.vendaLinhaImportacao.findMany({
-                    where: { venda_importacao_id: salesImportId }
-                });
-
-                await matchingService.autoMatchLineItems(linhas, 85);
-            }
-
-            // Save processing metrics
-            await prisma.salesProcessingMetrics.create({
-                data: {
-                    tenant_id: tenantId,
-                    sales_import_id: salesImportId,
-                    upload_source: uploadSource,
-                    user_id: userId,
-                    parsing_method: 'gemini-multimodal',
-                    total_duration_ms: duration,
-                    success: true,
-                    line_items_extracted: result.lineItems.length,
-                    created_at: new Date()
-                }
-            });
-
-            console.log(
-                `[SALES-WORKER] ✅ Sales import #${salesImportId} processed successfully ` +
-                `in ${duration}ms (${result.lineItems.length} items)`
-            );
-
-            // Phase 4: Generic Worker Metric
-            try {
-                // @ts-ignore - Stale Prisma types legacy workaround
-                await prisma.workerMetric.create({
-                    data: {
-                        queue_name: 'sales-processing',
-                        job_name: 'process-sales-import',
-                        job_id: job.id,
-                        duration_ms: duration,
-                        status: 'COMPLETED',
-                        processed_at: new Date(),
-                        attempts: job.attemptsMade + 1
+                        if (existingSub) {
+                            subFamilyMap.set(sub.codigo, existingSub.id);
+                        } else {
+                            const newSub = await tx.subfamilia.create({
+                                data: {
+                                    tenant_id: tenantId,
+                                    familia_id: familyId,
+                                    nome: sub.nome,
+                                    codigo: sub.codigo,
+                                },
+                            });
+                            subFamilyMap.set(sub.codigo, newSub.id);
+                        }
                     }
-                });
-            } catch (err) { console.error('Failed to log worker metric', err); }
+                }
 
-            // Phase 4: Generic Worker Metric
-            try {
-                await prisma.workerMetric.create({
-                    data: {
-                        queue_name: 'sales-processing',
-                        job_name: 'process-sales-import',
-                        job_id: job.id,
-                        duration_ms: duration,
-                        status: 'COMPLETED',
-                        processed_at: new Date(),
-                        attempts: job.attemptsMade + 1
+                await job.updateProgress(80);
+
+                // 3. Seed Products (if requested)
+                if (options?.includeProducts && options.productIds && options.productIds.length > 0) {
+                    console.log(`[SEED] Creating ${options.productIds.length} products for Tenant ${tenantId}...`);
+
+                    // We need to import DEFAULT_PRODUCTS here. Ideally it should be passed in job data or imported.
+                    // Importing it directly:
+                    const { DEFAULT_PRODUCTS } = await import('../core/constants/seedData');
+
+                    // The productIds passed from frontend likely correspond to the INDEX in DEFAULT_PRODUCTS array 
+                    // or we need a way to identify them. 
+                    // Let's assume the frontend sends the INDEXES of DEFAULT_PRODUCTS for now, or we match by name.
+                    // A safer bet for the wizard is to pass the FULL product objects, but that bloats the job.
+                    // Let's stick to indexes for MVP efficiency since both FE and BE share the same constant source (conceptually).
+                    // OR better: we filter DEFAULT_PRODUCTS by the ids passed.
+                    // Wait, DEFAULT_PRODUCTS doesn't have IDs. 
+                    // Let's assume options.productIds contains the INDICES of the DEFAULT_PRODUCTS array.
+
+                    const totalProducts = options.productIds.length;
+
+                    for (let i = 0; i < totalProducts; i++) {
+                        const index = options.productIds[i];
+                        const productTemplate = DEFAULT_PRODUCTS[index];
+                        if (!productTemplate) continue;
+
+                        const subId = subFamilyMap.get(productTemplate.subfamilia_codigo);
+                        if (!subId) continue;
+
+                        // Create Product
+                        // Check if exists first to avoid dupes on retry
+                        const existingProduct = await tx.produto.findFirst({
+                            where: {
+                                tenant_id: tenantId,
+                                nome: productTemplate.nome,
+                                subfamilia_id: subId
+                            }
+                        });
+
+                        if (!existingProduct) {
+                            // Generate code
+                            const sub = DEFAULT_SUBFAMILIES.find(s => s.codigo === productTemplate.subfamilia_codigo);
+                            const famCode = sub?.familia_codigo || 'XXX';
+                            const subCode = productTemplate.subfamilia_codigo;
+                            const randomSeq = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+                            const codigo_interno = `${famCode}-${subCode}-${randomSeq}`;
+
+                            const newProduct = await tx.produto.create({
+                                data: {
+                                    tenant_id: tenantId,
+                                    nome: productTemplate.nome,
+                                    subfamilia_id: subId,
+                                    unidade_medida: productTemplate.unidade,
+                                    codigo_interno: codigo_interno,
+                                    vendavel: false,
+                                    ativo: true
+                                }
+                            });
+
+                            // Use dummy price or the one from seed data
+                            // Check if preco_compra exists in template (we added it recently)
+                            const purchasePrice = (productTemplate as any).preco_compra || 0;
+
+                            // Create Default Variation
+                            await tx.variacaoProduto.create({
+                                data: {
+                                    tenant_id: tenantId,
+                                    produto_id: newProduct.id,
+                                    tipo_unidade_compra: productTemplate.unidade,
+                                    unidades_por_compra: 1,
+                                    preco_compra: purchasePrice,
+                                    preco_unitario: purchasePrice, // Set unit price same as purchase for base unit
+                                    ativo: true
+                                }
+                            });
+                        }
+
+                        // Update progress every 5 items or at the end
+                        if (i % 5 === 0 || i === totalProducts - 1) {
+                            // Scale progress from 80 to 99 based on items processed
+                            const progress = 80 + Math.floor((i / totalProducts) * 19);
+                            await job.updateProgress(progress);
+                        }
                     }
-                });
-            } catch (err) { console.error('Failed to log worker metric', err); }
+                }
+            }, {
+                maxWait: 5000,
+                timeout: 60000 // Give it plenty of time
+            });
 
-            return {
-                success: true,
-                salesImportId,
-                lineItems: result.lineItems.length,
-                duration
-            };
+            await job.updateProgress(100);
+            console.log(`[SEED] ✅ Seed completed for Tenant ${tenantId}`);
 
+            return { success: true, familiesCreated: true };
         } catch (error: any) {
-            const duration = Date.now() - startTime;
-
-            console.error(`[SALES-WORKER] ❌ Error processing sales import #${salesImportId}:`, error);
-
-            // Update status to error
-            await prisma.vendaImportacao.update({
-                where: { id: salesImportId },
-                data: {
-                    status: 'error',
-                    erro_mensagem: error.message || 'Unknown error'
-                }
-            });
-
-            // Save error metrics
-            await prisma.salesProcessingMetrics.create({
-                data: {
-                    tenant_id: tenantId,
-                    sales_import_id: salesImportId,
-                    upload_source: uploadSource,
-                    user_id: userId,
-                    parsing_method: 'failed',
-                    total_duration_ms: duration,
-                    success: false,
-                    created_at: new Date()
-                }
-            });
-
-            // Phase 4: Generic Worker Metric & Error Log
-            try {
-                await prisma.workerMetric.create({
-                    data: {
-                        queue_name: 'sales-processing',
-                        job_name: 'process-sales-import',
-                        job_id: job.id,
-                        duration_ms: duration,
-                        status: 'FAILED',
-                        error_message: error.message,
-                        processed_at: new Date(),
-                        attempts: job.attemptsMade + 1
-                    }
-                });
-
-                // @ts-ignore - Stale Prisma types legacy workaround
-                await prisma.errorLog.create({
-                    data: {
-                        level: 'ERROR',
-                        source: 'WORKER',
-                        message: error.message,
-                        stack_trace: error.stack,
-                        metadata: { jobId: job.id, queue: 'sales-processing' }
-                    }
-                });
-            } catch (err) { console.error('Failed to log error metric', err); }
-
-            throw error; // Re-throw for BullMQ retry logic
-        } finally {
-            // Cleanup temp file
-            if (tempFilePath && fs.existsSync(tempFilePath)) {
-                try {
-                    fs.unlinkSync(tempFilePath);
-                    console.log(`[SALES-WORKER] 🧹 Cleaned up temp file: ${tempFilePath}`);
-                } catch (cleanupErr) {
-                    console.error('[SALES-WORKER] Failed to cleanup temp file:', cleanupErr);
-                }
-            }
+            console.error(`[SEED] ❌ Failed to seed data for Tenant ${tenantId}:`, error);
+            throw error;
         }
     },
     {
-        connection: redis,
-        sharedConnection: true,
-        concurrency: 5,  // Process up to 5 sales imports in parallel
-        limiter: {
-            max: 10,
-            duration: 60000  // Max 10 jobs per minute
-        }
+        connection: redis as any,
+        concurrency: 5, // Allow multiple setups at once
     }
 );
 
-// Event handlers
-worker.on('completed', (job) => {
-    console.log(`[SALES-WORKER] Job ${job.id} completed successfully`);
-});
-
 worker.on('failed', (job, err) => {
-    console.error(`[SALES-WORKER] Job ${job?.id} failed:`, err.message);
+    console.error(`[WORKER] ❌ Seed job ${job?.id} failed:`, err);
 });
-
-worker.on('error', (err) => {
-    console.error('[SALES-WORKER] Worker error:', err);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('[SALES-WORKER] Shutting down worker...');
-    await worker.close();
-    await redisConnection.quit();
-});
-
-console.log('[SALES-WORKER] Sales processing worker started (concurrency: 5)');
 
 export default worker;

@@ -1,10 +1,10 @@
 import { Queue } from 'bullmq';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import { env } from '../core/env';
 import Redis from 'ioredis';
 
 // Redis connection (reuse core settings)
-const redisConnection = new Redis(env.REDIS_URL, redisOptions);
+const redisConnection = redis;
 
 export interface GlobalCatalogJobData {
     nome: string;

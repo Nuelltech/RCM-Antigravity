@@ -83,8 +83,7 @@ const worker = new Worker<GlobalCatalogJobData>(
         }
     },
     {
-        connection: redis,
-        sharedConnection: true,
+        connection: redis as any,
         concurrency: 2, // Leve, não precisa de ser muito agressivo
     }
 );
