@@ -40,15 +40,15 @@ redis.on('connect', () => {
 
 redis.on('error', (err: any) => {
     const errString = String(err?.message || err || '');
-    if (errString.includes('ECONNREFUSED') || err?.code === 'ECONNREFUSED') {
+    if (errString.includes('ECONNREFUSED') || err?.code === 'ECONNREFUSED' || errString.includes('ECONNRESET') || err?.code === 'ECONNRESET') {
         return;
     }
     
     if (err?.errors && Array.isArray(err.errors)) {
-        const isRefused = err.errors.some((e: any) => 
-            e.code === 'ECONNREFUSED' || String(e).includes('ECONNREFUSED')
+        const isRefusedOrReset = err.errors.some((e: any) => 
+            e.code === 'ECONNREFUSED' || String(e).includes('ECONNREFUSED') || e.code === 'ECONNRESET' || String(e).includes('ECONNRESET')
         );
-        if (isRefused) return;
+        if (isRefusedOrReset) return;
     }
 
     console.error('❌ Redis error:', errString);
