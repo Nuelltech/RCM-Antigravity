@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import { env } from '../core/env';
 import { prisma } from '../core/database';
 import { subDays } from 'date-fns';
@@ -30,7 +30,8 @@ const worker = new Worker<AlertsJobData>(
         }
     },
     {
-        connection: new Redis(env.REDIS_URL, redisOptions) as any,
+        connection: redis,
+        sharedConnection: true,
         concurrency: 2,
     }
 );

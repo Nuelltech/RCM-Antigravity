@@ -3,12 +3,12 @@ import { prisma } from '../core/database';
 import { addGlobalCatalogJob } from '../queues/global-catalog.queue';
 import { recordJobRun } from './recovery.service';
 import { env } from '../core/env';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import Redis from 'ioredis';
 
 const CATALOG_SCAN_QUEUE = 'catalog-scan-queue';
 
-const connection = new Redis(env.REDIS_URL, redisOptions) as any;
+const connection = redis as any;
 
 // Queue for scheduling the repeatable job
 export const catalogScanQueue = new Queue(CATALOG_SCAN_QUEUE, { connection });

@@ -1,3 +1,6 @@
+import Redis from 'ioredis';
+import { env } from '../core/env';
+import { redis } from '../core/redis';
 import './recalculation-worker';
 import './invoice-processing.worker';
 import './sales-processing.worker';

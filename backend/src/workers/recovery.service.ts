@@ -1,10 +1,9 @@
+import { redis } from '../core/redis';
 import { Queue } from 'bullmq';
 import { prisma } from '../core/database';
 import Redis from 'ioredis';
 
-const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
-});
+const redisConnection = redis;
 
 // Redis keys for tracking last successful run of each scheduled worker
 export const LAST_RUN_KEY = {

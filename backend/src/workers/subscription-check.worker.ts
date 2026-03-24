@@ -3,13 +3,13 @@ import { prisma } from '../core/database';
 import * as emailService from '../core/email.service';
 import { recordJobRun } from './recovery.service';
 import { env } from '../core/env';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import Redis from 'ioredis';
 
 /** Shared grace period constant — must match subscriptions.service.ts */
 const GRACE_PERIOD_DAYS = 3;
 
-const connection = new Redis(env.REDIS_URL, redisOptions) as any;
+const connection = redis as any;
 
 const SUBSCRIPTION_CHECK_QUEUE = 'subscription-check-queue';
 

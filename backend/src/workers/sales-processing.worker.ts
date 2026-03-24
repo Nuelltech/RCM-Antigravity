@@ -10,10 +10,10 @@ import { SalesMatchingService } from '../modules/vendas/services/sales-matching.
 import { OCRService } from '../modules/invoices/services/ocr.service';
 import { RegexSalesParserService } from '../modules/vendas/services/regex-sales-parser.service';
 import { env } from '../core/env';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 
 // const prisma = new PrismaClient();
-const redisConnection = new Redis(env.REDIS_URL, redisOptions);
+const redisConnection = redis;
 
 interface SalesProcessingJob {
     salesImportId: number;
@@ -329,7 +329,8 @@ const worker = new Worker<SalesProcessingJob>(
         }
     },
     {
-        connection: redisConnection as any,
+        connection: redis,
+        sharedConnection: true,
         concurrency: 5,  // Process up to 5 sales imports in parallel
         limiter: {
             max: 10,

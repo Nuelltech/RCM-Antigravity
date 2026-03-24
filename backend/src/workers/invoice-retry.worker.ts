@@ -3,10 +3,10 @@ import { Worker, Job } from 'bullmq';
 import { prisma } from '../core/database';
 import Redis from 'ioredis';
 import { env } from '../core/env';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 
 // const prisma = new PrismaClient();
-const redisConnection = new Redis(env.REDIS_URL, redisOptions);
+const redisConnection = redis;
 
 interface InvoiceRetryJob {
     invoiceId: number;
@@ -117,7 +117,8 @@ const retryWorker = new Worker<InvoiceRetryJob>(
         }
     },
     {
-        connection: redisConnection as any,
+        connection: redis,
+        sharedConnection: true,
         concurrency: 3  // Less concurrent retries
     }
 );

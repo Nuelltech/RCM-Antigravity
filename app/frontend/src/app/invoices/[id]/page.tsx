@@ -134,6 +134,16 @@ export default function InvoiceReviewPage() {
         }
     }, [invoiceId]);
 
+    // Poll for status updates if pending or processing
+    useEffect(() => {
+        if (!invoiceId || !invoice) return;
+        
+        if (invoice.status === 'pending' || invoice.status === 'processing') {
+            const interval = setInterval(fetchInvoice, 3000);
+            return () => clearInterval(interval);
+        }
+    }, [invoiceId, invoice?.status]);
+
     // Poll for integration status
     useEffect(() => {
         if (!invoiceId || (invoice?.status !== 'approved' && invoice?.status !== 'completed')) return;
@@ -598,6 +608,26 @@ export default function InvoiceReviewPage() {
                 </Card>
 
                 {/* Line Items */}
+                {(invoice.status === 'pending' || invoice.status === 'processing') ? (
+                    <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-24 space-y-6">
+                            <div className="relative">
+                                <div className="absolute inset-0 rounded-full blur-xl bg-orange-500/20 animate-pulse"></div>
+                                <Loader2 className="h-16 w-16 animate-spin text-orange-500 relative z-10" />
+                            </div>
+                            <div className="space-y-2 text-center">
+                                <h3 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-amber-600">
+                                    A extrair dados com Inteligência Artificial
+                                </h3>
+                                <p className="text-muted-foreground max-w-md mx-auto">
+                                    A nossa IA está a ler a fatura, detalhar linha a linha e a cruzar magicamente com o seu inventário. 
+                                    <br/><br/>
+                                    <strong>Isto demora habitualmente entre 10 a 30 segundos.</strong>
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
                 <Card>
                     <CardHeader>
                         <CardTitle>Linhas da Fatura</CardTitle>
@@ -678,6 +708,7 @@ export default function InvoiceReviewPage() {
                         </Table>
                     </CardContent>
                 </Card>
+                )}
 
                 {/* Product Matching Modal */}
                 <Dialog open={!!matchingLine} onOpenChange={() => setMatchingLine(null)}>
