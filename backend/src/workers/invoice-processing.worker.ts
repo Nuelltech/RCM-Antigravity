@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 // const prisma = new PrismaClient();
-const redisConnection = redis;
+const redisConnection = new Redis(env.REDIS_URL, redisOptions);
 
 interface InvoiceProcessingJob {
     invoiceId: number;
@@ -302,7 +302,7 @@ const worker = new Worker<InvoiceProcessingJob>(
         }
     },
     {
-        connection: redis as any,
+        connection: new Redis(env.REDIS_URL, redisOptions) as any,
         concurrency: 5,  // Process up to 5 invoices in parallel
         limiter: {
             max: 10,  // Max 10 jobs
