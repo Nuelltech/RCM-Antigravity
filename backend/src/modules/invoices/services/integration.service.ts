@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { priceHistoryService } from '../../produtos/price-history.service';
 import { recalculationService } from '../../produtos/recalculation.service';
-import { addPriceChangeJob } from '../../../core/queue';
+import { addPriceChangeJob, addBulkPriceChangeJob } from '../../../core/queue';
 import { dashboardCache } from '../../../core/cache.service';
 import { productsCache } from '../../../core/products-cache';
 import { menuCache } from '../../../core/menu-cache';
@@ -81,6 +81,7 @@ export class InvoiceIntegrationService {
 
             let itemsCreated = 0;
             let pricesUpdated = 0;
+            const affectedProductIds: number[] = [];
 
             // Create CompraItems for each MATCHED line only
             for (const linha of matchedLines) {
@@ -141,7 +142,10 @@ export class InvoiceIntegrationService {
                                 userId,
                                 log.id // PASS LOG ID
                             );
-                            if (updated) pricesUpdated++;
+                            if (updated) {
+                                pricesUpdated++;
+                                affectedProductIds.push(variacao.produto_id);
+                            }
                         }
                     }
                 }
@@ -158,8 +162,14 @@ export class InvoiceIntegrationService {
                 }
             });
 
-            // Trigger alert regeneration (async)
-            this.regenerateAlertsAsync(tenantId);
+            // Trigger BULK recalculation (which will also trigger alerts and clear cache)
+            let jobId: string | undefined;
+            if (affectedProductIds.length > 0) {
+                const uniqueProductIds = [...new Set(affectedProductIds)];
+                const bulkResult = await addBulkPriceChangeJob(uniqueProductIds, tenantId, userId, log.id, 'COMPRA');
+                jobId = bulkResult.jobId;
+                console.log(`[Integration] Queued BULK recalculation job ${jobId} for ${uniqueProductIds.length} products`);
+            }
 
             // Invalidate dashboard cache (purchases affect dashboard stats)
             await dashboardCache.invalidateTenant(tenantId);
@@ -172,7 +182,11 @@ export class InvoiceIntegrationService {
             // For now, we set completed for the SYNC part. The async worker should ideally update it too, but we can rely on log items.
             await prisma.integrationLog.update({
                 where: { id: log.id },
-                data: { completed_at: new Date(), status: 'completed' }
+                data: { 
+                    completed_at: new Date(), 
+                    status: jobId ? 'processing' : 'completed', // If we have a job, it's still 'processing' until the worker finishes
+                    job_id: jobId
+                }
             });
 
             return {
@@ -261,16 +275,10 @@ export class InvoiceIntegrationService {
                 menusAfetados: 0     // Will be calculated by worker
             });
 
-            // Trigger recalculation asynchronously via Queue (Worker)
-            try {
-                // Pass logId to job so worker can continue logging cascading changes
-                await addPriceChangeJob(variacao.produto_id, tenantId, userId, logId);
-                console.log(`[Integration] Queued recalculation for product ${variacao.produto_id}`);
-            } catch (err) {
-                console.error('[Integration] Failed to add job to queue, falling back to sync recalc:', err);
-                // Fallback to sync service if queue fails (safety net)
-                recalculationService.recalculateAfterPriceChange(variacao.produto_id, logId).catch(e => console.error(e));
-            }
+            /* 
+               Recalculation is now handled in BULK at the end of integrateInvoice
+               to ensure sequence and progress tracking.
+            */
 
             return true;
         } catch (error) {

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ActiveRecalculationAlert } from "@/components/ActiveRecalculationAlert";
 
 interface Recipe {
     id: number;
@@ -113,6 +114,7 @@ export default function RecipesPage() {
     return (
         <AppLayout>
             <div className="space-y-6">
+                <ActiveRecalculationAlert />
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>

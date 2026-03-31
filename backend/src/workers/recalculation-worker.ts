@@ -24,7 +24,7 @@ import { menuCache } from '../core/menu-cache';
 async function processRecalculationJob(job: Job<RecalculationJobData>) {
     console.log(`🔧 Processing ${job.name} [${job.id}]`, job.data);
 
-    const { type, produtoId, receitaId, comboId, tenantId, logId } = job.data;
+    const { type, produtoId, produtoIds, receitaId, comboId, tenantId, logId } = job.data;
 
     const start = Date.now();
 
@@ -36,10 +36,23 @@ async function processRecalculationJob(job: Job<RecalculationJobData>) {
                 if (!produtoId) {
                     throw new Error('produtoId is required for price-change job');
                 }
-                // await job.updateProgress(10);
-                result = await recalculationService.recalculateAfterPriceChange(produtoId, logId);
+                result = await recalculationService.recalculateAfterPriceChange(produtoId, logId, job.data.origin);
                 await job.updateProgress(100);
                 console.log(`✅ Price change recalculation complete:`, result);
+                break;
+
+            case 'bulk-price-change':
+                if (!produtoIds || !Array.isArray(produtoIds)) {
+                    throw new Error('produtoIds array is required for bulk-price-change job');
+                }
+                result = await recalculationService.recalculateBulkPriceChange(
+                    produtoIds, 
+                    logId, 
+                    job.data.origin,
+                    async (p: number) => { await job.updateProgress(p); }
+                );
+                await job.updateProgress(100);
+                console.log(`✅ Bulk price change recalculation complete:`, result);
                 break;
 
             case 'recipe-change':

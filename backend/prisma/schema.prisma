@@ -2010,6 +2010,8 @@ model IntegrationLog {
   completed_at    DateTime?
   status          String    // 'processing', 'completed', 'verified', 'error'
   
+  job_id          String?   // BullMQ Job ID
+  
   tenant          Tenant    @relation(fields: [tenant_id], references: [id])
   items           IntegrationLogItem[]
 

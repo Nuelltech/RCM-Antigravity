@@ -8,7 +8,7 @@ export class RecalculationService {
     /**
      * Main entry point: Recalculate all entities after a price change
      */
-    async recalculateAfterPriceChange(produtoId: number, logId?: number) {
+    async recalculateAfterPriceChange(produtoId: number, logId?: number, origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'SYSTEM') {
         const affectedRecipes = new Set<number>();
         const affectedMenuItems = new Set<number>();
         const affectedCombos = new Set<number>();
@@ -24,18 +24,17 @@ export class RecalculationService {
         await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos, logId);
 
         // STEP 4: Recalculate menu items for all affected FINAL recipes
-        // Optimization: Batch update menu items
         if (affectedRecipes.size > 0) {
-            await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems, logId);
+            await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems, logId, origin);
         }
 
         // STEP 5: Recalculate menu items for all affected combos
         if (affectedCombos.size > 0) {
-            await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems, logId);
+            await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems, logId, origin);
         }
 
         // STEP 6: Recalculate FormatoVenda that directly use this product
-        await this.recalculateFormatoVendaUsingProduct(produtoId, affectedMenuItems, logId);
+        await this.recalculateFormatoVendaUsingProduct(produtoId, affectedMenuItems, logId, origin);
 
         // NOTIFICATION
         if (logId) {
@@ -54,6 +53,97 @@ export class RecalculationService {
                 console.error('Failed to send notification', e);
             }
         }
+
+        return {
+            receitasAfetadas: affectedRecipes.size,
+            combosAfetados: affectedCombos.size,
+            menusAfetados: affectedMenuItems.size,
+        };
+    }
+
+    /**
+     * Bulk Recalculate entities after multiple price changes (Invoice)
+     */
+    async recalculateBulkPriceChange(produtoIds: number[], logId?: number, origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'COMPRA', progressCallback?: (progress: number) => Promise<void>) {
+        const affectedRecipes = new Set<number>();
+        const affectedMenuItems = new Set<number>();
+        const affectedCombos = new Set<number>();
+
+        const total = produtoIds.length;
+        let processed = 0;
+
+        for (const produtoId of produtoIds) {
+            // STEP 1-3 for each product
+            await this.recalculateRecipesUsingProduct(produtoId, affectedRecipes, logId);
+            await this.recalculateCombosUsingProduct(produtoId, affectedCombos, logId);
+            
+            processed++;
+            if (progressCallback) {
+                // First 50% is for initial product/recipe processing
+                await progressCallback(Math.floor((processed / total) * 50));
+            }
+        }
+
+        // STEP 2 Recursive (for all affected so far)
+        await this.recalculateRecipesUsingPrepreps(affectedRecipes, logId);
+        if (progressCallback) await progressCallback(60);
+
+        // STEP 3 combos for recipes
+        await this.recalculateCombosUsingRecipes(affectedRecipes, affectedCombos, logId);
+        if (progressCallback) await progressCallback(70);
+
+        // STEP 4-5 Menu Items
+        if (affectedRecipes.size > 0) {
+            await this.recalculateMenuItemsForRecipes(Array.from(affectedRecipes), affectedMenuItems, logId, origin);
+        }
+        if (progressCallback) await progressCallback(80);
+
+        if (affectedCombos.size > 0) {
+            await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems, logId, origin);
+        }
+        if (progressCallback) await progressCallback(90);
+
+        // STEP 6 Formatos
+        for (const produtoId of produtoIds) {
+            await this.recalculateFormatoVendaUsingProduct(produtoId, affectedMenuItems, logId, origin);
+        }
+
+        // Finally trigger Radar Alerts if needed
+        if (origin === 'COMPRA' && affectedMenuItems.size > 0) {
+            try {
+                const { prisma: db } = await import('../../core/database');
+                // We need tenantId. We can get it from log or first affected item.
+                let tenantId: number | undefined;
+                if (logId) {
+                    const log = await db.integrationLog.findUnique({ where: { id: logId }, select: { tenant_id: true } });
+                    tenantId = log?.tenant_id;
+                } else if (affectedMenuItems.size > 0) {
+                    const firstItem = await db.menuItem.findUnique({ where: { id: Array.from(affectedMenuItems)[0] }, select: { tenant_id: true } });
+                    tenantId = firstItem?.tenant_id;
+                }
+
+                if (tenantId) {
+                    const { addAlertsJob } = await import('../../core/queue');
+                    await addAlertsJob(tenantId, undefined, true);
+                    console.log(`[Recalc] Triggered alerts-processing for tenant ${tenantId}`);
+                }
+
+                // Update IntegrationLog to COMPLETED
+                if (logId) {
+                    await db.integrationLog.update({
+                        where: { id: logId },
+                        data: {
+                            status: 'completed',
+                            completed_at: new Date()
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('[Recalc] Failed to trigger alerts job or update log', e);
+            }
+        }
+
+        if (progressCallback) await progressCallback(100);
 
         return {
             receitasAfetadas: affectedRecipes.size,
@@ -282,7 +372,8 @@ export class RecalculationService {
     private async recalculateMenuItemsForRecipes(
         receitaIds: number[],
         affectedMenuItems: Set<number>,
-        logId?: number
+        logId?: number,
+        origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'SYSTEM'
     ) {
         // Fetch all menu items linked to these recipes
         const menuItems = await prisma.menuItem.findMany({
@@ -302,13 +393,23 @@ export class RecalculationService {
                 : new Decimal(0);
             const cmv = pvp.greaterThan(0) ? custo.dividedBy(pvp).times(100) : new Decimal(0);
 
-            // Check if Changed (Logic approximation: if cost per portion of recipe changed, menu margin likely changed)
-            // But we don't have old values here easily without fetching or assuming
-            // Let's rely on update check? No, we need explicit log.
-            // We can compare with current item.margem_bruta
-
+            // LOGGING
             if (logId && item.margem_bruta && !item.margem_bruta.equals(margem)) {
                 await this.logChange(logId, 'MENU_ITEM', item.id, item.nome_comercial, 'margin', item.margem_bruta, margem);
+            }
+
+            // SNAPSHOT LOGIC
+            const snapshotData: any = {};
+            const oldCusto = pvp.minus(item.margem_bruta || 0);
+
+            if (!item.custo_base_snapshot) {
+                // For NEW items (or first time), initialize with OLD cost to allow immediate alerting
+                snapshotData.custo_base_snapshot = oldCusto;
+                snapshotData.data_snapshot = new Date();
+            } else if (origin === 'MANUAL') {
+                // Manual changes are explicit approvals, so update base snapshot to NEW cost
+                snapshotData.custo_base_snapshot = custo;
+                snapshotData.data_snapshot = new Date();
             }
 
             await prisma.menuItem.update({
@@ -317,6 +418,7 @@ export class RecalculationService {
                     margem_bruta: margem,
                     margem_percentual: margemPercentual,
                     cmv_percentual: cmv,
+                    ...snapshotData
                 },
             });
 
@@ -330,7 +432,8 @@ export class RecalculationService {
     private async recalculateMenuItemsForCombos(
         comboIds: number[],
         affectedMenuItems: Set<number>,
-        logId?: number
+        logId?: number,
+        origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'SYSTEM'
     ) {
         const menuItems = await prisma.menuItem.findMany({
             where: { combo_id: { in: comboIds } },
@@ -349,12 +452,25 @@ export class RecalculationService {
                 : new Decimal(0);
             const cmv = pvp.greaterThan(0) ? custo.dividedBy(pvp).times(100) : new Decimal(0);
 
+            // SNAPSHOT LOGIC
+            const snapshotData: any = {};
+            const oldCusto = pvp.minus(item.margem_bruta || 0);
+
+            if (!item.custo_base_snapshot) {
+                snapshotData.custo_base_snapshot = oldCusto;
+                snapshotData.data_snapshot = new Date();
+            } else if (origin === 'MANUAL') {
+                snapshotData.custo_base_snapshot = custo;
+                snapshotData.data_snapshot = new Date();
+            }
+
             await prisma.menuItem.update({
                 where: { id: item.id },
                 data: {
                     margem_bruta: margem,
                     margem_percentual: margemPercentual,
                     cmv_percentual: cmv,
+                    ...snapshotData
                 },
             });
 
@@ -655,7 +771,8 @@ export class RecalculationService {
     private async recalculateFormatoVendaUsingProduct(
         produtoId: number,
         affectedMenuItems: Set<number>,
-        logId?: number
+        logId?: number,
+        origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'SYSTEM'
     ) {
         // Find all formats using this product
         const formatos = await prisma.formatoVenda.findMany({
@@ -694,12 +811,25 @@ export class RecalculationService {
                     await this.logChange(logId, 'MENU_ITEM', item.id, item.nome_comercial, 'margin', item.margem_bruta, margem);
                 }
 
+                // SNAPSHOT LOGIC
+                const snapshotData: any = {};
+                const oldCusto = pvp.minus(item.margem_bruta || 0);
+
+                if (!item.custo_base_snapshot) {
+                    snapshotData.custo_base_snapshot = oldCusto;
+                    snapshotData.data_snapshot = new Date();
+                } else if (origin === 'MANUAL') {
+                    snapshotData.custo_base_snapshot = novoCusto;
+                    snapshotData.data_snapshot = new Date();
+                }
+
                 await prisma.menuItem.update({
                     where: { id: item.id },
                     data: {
                         margem_bruta: margem,
                         margem_percentual: margemPercentual,
                         cmv_percentual: cmv,
+                        ...snapshotData
                     },
                 });
 

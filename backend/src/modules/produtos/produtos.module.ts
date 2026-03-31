@@ -265,7 +265,7 @@ class ProductService {
 
         // Try queue-based recalculation (background), fallback to sync if fails
         try {
-            await addPriceChangeJob(data.produto_id, this.tenantId, userId || 0);
+            await addPriceChangeJob(data.produto_id, this.tenantId, userId || 0, undefined, 'MANUAL');
             console.log(`✅ Price change job queued for product ${data.produto_id}`);
         } catch (queueError) {
             console.warn('⚠️  Queue unavailable, using sync recalculation:', queueError);
@@ -787,7 +787,7 @@ export async function productRoutes(app: FastifyInstance) {
 
             // Try queue-based recalculation (background), fallback to sync if fails
             try {
-                await addPriceChangeJob(variacao.produto_id, req.tenantId, (req as unknown as { user: { id: number } }).user?.id || 0);
+                await addPriceChangeJob(variacao.produto_id, req.tenantId, (req as unknown as { user: { id: number } }).user?.id || 0, undefined, 'MANUAL');
                 console.log(`✅ Price change job queued for product ${variacao.produto_id}`);
             } catch (queueError) {
                 console.warn('⚠️  Queue unavailable, using sync recalculation:', queueError);

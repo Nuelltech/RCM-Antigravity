@@ -614,6 +614,68 @@ export async function invoicesRoutes(app: FastifyInstance) {
 
         return { success: true };
     });
+
+    // Get active integrations (for progress tracking)
+    app.get('/active-integrations', async (req, reply) => {
+        if (!req.tenantId) return reply.status(401).send();
+
+        const activeLogs = await prisma.integrationLog.findMany({
+            where: {
+                tenant_id: req.tenantId,
+                status: 'processing',
+                job_id: { not: null }
+            },
+            select: {
+                id: true,
+                job_id: true,
+                fatura_id: true,
+                started_at: true 
+            }
+        });
+
+        return { integrations: activeLogs };
+    });
+
+    // Get background job status
+    app.withTypeProvider<ZodTypeProvider>().get('/job-status/:jobId', {
+        schema: {
+            tags: ['Invoices'],
+            params: z.object({
+                jobId: z.string()
+            }),
+            response: {
+                200: z.object({
+                    id: z.string().optional(),
+                    state: z.string(),
+                    progress: z.number().or(z.any()),
+                    failedReason: z.string().optional(),
+                    finishedOn: z.number().optional(),
+                }),
+                404: z.object({
+                    error: z.string()
+                })
+            }
+        }
+    }, async (req, reply) => {
+        const { jobId } = req.params;
+        const { recalculationQueue } = await import('../../core/queue');
+        
+        const job = await recalculationQueue.getJob(jobId);
+        if (!job) {
+            return reply.status(404).send({ error: 'Job not found' });
+        }
+
+        const state = await job.getState();
+        const progress = job.progress;
+
+        return {
+            id: job.id,
+            state,
+            progress,
+            failedReason: job.failedReason,
+            finishedOn: job.finishedOn,
+        };
+    });
 }
 
 /**

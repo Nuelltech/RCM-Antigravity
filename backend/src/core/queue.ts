@@ -14,13 +14,15 @@ import Redis from 'ioredis';
 // ==================== RECALCULATION QUEUE ====================
 
 export interface RecalculationJobData {
-    type: 'price-change' | 'recipe-change' | 'combo-change';
+    type: 'price-change' | 'bulk-price-change' | 'recipe-change' | 'combo-change';
     produtoId?: number;
+    produtoIds?: number[]; // For bulk changes (e.g. invoice integration)
     receitaId?: number;
     comboId?: number;
     tenantId: number;
     triggeredBy: number; // user_id
     logId?: number;      // For integration reporting
+    origin?: 'MANUAL' | 'COMPRA' | 'SYSTEM';
 }
 
 export const recalculationQueue = new Queue<RecalculationJobData>('recalculation', {
@@ -101,7 +103,8 @@ export async function addPriceChangeJob(
     produtoId: number,
     tenantId: number,
     triggeredBy: number,
-    logId?: number
+    logId?: number,
+    origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'MANUAL'
 ) {
     const job = await recalculationQueue.add(
         'price-change',
@@ -110,10 +113,42 @@ export async function addPriceChangeJob(
             produtoId,
             tenantId,
             triggeredBy,
-            logId
+            logId,
+            origin
         },
         {
             jobId: `price-change-${produtoId}-${Date.now()}`,
+        }
+    );
+
+    return {
+        jobId: job.id,
+        status: 'queued',
+    };
+}
+
+/**
+ * Add a bulk price change recalculation job (e.g. after invoice integration)
+ */
+export async function addBulkPriceChangeJob(
+    produtoIds: number[],
+    tenantId: number,
+    triggeredBy: number,
+    logId?: number,
+    origin: 'MANUAL' | 'COMPRA' | 'SYSTEM' = 'COMPRA'
+) {
+    const job = await recalculationQueue.add(
+        'bulk-price-change',
+        {
+            type: 'bulk-price-change',
+            produtoIds,
+            tenantId,
+            triggeredBy,
+            logId,
+            origin
+        },
+        {
+            jobId: `bulk-price-change-${tenantId}-${Date.now()}`,
         }
     );
 
