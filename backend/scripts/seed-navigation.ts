@@ -10,8 +10,8 @@ async function main() {
     // Localization: Portuguese
     const menuItems = [
         { key: 'dashboard', name: 'Dashboard', href: '/dashboard', icon: 'LayoutDashboard', sort_order: 10, required_feature: 'dashboard', group: 'analytics', roles: ['owner', 'admin', 'manager'] },
+        { key: 'decisoes', name: 'Decisões', href: '/dashboard/decisoes', icon: 'BrainCircuit', sort_order: 15, required_feature: 'dashboard', group: 'analytics', roles: ['owner', 'admin', 'manager'] },
         { key: 'alerts', name: 'Alertas', href: '/alerts', icon: 'Bell', sort_order: 20, required_feature: 'dashboard', group: 'analytics', roles: ['owner', 'admin', 'manager'] },
-        { key: 'alertas-erosao', name: 'Radar de Risco', href: '/alertas-erosao', icon: 'Flame', sort_order: 25, required_feature: 'dashboard', group: 'analytics', roles: ['owner', 'admin', 'manager'] },
         { key: 'sales', name: 'Vendas', href: '/sales', icon: 'BarChart3', sort_order: 30, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager', 'operador'] },
         { key: 'sales-import', name: 'Importar Vendas', href: '/sales/importacoes', icon: 'BarChart3', sort_order: 40, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager'] },
         { key: 'menu-engineering', name: 'Menu Engineering', href: '/menu-analysis', icon: 'TrendingUp', sort_order: 90, required_feature: 'sales', group: 'sales', roles: ['owner', 'admin', 'manager'] },
