@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fetchClient } from '@/lib/api';
+import { wakeUpBackend } from '@/lib/wakeup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,6 +35,10 @@ export default function RegisterPage() {
     const { register, handleSubmit, formState: { errors } } = useForm<RegisterInput>({
         resolver: zodResolver(registerSchema),
     });
+
+    useEffect(() => {
+        wakeUpBackend();
+    }, []);
 
     const onSubmit = async (data: RegisterInput) => {
         setIsLoading(true);

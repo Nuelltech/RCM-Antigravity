@@ -283,12 +283,13 @@ export class InvoiceIntegrationService {
      * Regenerate alerts asynchronously (fire and forget)
      */
     private regenerateAlertsAsync(tenantId: number): void {
-        // Skip alerts regeneration for now - AlertsModule not exported
-        // import('../../alerts/alerts.module').then(() => {
-        //     console.log('Alerts regeneration skipped');
-        // }).catch((err: any) => {
-        //     console.error('Failed to import alerts module:', err);
-        // });
+        import('../../../core/queue').then(({ addAlertsJob }) => {
+            addAlertsJob(tenantId, undefined, true).catch(err => {
+                console.error('[Integration] Failed to dispatch alerts regeneration job:', err);
+            });
+        }).catch((err: any) => {
+            console.error('Failed to import queue module:', err);
+        });
     }
 
     /**

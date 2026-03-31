@@ -10,10 +10,16 @@ import { env } from './env';
  * - Auth session caching
  */
 export const redisOptions = {
-    // host: env.REDIS_HOST, // Removed as it causes TS error and is not needed with REDIS_URL
-    maxRetriesPerRequest: null, // Required for BullMQ
+    family: 4, // Force IPv4 for Render internal networking
+    maxRetriesPerRequest: null, // STRICTLY REQUIRED by BullMQ, cannot be changed
     enableReadyCheck: false,
     retryStrategy(times: number) {
+        // Stop retrying entirely if we are in dev and hit the limit
+        // Returning null tells ioredis to definitively STOP retrying
+        if (env.NODE_ENV !== 'production' && times >= 5) {
+            console.warn(`[Redis] Giving up connection after ${times} retries (Dev Environment). Backend will run without Redis.`);
+            return null; 
+        }
         const delay = Math.min(times * 50, 2000);
         return delay;
     },
@@ -33,8 +39,20 @@ redis.on('connect', () => {
     console.log('✅ Redis connected');
 });
 
-redis.on('error', (err) => {
-    console.error('❌ Redis error:', err);
+redis.on('error', (err: any) => {
+    const errString = String(err?.message || err || '');
+    if (errString.includes('ECONNREFUSED') || err?.code === 'ECONNREFUSED' || errString.includes('ECONNRESET') || err?.code === 'ECONNRESET') {
+        return;
+    }
+    
+    if (err?.errors && Array.isArray(err.errors)) {
+        const isRefusedOrReset = err.errors.some((e: any) => 
+            e.code === 'ECONNREFUSED' || String(e).includes('ECONNREFUSED') || e.code === 'ECONNRESET' || String(e).includes('ECONNRESET')
+        );
+        if (isRefusedOrReset) return;
+    }
+
+    console.error('❌ Redis error:', errString);
 });
 
 export default redis;

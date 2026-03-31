@@ -87,7 +87,7 @@ class VariacaoProdutoService {
 
         // Trigger background alert regeneration (fire-and-forget)
         const alertsService = new AlertsService(tenant_id);
-        alertsService.regenerateAlertsAsync();
+        alertsService.regenerateAlertsAsync(userId).catch(console.error);
 
         return this.transform(variacao);
     }
@@ -157,7 +157,7 @@ class VariacaoProdutoService {
 
             // Trigger background alert regeneration (fire-and-forget)
             const alertsService = new AlertsService(tenant_id);
-            alertsService.regenerateAlertsAsync();
+            alertsService.regenerateAlertsAsync(userId).catch(console.error);
         }
 
         return {

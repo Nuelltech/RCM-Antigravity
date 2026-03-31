@@ -21,17 +21,64 @@ interface SidebarProps {
     onClose: () => void;
 }
 
+const NAV_CACHE_KEY = "nav_items_cache";
+const NAV_CACHE_TTL = 5 * 60 * 1000; // 5 minutos em ms
+
+function getNavCache(): NavigationItem[] | null {
+    try {
+        const raw = sessionStorage.getItem(NAV_CACHE_KEY);
+        if (!raw) return null;
+        const { items, cachedAt } = JSON.parse(raw);
+        if (Date.now() - cachedAt > NAV_CACHE_TTL) {
+            sessionStorage.removeItem(NAV_CACHE_KEY);
+            return null;
+        }
+        return items;
+    } catch {
+        return null;
+    }
+}
+
+function setNavCache(items: NavigationItem[]) {
+    try {
+        sessionStorage.setItem(NAV_CACHE_KEY, JSON.stringify({ items, cachedAt: Date.now() }));
+    } catch { /* ignore */ }
+}
+
+function clearNavCache() {
+    try {
+        sessionStorage.removeItem(NAV_CACHE_KEY);
+    } catch { /* ignore */ }
+}
+
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
-    const [menuItems, setMenuItems] = useState<NavigationItem[]>([]);
-    const [loading, setLoading] = useState(true);
+
+    // ✅ PERFORMANCE FIX: Inicializar com cache do sessionStorage.
+    // Se houver cache válido, o menu aparece IMEDIATAMENTE sem spinner.
+    const cachedItems = getNavCache();
+    const [menuItems, setMenuItems] = useState<NavigationItem[]>(cachedItems || []);
+    const [loading, setLoading] = useState(cachedItems === null); // só mostra loading se não há cache
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        async function fetchMenuItems() {
+        async function fetchMenuItems(forceRefresh = false) {
+            // Se não é forceRefresh, verificar cache primeiro
+            if (!forceRefresh) {
+                const cached = getNavCache();
+                if (cached) {
+                    setMenuItems(cached);
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            // Cache miss ou refresh forçado → chamar API
             try {
                 const data = await fetchClient('/navigation/items');
-                setMenuItems(data?.items || []);
+                const items = data?.items || [];
+                setMenuItems(items);
+                setNavCache(items); // guardar no cache
                 setError(null);
             } catch (err) {
                 console.error('Error fetching navigation items:', err);
@@ -41,11 +88,17 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             }
         }
 
-        fetchMenuItems();
-
-        // Listen for role/subscription changes that might affect menu
-        const handleUserRoleUpdate = () => {
+        // Na montagem, buscar apenas se não há cache
+        if (!getNavCache()) {
             fetchMenuItems();
+        } else {
+            setLoading(false);
+        }
+
+        // Quando role ou subscription muda → limpar cache e recarregar
+        const handleUserRoleUpdate = () => {
+            clearNavCache();
+            fetchMenuItems(true);
         };
 
         window.addEventListener("userRoleUpdated", handleUserRoleUpdate);

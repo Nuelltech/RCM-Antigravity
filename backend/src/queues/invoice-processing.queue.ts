@@ -1,10 +1,9 @@
+import { redis } from '../core/redis';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
 
 // Redis connection
-const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-    maxRetriesPerRequest: null
-});
+const redisConnection = redis;
 
 /**
  * Invoice Processing Queue

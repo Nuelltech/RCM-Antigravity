@@ -4,6 +4,19 @@ import Redis from 'ioredis';
 const prisma = new PrismaClient();
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
 
+export interface TenantSubscriptionInfo {
+    sub_status: string | null;        // trial, active, past_due, canceled, suspended
+    plan_name: string | null;         // display name from SubscriptionPlan
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    trial_end: Date | null;
+    next_billing_date: Date | null;
+    current_period_end: Date | null;
+    payment_failed_at: Date | null;
+    grace_period_end: Date | null;
+    suspension_reason: string | null;
+}
+
 export interface TenantOverview {
     id: number;
     nome_restaurante: string;
@@ -15,6 +28,7 @@ export interface TenantOverview {
     created_at: Date;
     last_access: Date | null;
     payment_status: 'ok' | 'overdue' | 'trial';
+    subscription: TenantSubscriptionInfo | null;
 }
 
 export interface TenantHealth {
@@ -128,6 +142,22 @@ class InternalTenantsService {
                 ativo: true,
                 createdAt: true,
                 data_expiracao_plano: true,
+                tenantSubscription: {
+                    select: {
+                        status: true,
+                        stripe_customer_id: true,
+                        stripe_subscription_id: true,
+                        trial_end: true,
+                        next_billing_date: true,
+                        current_period_end: true,
+                        payment_failed_at: true,
+                        grace_period_end: true,
+                        suspension_reason: true,
+                        plan: {
+                            select: { display_name: true }
+                        }
+                    }
+                }
             },
         });
 
@@ -150,6 +180,8 @@ class InternalTenantsService {
             payment_status = 'overdue';
         }
 
+        const sub = (tenant as any).tenantSubscription;
+
         return {
             id: tenant.id,
             nome_restaurante: tenant.nome_restaurante,
@@ -161,6 +193,18 @@ class InternalTenantsService {
             created_at: tenant.createdAt,
             last_access: lastSession?.createdAt || null,
             payment_status,
+            subscription: sub ? {
+                sub_status: sub.status,
+                plan_name: sub.plan?.display_name || null,
+                stripe_customer_id: sub.stripe_customer_id,
+                stripe_subscription_id: sub.stripe_subscription_id,
+                trial_end: sub.trial_end,
+                next_billing_date: sub.next_billing_date,
+                current_period_end: sub.current_period_end,
+                payment_failed_at: sub.payment_failed_at,
+                grace_period_end: sub.grace_period_end,
+                suspension_reason: sub.suspension_reason,
+            } : null,
         };
     }
 

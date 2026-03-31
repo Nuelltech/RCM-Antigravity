@@ -54,7 +54,8 @@ export async function fetchClient(endpoint: string, options: RequestInit = {}) {
 
     const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
-        cache: 'no-store',
+        // ✅ PERFORMANCE FIX: Removido `cache: 'no-store'` que desativava o cache
+        // do browser em TODOS os pedidos. O backend já controla freshness via Redis.
         headers,
     });
 

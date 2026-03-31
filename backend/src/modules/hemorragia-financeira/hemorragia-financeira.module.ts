@@ -108,17 +108,19 @@ class HemorragiaFinanceiraService {
             },
             _sum: {
                 quantidade: true,
-                receita_total: true
+                receita_total: true,
+                custo_total: true
             }
         });
 
         // Map aggregate to dictionary for O(1) loop lookup
-        const salesMap = new Map<number, { volumeVendas: number, totalRevenueSales: number }>();
+        const salesMap = new Map<number, { volumeVendas: number, totalRevenueSales: number, totalCusto: number }>();
         for (const agg of salesAgg) {
             if (agg.menu_item_id) {
                 salesMap.set(agg.menu_item_id, {
                     volumeVendas: Number(agg._sum.quantidade || 0),
-                    totalRevenueSales: Number(agg._sum.receita_total || 0)
+                    totalRevenueSales: Number(agg._sum.receita_total || 0),
+                    totalCusto: Number(agg._sum.custo_total || 0)
                 });
             }
         }
@@ -128,24 +130,25 @@ class HemorragiaFinanceiraService {
 
         // 3. Process each item (now entirely in-memory and heavily optimized)
         for (const item of menuItems) {
-            // Get cost
-            let custoUnitario = 0;
-            if (item.receita) {
-                custoUnitario = Number(item.receita.custo_por_porcao);
-            } else if (item.combo) {
-                custoUnitario = Number(item.combo.custo_total);
-            } else if (item.formatoVenda) {
-                custoUnitario = Number(item.formatoVenda.custo_unitario);
-            }
-
-            // No cost data — skip
-            if (custoUnitario <= 0) continue;
-
             const itemSales = salesMap.get(item.id);
             if (!itemSales) continue;
 
             const volumeVendas = itemSales.volumeVendas;
             if (volumeVendas === 0) continue;
+
+            // USE HISTORICAL COST (Saved at the time of Venda)
+            // If the historical cost was not captured (0), fallback to current technical cost
+            let custoUnitario = 0;
+            if (itemSales.totalCusto > 0) {
+                custoUnitario = itemSales.totalCusto / volumeVendas;
+            } else {
+                if (item.receita) custoUnitario = Number(item.receita.custo_por_porcao);
+                else if (item.combo) custoUnitario = Number(item.combo.custo_total);
+                else if (item.formatoVenda) custoUnitario = Number(item.formatoVenda.custo_unitario);
+            }
+
+            // No cost data — skip
+            if (custoUnitario <= 0) continue;
 
             // Weighted average PVP
             const totalRevenueSales = itemSales.totalRevenueSales;

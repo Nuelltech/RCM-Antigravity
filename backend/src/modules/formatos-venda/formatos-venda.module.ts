@@ -1,7 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { prisma } from '../../core/database';
-
+import { recalculationService } from '../produtos/recalculation.service';
 
 // DTOs
 export interface CreateFormatoVendaDto {
@@ -213,6 +213,10 @@ class FormatoVendaService {
             },
         });
 
+        recalculationService.recalculateAfterFormatoVendaChange(id).catch((e: any) => {
+            console.error('Falha ao recalcular itens de menu após alteração do formato de venda', e);
+        });
+
         return this.transform(formato);
     }
 
@@ -262,6 +266,10 @@ class FormatoVendaService {
                 produto: true,
                 variacao_origem: true,
             },
+        });
+
+        recalculationService.recalculateAfterFormatoVendaChange(formato.id).catch((e: any) => {
+            console.error('Falha ao recalcular itens de menu após alteração do preço do formato de venda', e);
         });
 
         return this.transform(formato);

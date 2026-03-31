@@ -151,6 +151,7 @@ interface RecipePDFProps {
         porcoes: number;
         tempo_preparo?: number;
         quantidade_produzida?: number;
+        quantidade_por_porcao?: number;
         unidade_produzida?: string;
         custo_total: number;
         custo_por_porcao?: number;
@@ -243,6 +244,12 @@ export function RecipePDF({ restaurantName, recipe, generatedBy, logoUrl, imageU
                             <View style={styles.infoItem}>
                                 <Text style={styles.infoLabel}>Qtd. Produzida</Text>
                                 <Text style={styles.infoValue}>{recipe.quantidade_produzida} {recipe.unidade_produzida || ''}</Text>
+                            </View>
+                        )}
+                        {!!recipe.quantidade_por_porcao && (
+                            <View style={styles.infoItem}>
+                                <Text style={styles.infoLabel}>Qtd. por Porção</Text>
+                                <Text style={styles.infoValue}>{recipe.quantidade_por_porcao} {recipe.unidade_produzida || ''}</Text>
                             </View>
                         )}
                         {!!recipe.dificuldade && (

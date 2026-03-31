@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, ArrowLeft, Video } from "lucide-react";
@@ -10,6 +10,8 @@ import { DecimalInput } from "@/components/ui/decimal-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { QuickProductModal } from "@/components/recipes/QuickProductModal";
+import { HouseholdMeasuresConverter } from "@/components/recipes/HouseholdMeasuresConverter";
 
 interface Product {
     id: number;
@@ -69,6 +71,9 @@ export default function NewRecipePage() {
     // Ingredients and steps
     const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
     const [steps, setSteps] = useState<StepRow[]>([]);
+
+    // Quick Product Modal
+    const [quickProductOpen, setQuickProductOpen] = useState(false);
 
     // Calculated values
     const [totalCMV, setTotalCMV] = useState(0);
@@ -136,6 +141,36 @@ export default function NewRecipePage() {
                 notas: "",
             },
         ]);
+    };
+
+    const handleProductCreated = (newProduct: Product) => {
+        // Add to products list
+        setProducts(prev => [...prev, newProduct].sort((a, b) => a.nome.localeCompare(b.nome)));
+
+        // Find if there's an empty row, or add one with this product selected
+        // We can just add a new row at the end with this product
+        const newId = Date.now().toString();
+        const precoUnit = newProduct.variacoes?.[0]?.preco_unitario || 0;
+
+        setIngredients(prev => [
+            ...prev,
+            {
+                id: newId,
+                tipo: 'produto',
+                produto_id: newProduct.id,
+                receita_preparo_id: null,
+                produto_nome: newProduct.nome,
+                quantidade_bruta: 0,
+                quantidade_liquida: 0,
+                rentabilidade: 100,
+                unidade: newProduct.unidade_medida,
+                preco_unitario: Number(precoUnit),
+                custo_ingrediente: 0,
+                notas: "",
+            }
+        ]);
+
+        // Scroll to the ingredients table or focus if needed.
     };
 
     const addPreparo = () => {
@@ -519,14 +554,23 @@ export default function NewRecipePage() {
                         </CardContent>
                     </Card>
 
+                    {/* Household Measures Converter */}
+                    <HouseholdMeasuresConverter />
+
                     {/* Ingredients */}
                     <Card>
-                        <CardHeader className="flex flex-row items-center justify-between">
+                        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
                             <CardTitle>Ficha Técnica de Ingredientes</CardTitle>
-                            <Button type="button" onClick={addIngredient} size="sm">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Adicionar
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <Button type="button" variant="outline" onClick={() => setQuickProductOpen(true)} size="sm">
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Criar Produto Rápido
+                                </Button>
+                                <Button type="button" onClick={addIngredient} size="sm">
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Adicionar Ingrediente
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             {ingredients.length === 0 ? (
@@ -756,6 +800,12 @@ export default function NewRecipePage() {
                     </div>
                 </form>
             </div>
+
+            <QuickProductModal
+                open={quickProductOpen}
+                onOpenChange={setQuickProductOpen}
+                onProductCreated={handleProductCreated}
+            />
         </AppLayout>
     );
 }

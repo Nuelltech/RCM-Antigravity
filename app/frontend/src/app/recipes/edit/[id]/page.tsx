@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetchClient } from "@/lib/api";
 import { Plus, Trash2, ArrowLeft } from "lucide-react";
@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useToast } from "@/hooks/use-toast";
+import { QuickProductModal } from "@/components/recipes/QuickProductModal";
+import { HouseholdMeasuresConverter } from "@/components/recipes/HouseholdMeasuresConverter";
 
 interface Product {
     id: number;
@@ -56,6 +58,7 @@ export default function EditRecipePage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
+    const [quickProductOpen, setQuickProductOpen] = useState(false);
     const [prepreparos, setPrepreparos] = useState<Recipe[]>([]);
 
     // Recipe form fields
@@ -175,6 +178,34 @@ export default function EditRecipePage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleProductCreated = (newProduct: Product) => {
+        setProducts(prev => {
+            const newList = [...prev, newProduct];
+            return newList.sort((a, b) => a.nome.localeCompare(b.nome));
+        });
+
+        const newId = Date.now().toString();
+        const precoUnit = newProduct.variacoes?.[0]?.preco_unitario || 0;
+
+        setIngredients([
+            ...ingredients,
+            {
+                id: newId,
+                tipo: 'produto',
+                produto_id: newProduct.id,
+                receita_preparo_id: null,
+                produto_nome: newProduct.nome,
+                quantidade_bruta: 0,
+                quantidade_liquida: 0,
+                rentabilidade: 100,
+                unidade: newProduct.unidade_medida,
+                preco_unitario: Number(precoUnit),
+                custo_ingrediente: 0,
+                notas: "",
+            },
+        ]);
     };
 
     const updateIngredient = (id: string, field: keyof IngredientRow, value: any) => {
@@ -530,15 +561,24 @@ export default function EditRecipePage() {
                     </CardContent>
                 </Card>
 
+                {/* Household Measures Converter */}
+                <HouseholdMeasuresConverter />
+
                 {/* Ingredients */}
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <CardTitle>Ingredientes</CardTitle>
-                            <Button type="button" onClick={addIngredient} size="sm">
-                                <Plus className="w-4 h-4 mr-2" />
-                                Adicionar Ingrediente
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button type="button" onClick={() => setQuickProductOpen(true)} size="sm" variant="secondary">
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Criar Rápido
+                                </Button>
+                                <Button type="button" onClick={addIngredient} size="sm">
+                                    <Plus className="w-4 h-4 mr-2" />
+                                    Adicionar Ingrediente
+                                </Button>
+                            </div>
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -810,6 +850,11 @@ export default function EditRecipePage() {
 
             </form>
 
+            <QuickProductModal
+                open={quickProductOpen}
+                onOpenChange={setQuickProductOpen}
+                onProductCreated={handleProductCreated}
+            />
         </AppLayout>
     );
 }

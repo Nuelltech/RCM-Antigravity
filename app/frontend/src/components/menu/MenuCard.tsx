@@ -21,6 +21,8 @@ export function MenuCard({ item, onEdit, onToggle, onDelete, getCMVColor }: Menu
     else if (item.combo) custo = item.combo.custo_total;
     else if (item.formatoVenda) custo = item.formatoVenda.custo_unitario;
 
+    const markup = custo > 0 ? ((item.pvp - custo) / custo) * 100 : 0;
+
     const isCombo = !!item.combo;
     const isProduct = !!item.formatoVenda;
 
@@ -102,6 +104,11 @@ export function MenuCard({ item, onEdit, onToggle, onDelete, getCMVColor }: Menu
                             <div className="font-semibold text-gray-900">€ {item.margem_bruta?.toFixed(2) ?? "0.00"}</div>
                             <div className="text-xs text-gray-500">{item.margem_percentual?.toFixed(1) ?? "0"}%</div>
                         </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-sm pt-2 border-t">
+                        <span className="text-gray-600">Markup:</span>
+                        <span className="font-semibold text-blue-600">{markup.toFixed(1)}%</span>
                     </div>
 
                     <div className="flex justify-between items-center pt-2 border-t">

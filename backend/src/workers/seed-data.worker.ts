@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { prisma } from '../core/database';
-import { redisOptions } from '../core/redis';
+import { redisOptions, redis } from '../core/redis';
 import { env } from '../core/env';
 import { SeedDataJobData } from '../core/queue';
 import { DEFAULT_FAMILIES, DEFAULT_SUBFAMILIES } from '../core/constants/seedData';
@@ -172,9 +172,7 @@ const worker = new Worker<SeedDataJobData>(
         }
     },
     {
-        connection: new Redis(env.REDIS_URL, {
-            maxRetriesPerRequest: null,
-        }) as any,
+        connection: redis as any,
         concurrency: 5, // Allow multiple setups at once
     }
 );

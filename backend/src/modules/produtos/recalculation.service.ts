@@ -34,6 +34,9 @@ export class RecalculationService {
             await this.recalculateMenuItemsForCombos(Array.from(affectedCombos), affectedMenuItems, logId);
         }
 
+        // STEP 6: Recalculate FormatoVenda that directly use this product
+        await this.recalculateFormatoVendaUsingProduct(produtoId, affectedMenuItems, logId);
+
         // NOTIFICATION
         if (logId) {
             const product = await prisma.produto.findUnique({ where: { id: produtoId }, select: { nome: true } });
@@ -97,6 +100,49 @@ export class RecalculationService {
 
         await this.recalculateSingleCombo(comboId);
         await this.recalculateMenuItemsForCombos([comboId], affectedMenuItems);
+
+        return {
+            menusAfetados: affectedMenuItems.size,
+        };
+    }
+
+    /**
+     * Recalculate menu items after a FormatoVenda change (simple products)
+     */
+    async recalculateAfterFormatoVendaChange(formatoVendaId: number) {
+        const affectedMenuItems = new Set<number>();
+
+        const formato = await prisma.formatoVenda.findUnique({
+            where: { id: formatoVendaId }
+        });
+
+        if (!formato) return { menusAfetados: 0 };
+
+        const menuItems = await prisma.menuItem.findMany({
+            where: { formato_venda_id: formatoVendaId }
+        });
+
+        await Promise.all(menuItems.map(async (item) => {
+            const custo = new Decimal(formato.custo_unitario);
+            const pvp = new Decimal(item.pvp || 0);
+
+            const margem = pvp.minus(custo);
+            const margemPercentual = pvp.greaterThan(0)
+                ? margem.dividedBy(pvp).times(100)
+                : new Decimal(0);
+            const cmv = pvp.greaterThan(0) ? custo.dividedBy(pvp).times(100) : new Decimal(0);
+
+            await prisma.menuItem.update({
+                where: { id: item.id },
+                data: {
+                    margem_bruta: margem,
+                    margem_percentual: margemPercentual,
+                    cmv_percentual: cmv,
+                },
+            });
+
+            affectedMenuItems.add(item.id);
+        }));
 
         return {
             menusAfetados: affectedMenuItems.size,
@@ -398,9 +444,38 @@ export class RecalculationService {
             },
         });
 
+        // Find FormatoVenda using this product
+        const formatosVenda = await prisma.formatoVenda.findMany({
+            where: {
+                produto_id: produtoId,
+                ativo: true,
+            },
+        });
+
+        const formatoVendaIds = formatosVenda.map((f) => f.id);
+
+        let formatMenuItems: any[] = [];
+        if (formatoVendaIds.length > 0) {
+            formatMenuItems = await prisma.menuItem.findMany({
+                where: {
+                    formato_venda_id: {
+                        in: formatoVendaIds,
+                    },
+                },
+                include: {
+                    formatoVenda: {
+                        select: {
+                            id: true,
+                            nome: true,
+                        },
+                    },
+                },
+            });
+        }
+
         return {
             affected_recipes: affectedRecipeIds.size,
-            affected_menus: menuItems.length,
+            affected_menus: menuItems.length + formatMenuItems.length,
             recipe_details: [...affectedRecipeIds].map((id) => {
                 const ing = directIngredients.find((i) => i.receita_id === id);
                 const parent = parentIngredients.find((i) => i.receita_id === id);
@@ -411,12 +486,20 @@ export class RecalculationService {
                     tipo: recipe?.tipo,
                 };
             }),
-            menu_details: menuItems.map((m) => ({
-                id: m.id,
-                nome_comercial: m.nome_comercial,
-                receita_nome: m.receita?.nome,
-                pvp_atual: m.pvp,
-            })),
+            menu_details: [
+                ...menuItems.map((m) => ({
+                    id: m.id,
+                    nome_comercial: m.nome_comercial,
+                    receita_nome: m.receita?.nome,
+                    pvp_atual: m.pvp,
+                })),
+                ...formatMenuItems.map((m) => ({
+                    id: m.id,
+                    nome_comercial: m.nome_comercial,
+                    receita_nome: m.formatoVenda?.nome,
+                    pvp_atual: m.pvp,
+                })),
+            ],
         };
     }
 
@@ -566,8 +649,64 @@ export class RecalculationService {
         });
     }
 
+    /**
+     * Recalculate FormatoVenda that directly use a product, and update their MenuItems
+     */
+    private async recalculateFormatoVendaUsingProduct(
+        produtoId: number,
+        affectedMenuItems: Set<number>,
+        logId?: number
+    ) {
+        // Find all formats using this product
+        const formatos = await prisma.formatoVenda.findMany({
+            where: { produto_id: produtoId, ativo: true },
+        });
 
+        if (formatos.length === 0) return;
 
+        const precoUnitario = await this.getPrecoUnitarioAtual(produtoId);
+
+        await Promise.all(formatos.map(async (formato) => {
+            const novoCusto = new Decimal(formato.quantidade_vendida).times(precoUnitario);
+            
+            await prisma.formatoVenda.update({
+                where: { id: formato.id },
+                data: {
+                    custo_unitario: novoCusto,
+                },
+            });
+
+            // Update associated MenuItems
+            const menuItems = await prisma.menuItem.findMany({
+                where: { formato_venda_id: formato.id }
+            });
+
+            await Promise.all(menuItems.map(async (item) => {
+                const pvp = new Decimal(item.pvp || 0);
+
+                const margem = pvp.minus(novoCusto);
+                const margemPercentual = pvp.greaterThan(0)
+                    ? margem.dividedBy(pvp).times(100)
+                    : new Decimal(0);
+                const cmv = pvp.greaterThan(0) ? novoCusto.dividedBy(pvp).times(100) : new Decimal(0);
+
+                if (logId && item.margem_bruta && !item.margem_bruta.equals(margem)) {
+                    await this.logChange(logId, 'MENU_ITEM', item.id, item.nome_comercial, 'margin', item.margem_bruta, margem);
+                }
+
+                await prisma.menuItem.update({
+                    where: { id: item.id },
+                    data: {
+                        margem_bruta: margem,
+                        margem_percentual: margemPercentual,
+                        cmv_percentual: cmv,
+                    },
+                });
+
+                affectedMenuItems.add(item.id);
+            }));
+        }));
+    }
 
     /**
      * Helper to log changes

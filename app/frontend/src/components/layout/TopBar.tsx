@@ -39,8 +39,28 @@ export function TopBar({ onMenuClick }: TopBarProps) {
     }, []);
 
     const handleLogout = () => {
+        // Limpar localStorage
         localStorage.removeItem("token");
         localStorage.removeItem("tenantId");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("userEmail");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("restaurantName");
+
+        // ✅ PERFORMANCE FIX: Limpar caches de sessionStorage para garantir
+        // re-validação limpa na próxima sessão (auth, nav, subscription).
+        try {
+            sessionStorage.removeItem("auth_validated");
+            sessionStorage.removeItem("auth_validated_token");
+            sessionStorage.removeItem("nav_items_cache");
+            sessionStorage.removeItem("subscription_features_cache");
+            // Limpar qualquer onboarding cache
+            Object.keys(sessionStorage)
+                .filter(k => k.startsWith("onboarding_seeded_"))
+                .forEach(k => sessionStorage.removeItem(k));
+        } catch { /* ignore */ }
+
         router.push("/auth/login");
     };
 

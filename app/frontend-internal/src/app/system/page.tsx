@@ -126,7 +126,7 @@ function ErrorsTab() {
                         errors.map((err) => (
                             <tr key={err.id} className="hover:bg-slate-50">
                                 <td className="p-4 text-slate-500 whitespace-nowrap">
-                                    {new Date(err.timestamp).toLocaleTimeString()}
+                                    {new Date(err.timestamp).toLocaleString('pt-PT')}
                                 </td>
                                 <td className="p-4">
                                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${err.level === 'ERROR' ? 'bg-red-100 text-red-700' :
@@ -232,55 +232,181 @@ function PerformanceTab() {
 }
 
 function WorkersTab() {
-    const [stats, setStats] = useState<any[]>([]);
+    const [workers, setWorkers] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [countdown, setCountdown] = useState(30);
+
+    const fetchWorkers = async () => {
+        try {
+            const data = await fetchWithAuth('/api/internal/health/workers');
+            setWorkers(data.workers || []);
+            setLastUpdated(new Date());
+            setCountdown(30);
+        } catch (error) {
+            console.error('Failed to fetch workers:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const fetchStats = async () => {
-            try {
-                const data = await fetchWithAuth('/api/internal/health/workers');
-                setStats(data);
-            } catch (error) {
-                console.error('Failed to fetch worker stats:', error);
-            } finally {
-                setIsLoading(false);
-            }
+        fetchWorkers();
+
+        // Auto-refresh every 30 seconds
+        const refreshInterval = setInterval(fetchWorkers, 30_000);
+
+        // Countdown tick every second
+        const countdownInterval = setInterval(() => {
+            setCountdown(c => c > 0 ? c - 1 : 30);
+        }, 1000);
+
+        return () => {
+            clearInterval(refreshInterval);
+            clearInterval(countdownInterval);
         };
-        fetchStats();
     }, []);
 
-    if (isLoading) return <div className="p-8 text-center text-gray-500">Loading worker stats...</div>;
+    const formatDate = (iso: string | null) => {
+        if (!iso) return '—';
+        return new Date(iso).toLocaleString('pt-PT', { dateStyle: 'short', timeStyle: 'short' });
+    };
+
+    const typeBadge = (type: string) => {
+        if (type === 'SCHEDULED') return (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 flex items-center gap-1 w-fit">
+                <span>⏰</span> Agendado
+            </span>
+        );
+        if (type === 'EVENT_DRIVEN') return (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700 flex items-center gap-1 w-fit">
+                <span>⚡</span> Event-driven
+            </span>
+        );
+        return (
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 w-fit">
+                Manual
+            </span>
+        );
+    };
+
+    const queueHealth = (counts: any) => {
+        if (!counts) return null;
+        const hasIssues = (counts.failed ?? 0) > 0;
+        const hasWork = (counts.waiting ?? 0) > 0 || (counts.active ?? 0) > 0;
+        return (
+            <div className="flex items-center gap-3 text-xs text-slate-500">
+                {(counts.waiting ?? 0) > 0 && <span className="text-amber-600 font-medium">⏳ {counts.waiting} waiting</span>}
+                {(counts.active ?? 0) > 0 && <span className="text-blue-600 font-medium">▶ {counts.active} active</span>}
+                {(counts.failed ?? 0) > 0 && <span className="text-red-600 font-medium">✗ {counts.failed} failed</span>}
+                {!hasWork && !hasIssues && <span className="text-slate-400">Idle</span>}
+            </div>
+        );
+    };
+
+    if (isLoading) return (
+        <div className="flex items-center justify-center p-16 text-slate-400">
+            <div className="animate-spin mr-2">⟳</div> A carregar workers...
+        </div>
+    );
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {stats.map((queue) => (
-                    <div key={queue.queue} className="bg-white rounded-xl p-6 border border-slate-200">
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h3 className="font-bold text-lg capitalize">{queue.queue}</h3>
-                                <div className={`text-xs font-bold px-2 py-0.5 rounded-full inline-block mt-1 ${queue.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                    }`}>
-                                    {queue.status}
-                                </div>
-                            </div>
-                            <Server className="text-slate-400 w-5 h-5" />
-                        </div>
+        <div className="space-y-4">
+            {/* Auto-refresh status bar */}
+            <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>
+                    {lastUpdated
+                        ? `Atualizado às ${lastUpdated.toLocaleTimeString('pt-PT')} — próxima atualização em ${countdown}s`
+                        : 'A carregar...'}
+                </span>
+                <button
+                    onClick={fetchWorkers}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-slate-600 hover:bg-slate-100 transition-colors"
+                >
+                    ⟳ Atualizar agora
+                </button>
+            </div>
 
-                        <div className="space-y-3 text-sm">
-                            <MetricRow label="Jobs (24h)" value={queue.count.toString()} />
-                            <MetricRow label="Avg Duration" value={`${queue.avg_ms}ms`} />
-                            <div className="flex justify-between text-xs text-slate-400 pt-2 border-t border-slate-100">
-                                <span>Min: {queue.min_ms}ms</span>
-                                <span>Max: {queue.max_ms}ms</span>
-                            </div>
-                        </div>
-                    </div>
-                ))}
+            {/* Summary bar */}
+            <div className="grid grid-cols-3 gap-4 mb-2">
+                <div className="bg-blue-50 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-blue-700">{workers.filter(w => w.type === 'SCHEDULED').length}</div>
+                    <div className="text-xs text-blue-500 mt-1">Agendados</div>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-green-700">{workers.filter(w => w.type === 'EVENT_DRIVEN').length}</div>
+                    <div className="text-xs text-green-500 mt-1">Event-driven</div>
+                </div>
+                <div className="bg-slate-50 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-slate-700">{workers.reduce((s, w) => s + (w.jobs_24h || 0), 0)}</div>
+                    <div className="text-xs text-slate-500 mt-1">Jobs nas últimas 24h</div>
+                </div>
+            </div>
+
+            {/* Workers table */}
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th className="text-left p-4 font-semibold text-slate-600">Worker</th>
+                            <th className="text-left p-4 font-semibold text-slate-600">Tipo</th>
+                            <th className="text-left p-4 font-semibold text-slate-600">Agendamento / Fila</th>
+                            <th className="text-left p-4 font-semibold text-slate-600">Último Run</th>
+                            <th className="text-left p-4 font-semibold text-slate-600">Próximo Run</th>
+                            <th className="text-right p-4 font-semibold text-slate-600">Jobs (24h)</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {workers.map((w) => (
+                            <tr key={w.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-4">
+                                    <div className="font-medium text-slate-900">{w.name}</div>
+                                    <div className="text-xs text-slate-400 mt-0.5 max-w-xs">{w.description}</div>
+                                </td>
+                                <td className="p-4">{typeBadge(w.type)}</td>
+                                <td className="p-4">
+                                    {w.type === 'SCHEDULED' ? (
+                                        <div>
+                                            <div className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded w-fit">{w.schedule}</div>
+                                            <div className="text-xs text-slate-500 mt-1">{w.schedule_label}</div>
+                                        </div>
+                                    ) : (
+                                        queueHealth(w.queue_counts)
+                                    )}
+                                </td>
+                                <td className="p-4">
+                                    {w.type === 'SCHEDULED' ? (
+                                        <span className={`text-sm ${w.last_run ? 'text-slate-700' : 'text-amber-500 font-medium'}`}>
+                                            {w.last_run ? formatDate(w.last_run) : 'Nunca executou'}
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-400 text-xs">{formatDate(w.last_completed)}</span>
+                                    )}
+                                </td>
+                                <td className="p-4">
+                                    {w.type === 'SCHEDULED' ? (
+                                        <span className="text-sm text-slate-700">{formatDate(w.next_run)}</span>
+                                    ) : (
+                                        <span className="text-slate-400 text-xs">On demand</span>
+                                    )}
+                                </td>
+                                <td className="p-4 text-right">
+                                    <span className={`font-mono font-bold ${w.jobs_24h > 0 ? 'text-slate-800' : 'text-slate-300'}`}>
+                                        {w.jobs_24h}
+                                    </span>
+                                    {w.avg_ms > 0 && (
+                                        <div className="text-xs text-slate-400">{w.avg_ms}ms avg</div>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
 }
+
 
 
 function BackupsTab() {

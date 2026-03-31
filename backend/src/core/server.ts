@@ -1,3 +1,22 @@
+// Suppress excessive ioredis Unhandled ECONNREFUSED spam in Local Dev Environments
+// MUST BE AT THE VERY TOP before any module imports trigger BullMQ/ioRedis
+if (process.env.NODE_ENV !== 'production') {
+    const originalConsoleError = console.error;
+    console.error = function (...args) {
+        const msg = String(args[0]);
+        if (msg.includes('[ioredis] Unhandled error event') || 
+            (msg.includes('AggregateError') && msg.includes('ECONNREFUSED')) ||
+            msg.includes('Redis error: AggregateError') ||
+            (args[1] && String(args[1]?.[0]?.code) === 'ECONNREFUSED')) {
+            return; // completely silent local unhandled Redis network errors
+        }
+        const errorStack = String(args.join(' '));
+        if (errorStack.includes('ECONNREFUSED') && errorStack.includes('6379')) {
+             return;
+        }
+        originalConsoleError.apply(console, args);
+    };
+}
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
@@ -38,6 +57,8 @@ import { navigationRoutes } from '../modules/navigation/navigation.module';
 import { subscriptionsRoutes } from '../modules/subscriptions/subscriptions.module';
 import { stripeWebhookModule } from '../modules/subscriptions/stripe-webhook.module';
 import { onboardingRoutes } from '../modules/onboarding/onboarding.module';
+import { erosionAlertsRoutes } from '../modules/erosion-alerts/erosion-alerts.module';
+import { decisionDashboardRoutes } from '../modules/decision-dashboard/decision-dashboard.module';
 // import { leadsRoutes } from '../modules/leads/leads.routes';
 
 const server = Fastify({
@@ -105,7 +126,7 @@ async function main() {
     await server.register(jwt, {
         secret: env.JWT_SECRET,
         sign: {
-            expiresIn: '60m' // 60 minutos de inatividade
+            expiresIn: '8h' // 8 horas de inatividade estendidas para melhor UX
         }
     });
 
@@ -235,11 +256,25 @@ async function main() {
         await subscriptionGuard(req, reply);
     });
 
-    // Global Error Logger (Phase 4)
+    // Global Error Handler
     server.setErrorHandler(async (error, req, reply) => {
-        // const { errorLogger } = await import('./middleware/error-logger');
-        // await errorLogger(error, req, reply);
-        console.error(error);
+        const statusCode: number = (error as any).statusCode || 500;
+        // Safe serialization — avoids Node util.inspect crash on Prisma error objects
+        server.log.error({
+            err: {
+                type: error.constructor?.name || 'Error',
+                message: error.message,
+                code: (error as any).code,
+                stack: error.stack,
+            }
+        }, error.message);
+        if (!reply.sent) {
+            reply.status(statusCode).send({
+                statusCode,
+                error: (error as any).code || 'InternalServerError',
+                message: error.message || 'An unexpected error occurred',
+            });
+        }
     });
 
     // Register Internal Portal Routes
@@ -249,6 +284,8 @@ async function main() {
     const { internalTenantsModule } = await import('../modules/internal-tenants/internal-tenants.module');
     const { internalRolesRoutes } = await import('../modules/internal-roles/internal-roles.routes');
     const { internalLeadsRoutes } = await import('../modules/leads/internal-leads.routes');
+    const { internalGlobalCatalogRoutes } = await import('../modules/global-catalog/global-catalog.routes');
+    const { internalMarketPricesRoutes } = await import('../modules/market-prices/market-prices.module');
 
     // internalAuthRoutes is already registered above
     await server.register(dashboardStatsRoutes, { prefix: '/api/internal/dashboard' });
@@ -257,10 +294,16 @@ async function main() {
     await server.register(internalTenantsModule);
     await server.register(internalRolesRoutes, { prefix: '/api/internal' }); // Roles now defines /roles inside
     await server.register(internalLeadsRoutes, { prefix: '/api/internal' });
+    await server.register(internalGlobalCatalogRoutes, { prefix: '/api/internal/catalog' });
+    await server.register(internalMarketPricesRoutes, { prefix: '/api/internal/market' });
     // Register Modules
     server.register(authRoutes, { prefix: '/api/auth' });
     server.register(tenantRoutes, { prefix: '/api/tenants' });
     server.register(productRoutes, { prefix: '/api/products' });
+    const { globalCatalogRoutes } = await import('../modules/global-catalog/global-catalog.routes');
+    server.register(globalCatalogRoutes, { prefix: '/api/catalog' });
+    const { marketPricesRoutes } = await import('../modules/market-prices/market-prices.module');
+    server.register(marketPricesRoutes, { prefix: '/api/market-prices' });
     server.register(recipeRoutes, { prefix: '/api/recipes' });
     server.register(purchaseRoutes, { prefix: '/api/purchases' });
     server.register(menuRoutes, { prefix: '/api/menu' });
@@ -286,8 +329,8 @@ async function main() {
     server.register(navigationRoutes, { prefix: '/api/navigation' });  // Dynamic Navigation Menu
     server.register(onboardingRoutes, { prefix: '/api/onboarding' });
     server.register(proxyRoutes, { prefix: '/api/proxy' });
-
-
+    server.register(erosionAlertsRoutes, { prefix: '/api/erosion-alerts' });
+    server.register(decisionDashboardRoutes, { prefix: '/api/dashboard/decision' });
 
     try {
         await server.listen({ port: parseInt(env.PORT), host: '0.0.0.0' });

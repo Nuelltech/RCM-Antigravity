@@ -8,6 +8,29 @@ import { priceHistoryService } from './price-history.service';
 import { recalculationService } from './recalculation.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { addPriceChangeJob, getJobStatus } from '../../core/queue';
+import { addGlobalCatalogJob } from '../../queues/global-catalog.queue';
+
+async function dispatchGlobalCatalog(produtoId: number, precoUnitario: number, tenantId: number, origem: 'CROWDSOURCING' | 'MANUAL') {
+    try {
+        const prod = await prisma.produto.findUnique({
+            where: { id: produtoId },
+            include: { subfamilia: { include: { familia: true } } }
+        });
+        if (!prod) return;
+
+        await addGlobalCatalogJob({
+            nome: prod.nome,
+            familia_codigo: prod.subfamilia?.familia?.codigo || undefined,
+            subfamilia_codigo: prod.subfamilia?.codigo || undefined,
+            unidade_medida: prod.unidade_medida,
+            preco_unitario: precoUnitario,
+            origem,
+            tenant_id: tenantId
+        });
+    } catch (e) {
+        console.error('[GlobalCatalog Dispatch Error]', e);
+    }
+}
 
 // Schema
 const createProductSchema = z.object({
@@ -250,6 +273,9 @@ class ProductService {
                 console.error('Error in fallback recalculation:', err);
             });
         }
+
+        // --- GLOBAL CATALOG DISPATCH ---
+        dispatchGlobalCatalog(data.produto_id, Number(preco_unitario), this.tenantId, 'MANUAL');
 
         // Get new effective unit price (should be the one we just created if it's the latest)
         // Note: getPrecoUnitarioAtual fetches from DB, so it sees the new variation.
@@ -770,6 +796,9 @@ export async function productRoutes(app: FastifyInstance) {
                 });
             }
 
+            // --- GLOBAL CATALOG DISPATCH ---
+            dispatchGlobalCatalog(variacao.produto_id, Number(novoPrecoUnitario), req.tenantId, 'MANUAL');
+
             // Record price history (impact stats will be 0/unknown for now to prioritize speed)
             await priceHistoryService.createPriceHistory({
                 tenantId: req.tenantId,
@@ -904,6 +933,9 @@ export async function productRoutes(app: FastifyInstance) {
                         confianca_match: new Decimal(100), // Manual match = 100%
                     }
                 });
+
+                // --- GLOBAL CATALOG DISPATCH ---
+                dispatchGlobalCatalog(produto.id, precoPorUnidade, req.tenantId!, 'CROWDSOURCING');
 
                 return { produto, variacao, linha };
             });
