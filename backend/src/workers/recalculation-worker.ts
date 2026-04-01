@@ -164,6 +164,20 @@ recalculationWorker.on('completed', async (job) => {
         await menuCache.invalidateTenant(job.data.tenantId);
         console.log(`[CACHE INVALIDATE] Dashboard and Menu caches cleared for tenant ${job.data.tenantId} after recalculation`);
     }
+
+    // Mark IntegrationLog as completed so the frontend banner clears
+    if (job.data.logId) {
+        try {
+            const { prisma } = await import('../core/database');
+            await prisma.integrationLog.update({
+                where: { id: job.data.logId },
+                data: { status: 'completed', completed_at: new Date() }
+            });
+            console.log(`[RecalcWorker] IntegrationLog ${job.data.logId} marked as completed`);
+        } catch (err) {
+            console.error(`[RecalcWorker] Failed to update IntegrationLog ${job.data.logId}:`, err);
+        }
+    }
 });
 
 recalculationWorker.on('failed', (job, err) => {

@@ -8,7 +8,7 @@ import { TrendingDown, ArrowUpRight, Ban, CheckCircle, Flame, Target, TrendingUp
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { ActiveRecalculationAlert } from '@/components/ActiveRecalculationAlert';
+
 
 interface ErosionAlert {
     id: number;
@@ -137,7 +137,7 @@ export default function ErosionAlertsPage() {
                     </div>
                 </div>
 
-                <ActiveRecalculationAlert />
+
 
                 {loading ? (
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
